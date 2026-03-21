@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(npm --version)",
+      "Bash(pnpm --version)",
+      "Bash(cargo search:*)",
+      "Bash(npm view:*)",
+      "Bash(codex --version)",
+      "Bash(codex exec:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(cargo build:*)",
+      "Bash(pnpm tauri:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
