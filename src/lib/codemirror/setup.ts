@@ -1,0 +1,81 @@
+import {
+  EditorView,
+  lineNumbers,
+  highlightActiveLine,
+  drawSelection,
+  type ViewUpdate,
+} from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import {
+  syntaxHighlighting,
+  defaultHighlightStyle,
+} from "@codemirror/language";
+import { redPenTheme } from "./theme";
+import { annotationExtensions } from "./annotations";
+import { getLanguageForExtension } from "./languages";
+
+export interface EditorConfig {
+  content: string;
+  extension: string;
+  parent: HTMLElement;
+  onSelectionChange?: (
+    from: number,
+    to: number,
+    fromLine: number,
+    fromCol: number,
+    toLine: number,
+    toCol: number
+  ) => void;
+}
+
+export function createEditor(config: EditorConfig): EditorView {
+  const extensions = [
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    lineNumbers(),
+    highlightActiveLine(),
+    drawSelection(),
+    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+    oneDark,
+    redPenTheme,
+    ...annotationExtensions(),
+  ];
+
+  // Add language support if available
+  const lang = getLanguageForExtension(config.extension);
+  if (lang) {
+    extensions.push(lang);
+  }
+
+  // Track selection changes for annotation creation
+  if (config.onSelectionChange) {
+    extensions.push(
+      EditorView.updateListener.of((update: ViewUpdate) => {
+        if (update.selectionSet) {
+          const sel = update.state.selection.main;
+          if (sel.from !== sel.to) {
+            const fromLine = update.state.doc.lineAt(sel.from);
+            const toLine = update.state.doc.lineAt(sel.to);
+            config.onSelectionChange!(
+              sel.from,
+              sel.to,
+              fromLine.number,
+              sel.from - fromLine.from,
+              toLine.number,
+              sel.to - toLine.from
+            );
+          }
+        }
+      })
+    );
+  }
+
+  return new EditorView({
+    state: EditorState.create({
+      doc: config.content,
+      extensions,
+    }),
+    parent: config.parent,
+  });
+}
