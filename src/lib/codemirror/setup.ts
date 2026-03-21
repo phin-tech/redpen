@@ -50,6 +50,7 @@ export function createEditor(config: EditorConfig): EditorView {
 
   // Track selection changes for annotation creation
   if (config.onSelectionChange) {
+    const onSelectionChange = config.onSelectionChange;
     extensions.push(
       EditorView.updateListener.of((update: ViewUpdate) => {
         if (update.selectionSet) {
@@ -57,7 +58,7 @@ export function createEditor(config: EditorConfig): EditorView {
           if (sel.from !== sel.to) {
             const fromLine = update.state.doc.lineAt(sel.from);
             const toLine = update.state.doc.lineAt(sel.to);
-            config.onSelectionChange!(
+            onSelectionChange(
               sel.from,
               sel.to,
               fromLine.number,

@@ -1,5 +1,6 @@
 export type AnnotationKind = "comment" | "lineNote" | "label";
 
+/** Lines are 1-based, columns are 0-based offsets from line start. */
 export interface Range {
   startLine: number;
   startColumn: number;

@@ -101,14 +101,27 @@ const annotationGutter = gutter({
     const annotations = view.state.field(annotationsField);
     const builder = new RangeSetBuilder<GutterMarker>();
 
-    // Group by line, pick the "highest priority" kind per line
+    // Group by line — orphaned takes priority, then comment > lineNote > label
+    const kindPriority: Record<string, number> = {
+      comment: 3,
+      lineNote: 2,
+      label: 1,
+    };
     const lineMap = new Map<number, { kind: string; orphaned: boolean }>();
     for (const ann of annotations) {
       const line = ann.anchor.range.startLine;
       if (line < 1 || line > view.state.doc.lines) continue;
       const existing = lineMap.get(line);
-      if (!existing || ann.isOrphaned) {
+      if (!existing) {
         lineMap.set(line, { kind: ann.kind, orphaned: ann.isOrphaned });
+      } else if (ann.isOrphaned && !existing.orphaned) {
+        lineMap.set(line, { kind: ann.kind, orphaned: true });
+      } else if (
+        !ann.isOrphaned &&
+        !existing.orphaned &&
+        (kindPriority[ann.kind] ?? 0) > (kindPriority[existing.kind] ?? 0)
+      ) {
+        lineMap.set(line, { kind: ann.kind, orphaned: false });
       }
     }
 
