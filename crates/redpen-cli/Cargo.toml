@@ -11,3 +11,5 @@ path = "src/main.rs"
 redpen-core = { path = "../redpen-core" }
 clap = { version = "4", features = ["derive"] }
 serde_json = "1"
+whoami = "1"
+urlencoding = "2"
