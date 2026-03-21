@@ -15,3 +15,6 @@ tauri-plugin-deep-link = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 redpen-core = { path = "../crates/redpen-core" }
+git2 = "0.20"
+whoami = "1"
+chrono = { version = "0.4", features = ["serde"] }
