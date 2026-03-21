@@ -28,8 +28,8 @@
   }
 </script>
 
-<div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog" tabindex="-1">
-  <div class="dialog" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
+<div class="overlay" onclick={onClose} role="dialog" tabindex="-1">
+  <div class="dialog" onclick={(e) => e.stopPropagation()} onkeydown={handleKeydown} role="document">
     <h3>Settings</h3>
 
     <label>

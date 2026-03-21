@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onDestroy } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
   import { getEditor, getFileExtension } from "$lib/stores/editor.svelte";
-  import { getAnnotationsState, filteredAnnotations } from "$lib/stores/annotations.svelte";
-  import type { Annotation } from "$lib/types";
+  import { filteredAnnotations } from "$lib/stores/annotations.svelte";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
   let {
@@ -33,12 +32,6 @@
   // Expose scrollToLine to parent via ref
   $effect(() => {
     ref = { scrollToLine };
-  });
-
-  onMount(() => {
-    if (editor.content) {
-      createView();
-    }
   });
 
   onDestroy(() => {

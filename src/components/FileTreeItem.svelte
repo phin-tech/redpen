@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FileEntry, GitFileStatus } from "$lib/types";
+  import type { FileEntry } from "$lib/types";
   import { toggleFolder, getWorkspace, getGitStatusForFile } from "$lib/stores/workspace.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
 

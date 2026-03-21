@@ -15,11 +15,7 @@
 
   let body = $state("");
   let labelsInput = $state("");
-  let kind: AnnotationKind = $state("comment");
-
-  $effect(() => {
-    kind = initialKind;
-  });
+  let kind: AnnotationKind = $state(initialKind);
   let textareaEl: HTMLTextAreaElement;
 
   $effect(() => {

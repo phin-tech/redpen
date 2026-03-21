@@ -79,7 +79,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div id="app">
+<div class="app-root">
   <Toolbar onSettingsClick={() => (showSettings = true)} />
 
   <div class="main-layout">
