@@ -1,21 +1,18 @@
 <script lang="ts">
-  import type { AnnotationKind } from "$lib/types";
+  import { Button, Kbd } from "flowbite-svelte";
 
   let {
     onSubmit,
     onCancel,
     position = { x: 0, y: 0 },
-    initialKind = "comment",
   }: {
-    onSubmit: (body: string, labels: string[], kind: AnnotationKind) => void;
+    onSubmit: (body: string, labels: string[]) => void;
     onCancel: () => void;
     position: { x: number; y: number };
-    initialKind?: AnnotationKind;
   } = $props();
 
   let body = $state("");
   let labelsInput = $state("");
-  let kind: AnnotationKind = $state(initialKind);
   let textareaEl: HTMLTextAreaElement;
 
   $effect(() => {
@@ -28,7 +25,7 @@
       .split(",")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    onSubmit(body.trim(), labels, kind);
+    onSubmit(body.trim(), labels);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -42,102 +39,36 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<div class="fixed inset-0 z-[99]" onclick={onCancel}></div>
 <div
-  class="popover"
+  class="fixed z-[100] bg-graphite-950 border border-graphite-700 rounded-xl p-3.5 w-[340px] shadow-2xl flex flex-col gap-2.5"
   style="left: {position.x}px; top: {position.y}px"
   onkeydown={handleKeydown}
   role="dialog"
   tabindex="-1"
 >
-  <div class="kind-selector">
-    <button class:active={kind === "comment"} onclick={() => (kind = "comment")}>Comment</button>
-    <button class:active={kind === "lineNote"} onclick={() => (kind = "lineNote")}>Note</button>
-    <button class:active={kind === "label"} onclick={() => (kind = "label")}>Label</button>
-  </div>
-
   <textarea
     bind:this={textareaEl}
     bind:value={body}
     placeholder="Add your annotation..."
     rows="3"
+    class="w-full bg-graphite-900 border-graphite-700 text-graphite-50 text-sm rounded-md p-2 resize-y min-h-[70px] focus:border-amber-400 focus:ring-amber-400/20"
   ></textarea>
 
   <input
     type="text"
     bind:value={labelsInput}
     placeholder="Labels (comma-separated)"
+    class="w-full bg-graphite-900 border-graphite-700 text-graphite-50 text-sm rounded-md p-2 focus:border-amber-400 focus:ring-amber-400/20"
   />
 
-  <div class="actions">
-    <button class="cancel-btn" onclick={onCancel}>Cancel</button>
-    <button class="submit-btn" onclick={handleSubmit}>Save (Cmd+Return)</button>
+  <div class="flex justify-end gap-2">
+    <Button size="xs" color="alternative" onclick={onCancel}>Cancel</Button>
+    <Button size="xs" color="primary" onclick={handleSubmit} class="gap-2">
+      Save
+      <Kbd class="!px-1 !py-0 !text-[10px] opacity-70">Cmd+Return</Kbd>
+    </Button>
   </div>
 </div>
-
-<style>
-  .popover {
-    position: fixed;
-    z-index: 100;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 12px;
-    width: 320px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .kind-selector {
-    display: flex;
-    gap: 4px;
-  }
-
-  .kind-selector button {
-    padding: 2px 8px;
-    font-size: 11px;
-    border-radius: 4px;
-    color: var(--text-muted);
-  }
-
-  .kind-selector button.active {
-    color: var(--accent-blue);
-    background: rgba(137, 180, 250, 0.1);
-  }
-
-  textarea {
-    resize: vertical;
-    min-height: 60px;
-  }
-
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  .cancel-btn {
-    padding: 4px 12px;
-    font-size: 12px;
-    color: var(--text-muted);
-    border-radius: 4px;
-  }
-
-  .cancel-btn:hover {
-    background: var(--bg-highlight);
-  }
-
-  .submit-btn {
-    padding: 4px 12px;
-    font-size: 12px;
-    background: var(--accent-blue);
-    color: var(--bg-primary);
-    border-radius: 4px;
-    font-weight: 600;
-  }
-
-  .submit-btn:hover {
-    opacity: 0.9;
-  }
-</style>

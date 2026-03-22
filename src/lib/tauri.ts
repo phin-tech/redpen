@@ -15,7 +15,6 @@ export async function getAnnotations(filePath: string): Promise<SidecarFile> {
 
 export interface CreateAnnotationParams {
   filePath: string;
-  kind: string;
   body: string;
   labels: string[];
   startLine: number;

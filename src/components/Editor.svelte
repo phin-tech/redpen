@@ -4,7 +4,7 @@
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
   import { getEditor, getFileExtension } from "$lib/stores/editor.svelte";
-  import { filteredAnnotations } from "$lib/stores/annotations.svelte";
+  import { sortedAnnotations } from "$lib/stores/annotations.svelte";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
   let {
@@ -61,7 +61,7 @@
 
   // Update annotations when they change
   $effect(() => {
-    const annotations = filteredAnnotations();
+    const annotations = sortedAnnotations();
     if (view) {
       view.dispatch({
         effects: setAnnotationsEffect.of(annotations),

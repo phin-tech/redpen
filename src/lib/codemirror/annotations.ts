@@ -62,7 +62,7 @@ const annotationDecorations = EditorView.decorations.compute(
 
       const cssClass = ann.isOrphaned
         ? "rp-annotation-orphaned"
-        : `rp-annotation-${ann.kind}`;
+        : "rp-annotation";
 
       if (from === to) {
         // Zero-width — mark the whole line instead
@@ -79,10 +79,7 @@ const annotationDecorations = EditorView.decorations.compute(
 
 // Gutter marker for annotated lines
 class AnnotationGutterMarker extends GutterMarker {
-  constructor(
-    private kind: string,
-    private orphaned: boolean
-  ) {
+  constructor(private orphaned: boolean) {
     super();
   }
 
@@ -90,7 +87,7 @@ class AnnotationGutterMarker extends GutterMarker {
     const dot = document.createElement("span");
     dot.className = this.orphaned
       ? "rp-gutter-dot rp-gutter-dot-orphaned"
-      : `rp-gutter-dot rp-gutter-dot-${this.kind}`;
+      : "rp-gutter-dot";
     return dot;
   }
 }
@@ -101,38 +98,27 @@ const annotationGutter = gutter({
     const annotations = view.state.field(annotationsField);
     const builder = new RangeSetBuilder<GutterMarker>();
 
-    // Group by line — orphaned takes priority, then comment > lineNote > label
-    const kindPriority: Record<string, number> = {
-      comment: 3,
-      lineNote: 2,
-      label: 1,
-    };
-    const lineMap = new Map<number, { kind: string; orphaned: boolean }>();
+    // Group by line — orphaned takes priority
+    const lineMap = new Map<number, boolean>(); // line -> isOrphaned
     for (const ann of annotations) {
       const line = ann.anchor.range.startLine;
       if (line < 1 || line > view.state.doc.lines) continue;
       const existing = lineMap.get(line);
-      if (!existing) {
-        lineMap.set(line, { kind: ann.kind, orphaned: ann.isOrphaned });
-      } else if (ann.isOrphaned && !existing.orphaned) {
-        lineMap.set(line, { kind: ann.kind, orphaned: true });
-      } else if (
-        !ann.isOrphaned &&
-        !existing.orphaned &&
-        (kindPriority[ann.kind] ?? 0) > (kindPriority[existing.kind] ?? 0)
-      ) {
-        lineMap.set(line, { kind: ann.kind, orphaned: false });
+      if (existing === undefined) {
+        lineMap.set(line, ann.isOrphaned);
+      } else if (ann.isOrphaned && !existing) {
+        lineMap.set(line, true);
       }
     }
 
     // Must add in order
     const sortedLines = [...lineMap.entries()].sort((a, b) => a[0] - b[0]);
-    for (const [lineNum, { kind, orphaned }] of sortedLines) {
+    for (const [lineNum, orphaned] of sortedLines) {
       const lineObj = view.state.doc.line(lineNum);
       builder.add(
         lineObj.from,
         lineObj.from,
-        new AnnotationGutterMarker(kind, orphaned)
+        new AnnotationGutterMarker(orphaned)
       );
     }
 

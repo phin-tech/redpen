@@ -3,47 +3,55 @@ import { EditorView } from "@codemirror/view";
 export const redPenTheme = EditorView.theme({
   "&": {
     height: "100%",
-    fontSize: "13px",
-    fontFamily: "'SF Mono', 'Fira Code', 'JetBrains Mono', monospace",
+    fontSize: "14px",
+    fontFamily: "var(--font-mono)",
+    backgroundColor: "var(--bg-editor)",
   },
   ".cm-content": {
     padding: "8px 0",
+    caretColor: "var(--accent)",
+  },
+  ".cm-cursor": {
+    borderLeftColor: "var(--accent)",
   },
   ".cm-gutters": {
-    backgroundColor: "var(--bg-surface)",
+    backgroundColor: "var(--bg-editor)",
     borderRight: "1px solid var(--border-color)",
     color: "var(--text-muted)",
+    fontSize: "12px",
+    minWidth: "48px",
+  },
+  ".cm-lineNumbers .cm-gutterElement": {
+    opacity: "0.5",
   },
   ".cm-activeLineGutter": {
-    backgroundColor: "var(--bg-highlight)",
+    backgroundColor: "transparent",
+    color: "var(--text-secondary)",
+    opacity: "1",
   },
-  // Annotation mark decorations
-  ".rp-annotation-comment": {
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
-    borderBottom: "2px solid rgba(59, 130, 246, 0.5)",
+  ".cm-activeLine": {
+    backgroundColor: "rgba(42, 36, 32, 0.5)",
   },
-  ".rp-annotation-lineNote": {
-    backgroundColor: "rgba(234, 179, 8, 0.15)",
-    borderBottom: "2px solid rgba(234, 179, 8, 0.5)",
+  ".cm-selectionBackground, ::selection": {
+    backgroundColor: "var(--bg-selection) !important",
   },
-  ".rp-annotation-label": {
-    backgroundColor: "rgba(168, 85, 247, 0.15)",
-    borderBottom: "2px solid rgba(168, 85, 247, 0.5)",
+  // Annotation highlight
+  ".rp-annotation": {
+    backgroundColor: "rgba(227, 154, 45, 0.12)",
+    borderBottom: "2px solid rgba(227, 154, 45, 0.5)",
   },
   ".rp-annotation-orphaned": {
-    backgroundColor: "rgba(239, 68, 68, 0.15)",
-    borderBottom: "2px solid rgba(239, 68, 68, 0.5)",
+    backgroundColor: "rgba(217, 107, 95, 0.12)",
+    borderBottom: "2px solid rgba(217, 107, 95, 0.5)",
   },
-  // Gutter dot
+  // Gutter dots
   ".rp-gutter-dot": {
-    width: "8px",
-    height: "8px",
+    width: "6px",
+    height: "6px",
     borderRadius: "50%",
     display: "inline-block",
-    marginLeft: "4px",
+    marginLeft: "6px",
+    backgroundColor: "#E39A2D",
   },
-  ".rp-gutter-dot-comment": { backgroundColor: "#3b82f6" },
-  ".rp-gutter-dot-lineNote": { backgroundColor: "#eab308" },
-  ".rp-gutter-dot-label": { backgroundColor: "#a855f7" },
-  ".rp-gutter-dot-orphaned": { backgroundColor: "#ef4444" },
+  ".rp-gutter-dot-orphaned": { backgroundColor: "#D96B5F" },
 });

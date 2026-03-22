@@ -1,5 +1,3 @@
-export type AnnotationKind = "comment" | "lineNote" | "label";
-
 /** Lines are 1-based, columns are 0-based offsets from line start. */
 export interface Range {
   startLine: number;
@@ -21,13 +19,13 @@ export type Anchor = TextContextAnchor;
 
 export interface Annotation {
   id: string;
-  kind: AnnotationKind;
+  kind: string;
   body: string;
   labels: string[];
   author: string;
   isOrphaned: boolean;
-  createdAt: number | null;
-  updatedAt: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
   anchor: Anchor;
 }
 
@@ -50,4 +48,3 @@ export interface GitFileStatus {
   status: string;
 }
 
-export type AnnotationFilter = "all" | "comment" | "lineNote" | "label";

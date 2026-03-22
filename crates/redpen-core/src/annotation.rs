@@ -1,6 +1,46 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+/// Deserializes datetime from either ISO 8601 string or millisecond timestamp.
+/// Provides compatibility with the Swift version of Red Pen.
+fn flexible_datetime_deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::String(s)) => {
+            DateTime::parse_from_rfc3339(&s)
+                .map(|dt| Some(dt.with_timezone(&Utc)))
+                .map_err(D::Error::custom)
+        }
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(ms) = n.as_i64() {
+                DateTime::from_timestamp_millis(ms)
+                    .map(Some)
+                    .ok_or_else(|| D::Error::custom("invalid timestamp"))
+            } else {
+                Err(D::Error::custom("expected integer timestamp"))
+            }
+        }
+        _ => Err(D::Error::custom("expected string, number, or null for datetime")),
+    }
+}
+
+/// Serializes datetime as ISO 8601 string to match Swift version format.
+fn flexible_datetime_serialize<S>(value: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(dt) => serializer.serialize_str(&dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+        None => serializer.serialize_none(),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -41,9 +81,9 @@ pub struct Annotation {
     pub labels: Vec<String>,
     pub author: String,
     pub is_orphaned: bool,
-    #[serde(with = "chrono::serde::ts_milliseconds_option", default)]
+    #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(with = "chrono::serde::ts_milliseconds_option", default)]
+    #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<DateTime<Utc>>,
     pub anchor: Anchor,
 }
@@ -58,7 +98,7 @@ impl Annotation {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4().to_string().to_uppercase(),
             kind,
             body,
             labels,
@@ -100,10 +140,18 @@ mod tests {
         assert!(json.contains("\"startLine\":3"));
         assert!(json.contains("\"type\":\"textContext\""));
         assert!(json.contains("\"lineContent\":\"fn main() {}\""));
+        // Dates should be ISO 8601 strings matching Swift format
+        assert!(json.contains("\"createdAt\":\""), "createdAt should be a string");
+        assert!(json.contains("T"), "date should contain time separator");
+        assert!(json.contains("Z\""), "date should end with Z");
+        // ID should be uppercase UUID
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let id = parsed["id"].as_str().unwrap();
+        assert_eq!(id, id.to_uppercase(), "ID should be uppercase UUID");
     }
 
     #[test]
-    fn test_annotation_deserializes_from_sidecar_format() {
+    fn test_annotation_deserializes_from_millisecond_timestamps() {
         let json = r#"{
             "id": "550e8400-e29b-41d4-a716-446655440000",
             "kind": "comment",
@@ -126,6 +174,62 @@ mod tests {
         assert_eq!(annotation.kind, AnnotationKind::Comment);
         assert_eq!(annotation.labels, vec!["refactor"]);
         assert_eq!(annotation.line(), 3);
+    }
+
+    #[test]
+    fn test_annotation_deserializes_from_swift_format() {
+        let json = r#"{
+            "id": "BBED6208-814E-4C92-B0BB-DA2175249BC0",
+            "kind": "comment",
+            "body": "test blah\n",
+            "labels": [],
+            "author": "sphinizy",
+            "isOrphaned": false,
+            "createdAt": "2026-03-21T00:24:22Z",
+            "updatedAt": "2026-03-21T00:24:22Z",
+            "anchor": {
+                "type": "textContext",
+                "lineContent": "requires-python = \">=3.13\"",
+                "surroundingLines": ["description", "readme", "requires-python"],
+                "contentHash": "b7a8689d",
+                "range": { "startLine": 6, "startColumn": 11, "endLine": 8, "endColumn": 17 },
+                "lastKnownLine": 6
+            }
+        }"#;
+        let annotation: Annotation = serde_json::from_str(json).unwrap();
+        assert_eq!(annotation.id, "BBED6208-814E-4C92-B0BB-DA2175249BC0");
+        assert_eq!(annotation.author, "sphinizy");
+        assert!(annotation.created_at.is_some());
+        assert_eq!(annotation.line(), 6);
+    }
+
+    #[test]
+    fn test_swift_format_roundtrip() {
+        let json = r#"{
+            "id": "BBED6208-814E-4C92-B0BB-DA2175249BC0",
+            "kind": "comment",
+            "body": "test blah\n",
+            "labels": [],
+            "author": "sphinizy",
+            "isOrphaned": false,
+            "createdAt": "2026-03-21T00:24:22Z",
+            "updatedAt": "2026-03-21T00:24:22Z",
+            "anchor": {
+                "type": "textContext",
+                "lineContent": "requires-python = \">=3.13\"",
+                "surroundingLines": ["description", "readme", "requires-python"],
+                "contentHash": "b7a8689d",
+                "range": { "startLine": 6, "startColumn": 11, "endLine": 8, "endColumn": 17 },
+                "lastKnownLine": 6
+            }
+        }"#;
+        let annotation: Annotation = serde_json::from_str(json).unwrap();
+        let reserialized = serde_json::to_string_pretty(&annotation).unwrap();
+        // Dates should roundtrip as ISO 8601 strings
+        assert!(reserialized.contains("\"createdAt\": \"2026-03-21T00:24:22Z\""));
+        assert!(reserialized.contains("\"updatedAt\": \"2026-03-21T00:24:22Z\""));
+        // ID should preserve original casing
+        assert!(reserialized.contains("BBED6208-814E-4C92-B0BB-DA2175249BC0"));
     }
 
     #[test]

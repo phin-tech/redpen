@@ -28,44 +28,12 @@
 </script>
 
 <div
-  class="resize-handle"
-  class:horizontal={direction === "horizontal"}
-  class:vertical={direction === "vertical"}
-  class:dragging
+  class="shrink-0 relative z-10 bg-transparent transition-colors
+    {direction === 'horizontal' ? 'w-1 cursor-col-resize -mx-0.5' : 'h-1 cursor-row-resize -my-0.5'}
+    {dragging ? 'bg-amber-400/70' : 'hover:bg-amber-400/40'}"
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   role="separator"
   aria-orientation={direction}
 ></div>
-
-<style>
-  .resize-handle {
-    flex-shrink: 0;
-    background: transparent;
-    position: relative;
-    z-index: 10;
-  }
-
-  .resize-handle.horizontal {
-    width: 4px;
-    cursor: col-resize;
-    margin: 0 -2px;
-  }
-
-  .resize-handle.vertical {
-    height: 4px;
-    cursor: row-resize;
-    margin: -2px 0;
-  }
-
-  .resize-handle:hover,
-  .resize-handle.dragging {
-    background: var(--accent-blue);
-    opacity: 0.5;
-  }
-
-  .resize-handle.dragging {
-    opacity: 0.8;
-  }
-</style>

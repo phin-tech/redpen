@@ -1,0 +1,71 @@
+{
+  "annotations" : [
+    {
+      "anchor" : {
+        "contentHash" : "b7a8689db4ea28e65aaae388913146bdf0d71032f2f35dab31a081029bd638c6",
+        "lastKnownLine" : 6,
+        "lineContent" : "requires-python = \">=3.13\"",
+        "range" : {
+          "endColumn" : 17,
+          "endLine" : 8,
+          "startColumn" : 11,
+          "startLine" : 6
+        },
+        "surroundingLines" : [
+          "description = \"Add your description here\"",
+          "readme = \"README.md\"",
+          "requires-python = \">=3.13\"",
+          "dependencies = [",
+          "    \"anthropic>=0.76.0\","
+        ],
+        "type" : "textContext"
+      },
+      "author" : "sphinizy",
+      "body" : "test blah\n",
+      "createdAt" : "2026-03-21T00:24:22Z",
+      "id" : "BBED6208-814E-4C92-B0BB-DA2175249BC0",
+      "isOrphaned" : false,
+      "kind" : "comment",
+      "labels" : [
+
+      ],
+      "updatedAt" : "2026-03-21T00:24:22Z"
+    },
+    {
+      "anchor" : {
+        "contentHash" : "c7523a25ec0ef2ef310abffeb74874020cece4a0ad1e311d37ad4c05b28f42c9",
+        "lastKnownLine" : 10,
+        "lineContent" : "    \"typer>=0.15.0\",",
+        "range" : {
+          "endColumn" : 1,
+          "endLine" : 11,
+          "startColumn" : 1,
+          "startLine" : 10
+        },
+        "surroundingLines" : [
+          "    \"anthropic>=0.76.0\",",
+          "    \"httpx>=0.28.1\",",
+          "    \"typer>=0.15.0\",",
+          "]",
+          ""
+        ],
+        "type" : "textContext"
+      },
+      "author" : "sphinizy",
+      "body" : "lets switch to click",
+      "createdAt" : "2026-03-21T01:34:21Z",
+      "id" : "2AD8E871-F538-45C1-8F58-9C9A457CA706",
+      "isOrphaned" : false,
+      "kind" : "comment",
+      "labels" : [
+
+      ],
+      "updatedAt" : "2026-03-21T01:34:21Z"
+    }
+  ],
+  "metadata" : {
+
+  },
+  "sourceFileHash" : "acf894f11b978ff4554fe5537ad7e0d46be299a45fe5369d9a014ca607e0e11a",
+  "version" : 1
+}
