@@ -15,7 +15,13 @@
         "label": "main",
         "title": "Red Pen",
         "width": 1200,
-        "height": 800
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 500,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "decorations": true,
+        "transparent": false
       }
     ],
     "security": {
