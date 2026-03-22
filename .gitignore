@@ -2,3 +2,5 @@ node_modules/
 target/
 dist/
 .DS_Store
+*.redpen.json
+.redpen/
