@@ -1,0 +1,45 @@
+version: "3"
+
+tasks:
+  release:
+    desc: "Bump version, update all manifests, commit, tag, and push. Usage: task release BUMP=patch|minor|major"
+    requires:
+      vars: [BUMP]
+    preconditions:
+      - sh: '[ "{{.BUMP}}" = "patch" ] || [ "{{.BUMP}}" = "minor" ] || [ "{{.BUMP}}" = "major" ]'
+        msg: "BUMP must be one of: patch, minor, major"
+      - sh: "git diff --quiet && git diff --cached --quiet"
+        msg: "Working tree must be clean before releasing"
+    cmds:
+      - |
+        # Get current version from latest tag (strip leading v), default to 0.1.0
+        CURRENT=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.1.0")
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+        case "{{.BUMP}}" in
+          major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+          minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+          patch) PATCH=$((PATCH + 1)) ;;
+        esac
+
+        NEW="${MAJOR}.${MINOR}.${PATCH}"
+        echo "Bumping version: ${CURRENT} -> ${NEW}"
+
+        # Update package.json
+        sed -i '' "s/\"version\": \".*\"/\"version\": \"${NEW}\"/" package.json
+
+        # Update tauri.conf.json
+        sed -i '' "s/\"version\": \".*\"/\"version\": \"${NEW}\"/" src-tauri/tauri.conf.json
+
+        # Update Cargo.toml files
+        for f in src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml; do
+          sed -i '' "s/^version = \".*\"/version = \"${NEW}\"/" "$f"
+        done
+
+        # Commit, tag, push
+        git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml
+        git commit -m "release: v${NEW}"
+        git tag "v${NEW}"
+        git push origin main "v${NEW}"
+
+        echo "Released v${NEW}"
