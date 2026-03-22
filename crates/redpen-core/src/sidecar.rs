@@ -24,6 +24,11 @@ impl SidecarFile {
         source_path.with_file_name(format!("{}.redpen.json", file_name))
     }
 
+    pub fn signal_path(source_path: &Path) -> PathBuf {
+        let file_name = source_path.file_name().unwrap().to_string_lossy();
+        source_path.with_file_name(format!("{}.redpen-signal", file_name))
+    }
+
     pub fn load(sidecar_path: &Path) -> Result<Self, SidecarError> {
         let content = fs::read_to_string(sidecar_path)?;
         let sidecar: SidecarFile = serde_json::from_str(&content)?;
@@ -150,5 +155,35 @@ mod tests {
         assert!(json.contains("\"version\": 1"));
         assert!(json.contains("\"sourceFileHash\": \"abc123\""));
         assert!(json.contains("\"annotations\": []"));
+    }
+
+    #[test]
+    fn test_load_swift_sidecar_fixture() {
+        let fixture = include_str!("../tests/fixtures/swift-sidecar.json");
+        let sidecar: SidecarFile = serde_json::from_str(fixture).unwrap();
+        assert_eq!(sidecar.version, 1);
+        assert_eq!(sidecar.annotations.len(), 2);
+
+        let first = &sidecar.annotations[0];
+        assert_eq!(first.id, "BBED6208-814E-4C92-B0BB-DA2175249BC0");
+        assert_eq!(first.author, "sphinizy");
+        assert_eq!(first.kind, AnnotationKind::Comment);
+        assert!(first.created_at.is_some());
+        assert_eq!(first.line(), 6);
+
+        let second = &sidecar.annotations[1];
+        assert_eq!(second.id, "2AD8E871-F538-45C1-8F58-9C9A457CA706");
+        assert_eq!(second.body, "lets switch to click");
+        assert_eq!(second.line(), 10);
+
+        // Roundtrip: re-serialize and verify dates stay as ISO 8601
+        let reserialized = serde_json::to_string_pretty(&sidecar).unwrap();
+        assert!(reserialized.contains("\"createdAt\": \"2026-03-21T00:24:22Z\""));
+        assert!(reserialized.contains("\"createdAt\": \"2026-03-21T01:34:21Z\""));
+        // Re-parse to confirm full roundtrip
+        let reloaded: SidecarFile = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(reloaded.annotations.len(), 2);
+        assert_eq!(reloaded.annotations[0].id, first.id);
+        assert_eq!(reloaded.annotations[1].id, second.id);
     }
 }

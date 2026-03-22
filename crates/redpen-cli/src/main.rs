@@ -49,6 +49,13 @@ enum Commands {
         #[arg(long)]
         line: Option<u32>,
     },
+    /// Wait for review to complete (blocks until "Done Reviewing" is clicked in the app)
+    Wait {
+        file: PathBuf,
+        /// Timeout in seconds (default: no timeout)
+        #[arg(long)]
+        timeout: Option<u64>,
+    },
 }
 
 fn main() {
@@ -61,6 +68,7 @@ fn main() {
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
         Commands::Status { file } => cmd_status(&file),
         Commands::Open { file, line } => cmd_open(&file, line),
+        Commands::Wait { file, timeout } => cmd_wait(&file, timeout),
     };
     if let Err(e) = result {
         eprintln!("Error: {}", e);
@@ -192,6 +200,38 @@ fn cmd_status(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
         println!("{}: {} annotations", file.display(), total);
     }
     Ok(())
+}
+
+fn cmd_wait(file: &Path, timeout: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
+    let abs_path = fs::canonicalize(file)?;
+    let signal_path = SidecarFile::signal_path(&abs_path);
+
+    let start = std::time::Instant::now();
+    let timeout_duration = timeout.map(std::time::Duration::from_secs);
+
+    eprintln!("Waiting for review of {}...", file.display());
+
+    loop {
+        if signal_path.exists() {
+            // Clean up signal file
+            let _ = fs::remove_file(&signal_path);
+
+            // Output annotations as JSON
+            let sidecar = load_or_create_sidecar(&abs_path)?;
+            let json = serde_json::to_string_pretty(&sidecar.annotations)?;
+            println!("{}", json);
+            return Ok(());
+        }
+
+        if let Some(dur) = timeout_duration {
+            if start.elapsed() > dur {
+                eprintln!("Timed out waiting for review");
+                process::exit(2);
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 }
 
 fn cmd_open(file: &Path, line: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {

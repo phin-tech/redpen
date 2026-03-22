@@ -7,6 +7,7 @@ interface WorkspaceState {
   fileTree: SvelteMap<string, FileEntry[]>;
   gitStatuses: SvelteMap<string, GitFileStatus[]>;
   expandedFolders: SvelteSet<string>;
+  showChangedOnly: boolean;
 }
 
 let state = $state<WorkspaceState>({
@@ -14,6 +15,7 @@ let state = $state<WorkspaceState>({
   fileTree: new SvelteMap(),
   gitStatuses: new SvelteMap(),
   expandedFolders: new SvelteSet(),
+  showChangedOnly: false,
 });
 
 export function getWorkspace() {
@@ -60,4 +62,40 @@ export function getGitStatusForFile(filePath: string): GitFileStatus | undefined
     if (match) return match;
   }
   return undefined;
+}
+
+export function toggleShowChangedOnly() {
+  state.showChangedOnly = !state.showChangedOnly;
+  if (state.showChangedOnly) {
+    // Auto-expand directories containing changed files
+    const paths = getChangedFilePaths();
+    for (const p of paths) {
+      // Expand directories that are ancestors of changed files
+      if (!state.fileTree.has(p)) continue;
+      state.expandedFolders.add(p);
+    }
+  }
+}
+
+export function getChangedFilePaths(): Set<string> {
+  const paths = new Set<string>();
+
+  for (const [rootDir, statuses] of state.gitStatuses) {
+    for (const status of statuses) {
+      // Build absolute path from root directory + relative git path
+      const absPath = `${rootDir}/${status.path}`;
+      paths.add(absPath);
+
+      // Add all ancestor directories up to (and including) the root
+      let dir = absPath.substring(0, absPath.lastIndexOf("/"));
+      while (dir.length >= rootDir.length) {
+        paths.add(dir);
+        const parent = dir.substring(0, dir.lastIndexOf("/"));
+        if (parent === dir) break;
+        dir = parent;
+      }
+    }
+  }
+
+  return paths;
 }
