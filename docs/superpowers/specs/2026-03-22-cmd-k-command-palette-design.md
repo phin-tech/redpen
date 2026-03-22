@@ -55,7 +55,7 @@ Settings is the exception: it uses a callback because `showSettings` state lives
 
 **Go to file mode:** When "Go to file…" is selected, or when opened via double-Shift, the palette switches to listing all files from the workspace. Flatten `getWorkspace().fileTree` (a `SvelteMap<string, FileEntry[]>`) by iterating all map values and collecting entries where `isDir === false`. Bits UI's built-in search scoring filters them as the user types. Selecting a file calls `openFile(path)` and closes the palette.
 
-**Known limitation:** `fileTree` only contains directories that have been loaded (root folders on add, subdirectories on expand). Files inside subdirectories the user has never expanded will not appear in results. This is acceptable for v1.
+**Full file tree loading:** When go-to-file mode opens, call `await expandAllFolders()` before building the file list to ensure all subdirectories are loaded. This means `workspace.fileTree` will contain all files across the entire workspace, not just expanded directories.
 
 ## Keyboard Shortcuts
 
