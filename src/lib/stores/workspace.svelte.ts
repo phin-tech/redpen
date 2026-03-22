@@ -56,6 +56,29 @@ export function toggleFolder(path: string) {
   }
 }
 
+export async function expandAllFolders() {
+  async function expandRecursive(path: string) {
+    state.expandedFolders.add(path);
+    if (!state.fileTree.has(path)) {
+      await loadDirectory(path);
+    }
+    const entries = state.fileTree.get(path) ?? [];
+    for (const entry of entries) {
+      if (entry.isDir) {
+        await expandRecursive(entry.path);
+      }
+    }
+  }
+
+  for (const root of state.rootFolders) {
+    await expandRecursive(root);
+  }
+}
+
+export function collapseAllFolders() {
+  state.expandedFolders.clear();
+}
+
 export function getGitStatusForFile(filePath: string): GitFileStatus | undefined {
   for (const [, statuses] of state.gitStatuses) {
     const match = statuses.find((s) => filePath.endsWith(s.path));

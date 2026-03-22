@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Toolbar from "./components/Toolbar.svelte";
   import FileTree from "./components/FileTree.svelte";
   import Editor from "./components/Editor.svelte";
   import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
@@ -66,8 +65,14 @@
   // Deep link cleanup functions
   let unlistenDeepLink: (() => void) | undefined;
   let unlistenDeepLinkEvent: (() => void) | undefined;
+  let unlistenSettings: (() => void) | undefined;
 
   onMount(async () => {
+    // Listen for settings menu event from native menu bar
+    unlistenSettings = await listen("open-settings", () => {
+      showSettings = true;
+    });
+
     // Drag-and-drop handling
     const appWindow = getCurrentWebviewWindow();
     await appWindow.onDragDropEvent(async (event) => {
@@ -132,6 +137,7 @@
   onDestroy(() => {
     unlistenDeepLink?.();
     unlistenDeepLinkEvent?.();
+    unlistenSettings?.();
     stopWatcher?.();
   });
 
@@ -175,10 +181,8 @@
 <svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="app-root">
-  <Toolbar onSettingsClick={() => (showSettings = true)} />
-
   <div class="flex flex-1 overflow-hidden">
-    <div class="shrink-0 border-r border-graphite-700 bg-graphite-950 overflow-hidden" style="width: {leftPanelWidth}px">
+    <div class="shrink-0 border-r border-border-default/50 overflow-hidden" style="width: {leftPanelWidth}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: inset -1px 0 0 var(--border-subtle)">
       <FileTree
         onFileSelect={handleFileSelect}
         selectedPath={editor.currentFilePath}
@@ -187,7 +191,7 @@
 
     <ResizeHandle onResize={resizeLeft} />
 
-    <div class="flex-1 min-w-[200px] overflow-hidden">
+    <div class="flex-1 min-w-[200px] overflow-hidden" style="box-shadow: var(--shadow-xs)">
       <Editor
         bind:ref={editorRef}
         onSelectionChange={handleSelectionChange}
@@ -196,8 +200,8 @@
 
     <ResizeHandle onResize={resizeRight} />
 
-    <div class="shrink-0 border-l border-graphite-700 overflow-hidden" style="width: {rightPanelWidth}px">
-      <AnnotationSidebar onAnnotationClick={handleAnnotationClick} />
+    <div class="shrink-0 border-l border-border-default/50 overflow-hidden" style="width: {rightPanelWidth}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: inset 1px 0 0 var(--border-subtle)">
+      <AnnotationSidebar onAnnotationClick={handleAnnotationClick} onFileSelect={handleFileSelect} />
     </div>
   </div>
 

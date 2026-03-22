@@ -43,6 +43,12 @@ export interface FileEntry {
   hasSidecar: boolean;
 }
 
+export interface FileAnnotations {
+  filePath: string;
+  fileName: string;
+  annotations: Annotation[];
+}
+
 export interface GitFileStatus {
   path: string;
   status: string;

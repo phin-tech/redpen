@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getSettings, updateSettings } from "$lib/tauri";
   import { onMount } from "svelte";
-  import { Button, Label, Input } from "flowbite-svelte";
+  import Button from "./ui/Button.svelte";
 
   let { onClose }: { onClose: () => void } = $props();
 
@@ -31,30 +31,40 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[200]" onclick={onClose}>
+<div class="fixed inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-[200]" onclick={onClose}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
-    class="bg-graphite-950 border border-graphite-700 rounded-xl p-6 w-[380px] flex flex-col gap-4 shadow-2xl"
+    class="border border-border-default/60 rounded-xl p-6 w-[380px] flex flex-col gap-4"
+    style="background: var(--gradient-panel), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     onclick={(e) => e.stopPropagation()}
     onkeydown={handleKeydown}
     role="dialog"
     tabindex="-1"
   >
-    <h3 class="text-base font-semibold text-graphite-50">Settings</h3>
+    <h3 class="text-base font-semibold text-text-primary">Settings</h3>
 
     <div class="flex flex-col gap-1.5">
-      <Label class="!text-xs !text-graphite-200 !font-medium">Author name</Label>
-      <Input bind:value={author} size="sm" class="!bg-graphite-900 !border-graphite-700 !text-graphite-50" />
+      <label class="text-xs text-text-secondary font-medium">Author name</label>
+      <input
+        bind:value={author}
+        class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
+        style="box-shadow: var(--shadow-inset)"
+      />
     </div>
 
     <div class="flex flex-col gap-1.5">
-      <Label class="!text-xs !text-graphite-200 !font-medium">Default labels (comma-separated)</Label>
-      <Input bind:value={defaultLabels} size="sm" placeholder="todo, bug, question" class="!bg-graphite-900 !border-graphite-700 !text-graphite-50" />
+      <label class="text-xs text-text-secondary font-medium">Default labels (comma-separated)</label>
+      <input
+        bind:value={defaultLabels}
+        placeholder="todo, bug, question"
+        class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
+        style="box-shadow: var(--shadow-inset)"
+      />
     </div>
 
     <div class="flex justify-end gap-2 mt-1">
-      <Button size="xs" color="alternative" onclick={onClose}>Cancel</Button>
-      <Button size="xs" color="primary" onclick={save}>Save</Button>
+      <Button variant="secondary" size="sm" onclick={onClose}>Cancel</Button>
+      <Button size="sm" onclick={save}>Save</Button>
     </div>
   </div>
 </div>

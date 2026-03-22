@@ -1,7 +1,8 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { getWorkspace, addRootFolder, removeRootFolder, toggleShowChangedOnly, getChangedFilePaths } from "$lib/stores/workspace.svelte";
+  import { getWorkspace, addRootFolder, removeRootFolder, toggleShowChangedOnly, getChangedFilePaths, expandAllFolders, collapseAllFolders } from "$lib/stores/workspace.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
+  import IconButton from "./ui/IconButton.svelte";
 
   let {
     onFileSelect,
@@ -80,27 +81,31 @@
 
 <div class="h-full overflow-y-auto overflow-x-hidden" role="tree">
   {#if workspace.rootFolders.length > 0}
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-graphite-700">
-      <span class="text-[10px] font-semibold uppercase text-graphite-500 tracking-wider">Folders</span>
+    <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
+      <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Folders</span>
       <div class="flex items-center gap-1.5">
-        <button
-          class="transition-colors {workspace.showChangedOnly ? 'text-amber-400' : 'text-graphite-400 hover:text-graphite-200'}"
-          onclick={toggleShowChangedOnly}
-          title={workspace.showChangedOnly ? "Show all files" : "Show changed files only"}
-        >
+        <IconButton label="Expand all" onclick={expandAllFolders}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 8l5 5 5-5" />
+            <path d="M7 13l5 5 5-5" />
+          </svg>
+        </IconButton>
+        <IconButton label="Collapse all" onclick={collapseAllFolders}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 16l5-5 5 5" />
+            <path d="M7 11l5-5 5 5" />
+          </svg>
+        </IconButton>
+        <IconButton label={workspace.showChangedOnly ? "Show all files" : "Changed only"} active={workspace.showChangedOnly} onclick={toggleShowChangedOnly}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
-        </button>
-        <button
-          class="text-graphite-400 hover:text-graphite-200 transition-colors"
-          onclick={openFolder}
-          title="Add folder"
-        >
+        </IconButton>
+        <IconButton label="Add folder" onclick={openFolder}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 5v14M5 12h14" />
           </svg>
-        </button>
+        </IconButton>
       </div>
     </div>
   {/if}
@@ -112,11 +117,11 @@
       <div>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
-          class="flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold uppercase text-graphite-400 tracking-wider select-none cursor-pointer hover:text-graphite-200 transition-colors"
+          class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold uppercase text-text-secondary tracking-wider select-none cursor-pointer hover:text-text-primary transition-colors"
           onclick={() => toggleRoot(folder)}
           oncontextmenu={(e) => handleContextMenu(e, folder)}
         >
-          <span class="text-[10px]">{collapsedRoots.has(folder) ? "▸" : "▾"}</span>
+          <span class="text-xs">{collapsedRoots.has(folder) ? "▸" : "▾"}</span>
           {folder.split("/").pop()}
         </div>
         {#if !collapsedRoots.has(folder)}
@@ -131,7 +136,7 @@
   {#if workspace.rootFolders.length === 0}
     <div class="flex justify-center p-6">
       <button
-        class="px-4 py-1.5 rounded-md text-sm font-semibold bg-amber-400 text-graphite-950 hover:bg-amber-300 transition-colors"
+        class="px-4 py-1.5 rounded-md text-sm font-semibold bg-accent text-surface-base hover:bg-accent-hover transition-colors"
         onclick={openFolder}
       >
         Open Folder
@@ -145,27 +150,27 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="fixed inset-0 z-40" onclick={closeContextMenu}></div>
   <div
-    class="fixed z-50 min-w-[160px] py-1 bg-graphite-900 border border-graphite-700 rounded-lg shadow-xl"
-    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px"
+    class="fixed z-50 min-w-[160px] py-1 border border-border-default/60 rounded-lg backdrop-blur-sm"
+    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px; background: var(--gradient-panel), var(--surface-raised); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     role="menu"
   >
     <button
-      class="w-full text-left px-3 py-1.5 text-xs text-graphite-50 hover:bg-graphite-800 transition-colors"
+      class="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-surface-highlight transition-colors"
       onclick={handleOpenInFinder}
       role="menuitem"
     >
       Open in Finder
     </button>
     <button
-      class="w-full text-left px-3 py-1.5 text-xs text-graphite-50 hover:bg-graphite-800 transition-colors"
+      class="w-full text-left px-3 py-1.5 text-xs text-text-primary hover:bg-surface-highlight transition-colors"
       onclick={handleCollapseAll}
       role="menuitem"
     >
       Collapse All
     </button>
-    <div class="my-1 border-t border-graphite-700"></div>
+    <div class="my-1 border-t border-border-default"></div>
     <button
-      class="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-graphite-800 transition-colors"
+      class="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-surface-highlight transition-colors"
       onclick={handleRemoveFolder}
       role="menuitem"
     >

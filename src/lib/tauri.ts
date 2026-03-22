@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Annotation, FileEntry, GitFileStatus, SidecarFile } from "./types";
+import type { Annotation, FileAnnotations, FileEntry, GitFileStatus, SidecarFile } from "./types";
 
 export async function readDirectory(path: string): Promise<FileEntry[]> {
   return invoke("read_directory", { path });
@@ -35,6 +35,10 @@ export async function updateAnnotation(
 
 export async function deleteAnnotation(filePath: string, annotationId: string): Promise<void> {
   return invoke("delete_annotation", { filePath, annotationId });
+}
+
+export async function getAllAnnotations(rootFolder: string): Promise<FileAnnotations[]> {
+  return invoke("get_all_annotations", { rootFolder });
 }
 
 export async function getGitStatus(directory: string): Promise<GitFileStatus[]> {

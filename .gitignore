@@ -5,3 +5,4 @@ dist/
 *.redpen.json
 .redpen/
 .claude/settings.local.json
+.superpowers/

@@ -56,6 +56,75 @@ pub fn get_annotations(file_path: String) -> Result<SidecarFile, String> {
     load_sidecar_for_file(&project_root, source_path)
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAnnotations {
+    pub file_path: String,
+    pub file_name: String,
+    pub annotations: Vec<Annotation>,
+}
+
+#[tauri::command]
+pub fn get_all_annotations(root_folder: String) -> Result<Vec<FileAnnotations>, String> {
+    let root = Path::new(&root_folder);
+    let project_root = resolve_project_root(root);
+    let comments_dir = project_root.join(".redpen").join("comments");
+
+    if !comments_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut results = Vec::new();
+    collect_sidecar_files(&comments_dir, &project_root, &mut results)?;
+    results.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    Ok(results)
+}
+
+fn collect_sidecar_files(
+    dir: &Path,
+    project_root: &Path,
+    results: &mut Vec<FileAnnotations>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_sidecar_files(&path, project_root, results)?;
+        } else if path.extension().map_or(false, |e| e == "json") {
+            if let Ok(sidecar) = SidecarFile::load(&path) {
+                if !sidecar.annotations.is_empty() {
+                    // Reconstruct source path from sidecar path
+                    let relative = path
+                        .strip_prefix(project_root.join(".redpen").join("comments"))
+                        .unwrap_or(&path);
+                    // The sidecar file is named "filename.ext.json", so strip the trailing .json
+                    let source_relative = relative.with_file_name(
+                        relative
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .trim_end_matches(".json"),
+                    );
+                    let source_path = project_root.join(&source_relative);
+                    let file_name = source_relative
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+
+                    results.push(FileAnnotations {
+                        file_path: source_path.to_string_lossy().to_string(),
+                        file_name,
+                        annotations: sidecar.annotations,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn create_annotation(
     request: CreateAnnotationRequest,
