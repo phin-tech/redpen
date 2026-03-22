@@ -98,10 +98,17 @@ fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
     }
 }
 
-fn load_or_create_sidecar(source_path: &Path) -> Result<SidecarFile, Box<dyn std::error::Error>> {
-    let sidecar_path = SidecarFile::sidecar_path(source_path);
-    if sidecar_path.exists() {
-        let mut sidecar = SidecarFile::load(&sidecar_path)?;
+fn resolve_project_root(source_path: &Path) -> PathBuf {
+    match git2::Repository::discover(source_path) {
+        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
+        Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+    }
+}
+
+fn load_or_create_sidecar(project_root: &Path, source_path: &Path) -> Result<SidecarFile, Box<dyn std::error::Error>> {
+    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
+    if annotation_path.exists() {
+        let mut sidecar = SidecarFile::load(&annotation_path)?;
         let current_hash = hash_file(source_path)?;
         if sidecar.source_file_hash != current_hash {
             let content = fs::read_to_string(source_path)?;
@@ -152,10 +159,11 @@ fn cmd_annotate(
         parse_kind(kind)?, body.to_string(), labels.to_vec(), author.to_string(), anchor,
     );
 
-    let mut sidecar = load_or_create_sidecar(&abs_path)?;
+    let project_root = resolve_project_root(&abs_path);
+    let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let id = annotation.id.clone();
     sidecar.add_annotation(annotation);
-    sidecar.save_for_source(&abs_path)?;
+    sidecar.save_for_source(&project_root, &abs_path)?;
 
     println!("Created annotation {} on line {}", id, start_line);
     Ok(())
@@ -163,7 +171,8 @@ fn cmd_annotate(
 
 fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
-    let sidecar = load_or_create_sidecar(&abs_path)?;
+    let project_root = resolve_project_root(&abs_path);
+    let sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let json = serde_json::to_string_pretty(&sidecar.annotations)?;
     println!("{}", json);
     Ok(())
@@ -171,7 +180,8 @@ fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
 fn cmd_export(file: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
-    let sidecar = load_or_create_sidecar(&abs_path)?;
+    let project_root = resolve_project_root(&abs_path);
+    let sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let content = fs::read_to_string(&abs_path)?;
     let file_name = abs_path.file_name().unwrap().to_string_lossy().to_string();
     let markdown = export_markdown(&sidecar, &content, &file_name);
@@ -186,12 +196,13 @@ fn cmd_export(file: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::err
 
 fn cmd_status(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
-    let sidecar_path = SidecarFile::sidecar_path(&abs_path);
-    if !sidecar_path.exists() {
+    let project_root = resolve_project_root(&abs_path);
+    let annotation_path = SidecarFile::annotation_path(&project_root, &abs_path);
+    if !annotation_path.exists() {
         println!("{}: no annotations", file.display());
         return Ok(());
     }
-    let sidecar = load_or_create_sidecar(&abs_path)?;
+    let sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let total = sidecar.annotations.len();
     let orphaned = sidecar.annotations.iter().filter(|a| a.is_orphaned).count();
     if orphaned > 0 {
@@ -204,7 +215,8 @@ fn cmd_status(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
 fn cmd_wait(file: &Path, timeout: Option<u64>) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
-    let signal_path = SidecarFile::signal_path(&abs_path);
+    let project_root = resolve_project_root(&abs_path);
+    let signal_path = SidecarFile::signal_path(&project_root, &abs_path);
 
     let start = std::time::Instant::now();
     let timeout_duration = timeout.map(std::time::Duration::from_secs);
@@ -217,7 +229,7 @@ fn cmd_wait(file: &Path, timeout: Option<u64>) -> Result<(), Box<dyn std::error:
             let _ = fs::remove_file(&signal_path);
 
             // Output annotations as JSON
-            let sidecar = load_or_create_sidecar(&abs_path)?;
+            let sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
             let json = serde_json::to_string_pretty(&sidecar.annotations)?;
             println!("{}", json);
             return Ok(());

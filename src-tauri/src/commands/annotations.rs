@@ -4,7 +4,7 @@ use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 #[derive(Debug, serde::Deserialize)]
@@ -19,10 +19,17 @@ pub struct CreateAnnotationRequest {
     pub end_column: u32,
 }
 
-fn load_sidecar_for_file(source_path: &Path) -> Result<SidecarFile, String> {
-    let sidecar_path = SidecarFile::sidecar_path(source_path);
-    if sidecar_path.exists() {
-        let mut sidecar = SidecarFile::load(&sidecar_path).map_err(|e| e.to_string())?;
+fn resolve_project_root(source_path: &Path) -> PathBuf {
+    match git2::Repository::discover(source_path) {
+        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
+        Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+    }
+}
+
+fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> Result<SidecarFile, String> {
+    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
+    if annotation_path.exists() {
+        let mut sidecar = SidecarFile::load(&annotation_path).map_err(|e| e.to_string())?;
         let current_hash = hash_file(source_path).map_err(|e| e.to_string())?;
         if sidecar.source_file_hash != current_hash {
             let content = fs::read_to_string(source_path).map_err(|e| e.to_string())?;
@@ -36,16 +43,17 @@ fn load_sidecar_for_file(source_path: &Path) -> Result<SidecarFile, String> {
     }
 }
 
-fn save_sidecar(sidecar: &SidecarFile, source_path: &Path) -> Result<(), String> {
+fn save_sidecar(sidecar: &SidecarFile, project_root: &Path, source_path: &Path) -> Result<(), String> {
     sidecar
-        .save_for_source(source_path)
+        .save_for_source(project_root, source_path)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_annotations(file_path: String) -> Result<SidecarFile, String> {
     let source_path = Path::new(&file_path);
-    load_sidecar_for_file(source_path)
+    let project_root = resolve_project_root(source_path);
+    load_sidecar_for_file(&project_root, source_path)
 }
 
 #[tauri::command]
@@ -91,9 +99,10 @@ pub fn create_annotation(
         anchor,
     );
 
-    let mut sidecar = load_sidecar_for_file(source_path)?;
+    let project_root = resolve_project_root(source_path);
+    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
     sidecar.add_annotation(annotation.clone());
-    save_sidecar(&sidecar, source_path)?;
+    save_sidecar(&sidecar, &project_root, source_path)?;
     Ok(annotation)
 }
 
@@ -105,7 +114,8 @@ pub fn update_annotation(
     labels: Option<Vec<String>>,
 ) -> Result<Annotation, String> {
     let source_path = Path::new(&file_path);
-    let mut sidecar = load_sidecar_for_file(source_path)?;
+    let project_root = resolve_project_root(source_path);
+    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
     let annotation = sidecar
         .get_annotation_mut(&annotation_id)
         .ok_or("Annotation not found")?;
@@ -117,18 +127,19 @@ pub fn update_annotation(
     }
     annotation.updated_at = Some(chrono::Utc::now());
     let result = annotation.clone();
-    save_sidecar(&sidecar, source_path)?;
+    save_sidecar(&sidecar, &project_root, source_path)?;
     Ok(result)
 }
 
 #[tauri::command]
 pub fn delete_annotation(file_path: String, annotation_id: String) -> Result<(), String> {
     let source_path = Path::new(&file_path);
-    let mut sidecar = load_sidecar_for_file(source_path)?;
+    let project_root = resolve_project_root(source_path);
+    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
     sidecar
         .remove_annotation(&annotation_id)
         .ok_or("Annotation not found")?;
-    save_sidecar(&sidecar, source_path)?;
+    save_sidecar(&sidecar, &project_root, source_path)?;
     Ok(())
 }
 
@@ -150,13 +161,17 @@ pub fn update_settings(
 #[tauri::command]
 pub fn signal_review_done(file_path: String) -> Result<(), String> {
     let source_path = Path::new(&file_path);
+    let project_root = resolve_project_root(source_path);
 
     // Write signal file for `redpen wait` CLI
-    let signal_path = SidecarFile::signal_path(source_path);
+    let signal_path = SidecarFile::signal_path(&project_root, source_path);
+    if let Some(parent) = signal_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     fs::write(&signal_path, "done").map_err(|e| e.to_string())?;
 
     // Also POST annotations to the redpen channel (if running)
-    let sidecar = load_sidecar_for_file(source_path)?;
+    let sidecar = load_sidecar_for_file(&project_root, source_path)?;
     let json = serde_json::to_string(&sidecar.annotations).map_err(|e| e.to_string())?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());
     let encoded_path: String = file_path.bytes().map(|b| {

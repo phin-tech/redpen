@@ -19,36 +19,47 @@ impl SidecarFile {
         Self { version: 1, source_file_hash, annotations: Vec::new(), metadata: HashMap::new() }
     }
 
-    pub fn sidecar_path(source_path: &Path) -> PathBuf {
-        let file_name = source_path.file_name().unwrap().to_string_lossy();
-        source_path.with_file_name(format!("{}.redpen.json", file_name))
+    pub fn annotation_path(project_root: &Path, source_path: &Path) -> PathBuf {
+        let relative = source_path.strip_prefix(project_root).unwrap_or(source_path);
+        let file_name = relative.file_name().unwrap().to_string_lossy();
+        project_root
+            .join(".redpen")
+            .join("comments")
+            .join(relative.with_file_name(format!("{}.json", file_name)))
     }
 
-    pub fn signal_path(source_path: &Path) -> PathBuf {
-        let file_name = source_path.file_name().unwrap().to_string_lossy();
-        source_path.with_file_name(format!("{}.redpen-signal", file_name))
+    pub fn signal_path(project_root: &Path, source_path: &Path) -> PathBuf {
+        let relative = source_path.strip_prefix(project_root).unwrap_or(source_path);
+        let file_name = relative.file_name().unwrap().to_string_lossy();
+        project_root
+            .join(".redpen")
+            .join("signals")
+            .join(relative.with_file_name(format!("{}.signal", file_name)))
     }
 
-    pub fn load(sidecar_path: &Path) -> Result<Self, SidecarError> {
-        let content = fs::read_to_string(sidecar_path)?;
+    pub fn load(path: &Path) -> Result<Self, SidecarError> {
+        let content = fs::read_to_string(path)?;
         let sidecar: SidecarFile = serde_json::from_str(&content)?;
         Ok(sidecar)
     }
 
-    pub fn load_for_source(source_path: &Path) -> Result<Self, SidecarError> {
-        let sidecar_path = Self::sidecar_path(source_path);
-        Self::load(&sidecar_path)
+    pub fn load_for_source(project_root: &Path, source_path: &Path) -> Result<Self, SidecarError> {
+        let path = Self::annotation_path(project_root, source_path);
+        Self::load(&path)
     }
 
-    pub fn save(&self, sidecar_path: &Path) -> Result<(), SidecarError> {
+    pub fn save(&self, path: &Path) -> Result<(), SidecarError> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(sidecar_path, content)?;
+        fs::write(path, content)?;
         Ok(())
     }
 
-    pub fn save_for_source(&self, source_path: &Path) -> Result<(), SidecarError> {
-        let sidecar_path = Self::sidecar_path(source_path);
-        self.save(&sidecar_path)
+    pub fn save_for_source(&self, project_root: &Path, source_path: &Path) -> Result<(), SidecarError> {
+        let path = Self::annotation_path(project_root, source_path);
+        self.save(&path)
     }
 
     pub fn add_annotation(&mut self, annotation: Annotation) {
@@ -104,21 +115,36 @@ mod tests {
     }
 
     #[test]
-    fn test_sidecar_path() {
-        let source = Path::new("/code/app.swift");
-        assert_eq!(SidecarFile::sidecar_path(source), PathBuf::from("/code/app.swift.redpen.json"));
+    fn test_annotation_path() {
+        let root = Path::new("/code");
+        let source = Path::new("/code/src/app.swift");
+        assert_eq!(
+            SidecarFile::annotation_path(root, source),
+            PathBuf::from("/code/.redpen/comments/src/app.swift.json")
+        );
+    }
+
+    #[test]
+    fn test_signal_path() {
+        let root = Path::new("/code");
+        let source = Path::new("/code/src/app.swift");
+        assert_eq!(
+            SidecarFile::signal_path(root, source),
+            PathBuf::from("/code/.redpen/signals/src/app.swift.signal")
+        );
     }
 
     #[test]
     fn test_roundtrip_save_load() {
         let dir = tempfile::tempdir().unwrap();
-        let source_path = dir.path().join("test.rs");
+        let project_root = dir.path();
+        let source_path = project_root.join("test.rs");
         fs::write(&source_path, "fn main() {}").unwrap();
         let mut sidecar = SidecarFile::new("hash123".to_string());
         sidecar.add_annotation(make_test_annotation(1, "first comment"));
         sidecar.add_annotation(make_test_annotation(5, "second comment"));
-        sidecar.save_for_source(&source_path).unwrap();
-        let loaded = SidecarFile::load_for_source(&source_path).unwrap();
+        sidecar.save_for_source(project_root, &source_path).unwrap();
+        let loaded = SidecarFile::load_for_source(project_root, &source_path).unwrap();
         assert_eq!(loaded.version, 1);
         assert_eq!(loaded.source_file_hash, "hash123");
         assert_eq!(loaded.annotations.len(), 2);
