@@ -19,6 +19,7 @@ jobs:
   release:
     name: Build & Release
     needs: ci
+    if: always() && needs.ci.result != 'failure'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
