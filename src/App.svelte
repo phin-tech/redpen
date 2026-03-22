@@ -12,6 +12,7 @@
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { watch } from "@tauri-apps/plugin-fs";
   import { onMount, onDestroy } from "svelte";
+  import { debounce } from "$lib/utils/debounce";
   import type { AnnotationKind } from "$lib/types";
 
   const editor = getEditor();
@@ -39,13 +40,13 @@
 
     // Set up file watcher for source change detection
     stopWatcher?.();
-    stopWatcher = await watch(path, async () => {
-      // Source file changed externally — reload content and re-anchor annotations
+    const reloadFile = debounce(async () => {
       if (editor.currentFilePath) {
         await openFile(editor.currentFilePath);
         await loadAnnotations(editor.currentFilePath);
       }
-    }, { recursive: false });
+    }, 500);
+    stopWatcher = await watch(path, reloadFile, { recursive: false });
   }
 
   // Deep link cleanup function

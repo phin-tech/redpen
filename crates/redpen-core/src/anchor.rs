@@ -1,8 +1,8 @@
-use crate::annotation::{Anchor, Annotation, Range};
+use crate::annotation::{Anchor, Annotation};
 use crate::hash::hash_string;
 use strsim::normalized_levenshtein;
 
-const REANCHOR_THRESHOLD: f64 = 0.25;
+const REANCHOR_THRESHOLD: f64 = 0.6;
 
 #[derive(Debug, PartialEq)]
 pub enum AnchorResult {
@@ -35,12 +35,12 @@ pub fn resolve_anchor(anchor: &Anchor, source_lines: &[&str]) -> AnchorResult {
 
     for (idx, line) in source_lines.iter().enumerate() {
         let line_score = normalized_levenshtein(line_content.as_str(), line);
-        let context_score = if !surrounding_lines.is_empty() {
-            score_context(surrounding_lines, source_lines, idx)
+        let combined = if !surrounding_lines.is_empty() {
+            let context_score = score_context(surrounding_lines, source_lines, idx);
+            line_score * 0.7 + context_score * 0.3
         } else {
-            0.0
+            line_score
         };
-        let combined = line_score * 0.7 + context_score * 0.3;
         if combined > best_score {
             best_score = combined;
             best_line = (idx + 1) as u32;
@@ -77,12 +77,11 @@ pub fn reanchor_annotations(annotations: &mut [Annotation], source_content: &str
         match result {
             AnchorResult::Exact { line } | AnchorResult::Fuzzy { line, .. } => {
                 annotation.is_orphaned = false;
-                if let Anchor::TextContext { ref mut last_known_line, ref mut range, .. } = annotation.anchor {
-                    let line_delta = line as i64 - range.start_line as i64;
-                    range.start_line = line;
-                    range.end_line = (range.end_line as i64 + line_delta) as u32;
-                    *last_known_line = line;
-                }
+                let Anchor::TextContext { ref mut last_known_line, ref mut range, .. } = annotation.anchor;
+                let line_delta = line as i64 - range.start_line as i64;
+                range.start_line = line;
+                range.end_line = (range.end_line as i64 + line_delta) as u32;
+                *last_known_line = line;
             }
             AnchorResult::Orphaned => {
                 annotation.is_orphaned = true;

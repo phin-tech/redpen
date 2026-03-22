@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
 use redpen_core::hash::{hash_file, hash_string};
-use redpen_core::sidecar::{SidecarFile, SidecarError};
+use redpen_core::sidecar::SidecarFile;
 use redpen_core::export::export_markdown;
 use redpen_core::anchor::reanchor_annotations;
 use std::fs;
