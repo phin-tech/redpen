@@ -11,6 +11,7 @@ import { cpp } from "@codemirror/lang-cpp";
 import { go } from "@codemirror/lang-go";
 import { xml } from "@codemirror/lang-xml";
 import { sql } from "@codemirror/lang-sql";
+import { yaml } from "@codemirror/lang-yaml";
 
 const languageMap: Record<string, () => LanguageSupport> = {
   js: () => javascript(),
@@ -34,6 +35,9 @@ const languageMap: Record<string, () => LanguageSupport> = {
   xml: () => xml(),
   svg: () => xml(),
   sql: () => sql(),
+  yaml: () => yaml(),
+  yml: () => yaml(),
+  svelte: () => html(),
   swift: () => javascript(), // Reasonable fallback — Swift syntax is close enough for highlighting
 };
 
