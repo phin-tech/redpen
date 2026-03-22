@@ -1,14 +1,25 @@
-import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation } from "$lib/tauri";
-import type { Annotation, SidecarFile } from "$lib/types";
+import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, getAllAnnotations } from "$lib/tauri";
+import type { Annotation, FileAnnotations, SidecarFile } from "$lib/types";
+
+type AnnotationFilter = "all" | "comment" | "lineNote" | "label";
+type SidebarView = "file" | "project";
 
 interface AnnotationsState {
   sidecar: SidecarFile | null;
   selectedAnnotationId: string | null;
+  filter: AnnotationFilter;
+  sidebarView: SidebarView;
+  projectAnnotations: FileAnnotations[];
+  projectAnnotationsLoading: boolean;
 }
 
 let state = $state<AnnotationsState>({
   sidecar: null,
   selectedAnnotationId: null,
+  filter: "all",
+  sidebarView: "file",
+  projectAnnotations: [],
+  projectAnnotationsLoading: false,
 });
 
 export function getAnnotationsState() {
@@ -21,6 +32,24 @@ export async function loadAnnotations(filePath: string) {
   } catch {
     state.sidecar = null;
   }
+}
+
+export async function loadProjectAnnotations(rootFolder: string) {
+  state.projectAnnotationsLoading = true;
+  try {
+    state.projectAnnotations = await getAllAnnotations(rootFolder);
+  } catch {
+    state.projectAnnotations = [];
+  }
+  state.projectAnnotationsLoading = false;
+}
+
+export function setSidebarView(view: SidebarView) {
+  state.sidebarView = view;
+}
+
+export function setFilter(filter: AnnotationFilter) {
+  state.filter = filter;
 }
 
 export function sortedAnnotations(): Annotation[] {

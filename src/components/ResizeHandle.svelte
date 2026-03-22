@@ -30,7 +30,7 @@
 <div
   class="shrink-0 relative z-10 bg-transparent transition-colors
     {direction === 'horizontal' ? 'w-1 cursor-col-resize -mx-0.5' : 'h-1 cursor-row-resize -my-0.5'}
-    {dragging ? 'bg-amber-400/70' : 'hover:bg-amber-400/40'}"
+    {dragging ? 'bg-accent/70' : 'hover:bg-accent/40'}"
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}

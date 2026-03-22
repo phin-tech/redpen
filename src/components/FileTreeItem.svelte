@@ -35,20 +35,20 @@
 
   function gitStatusClass(status: string): string {
     switch (status) {
-      case "M": return "text-amber-300";
-      case "A": return "text-green-400";
-      case "?": return "text-teal-400";
-      case "D": return "text-red-400";
-      case "R": return "text-purple-400";
-      default: return "text-graphite-400";
+      case "M": return "text-warning";
+      case "A": return "text-success";
+      case "?": return "text-accent-teal";
+      case "D": return "text-danger";
+      case "R": return "text-accent-purple";
+      default: return "text-text-secondary";
     }
   }
 </script>
 
 <div
   class="flex items-center gap-1.5 py-1 pr-3 cursor-pointer text-xs whitespace-nowrap select-none min-h-7 transition-colors
-    {isSelected ? 'bg-[var(--bg-selection)] text-amber-400' : entry.isDir ? 'text-graphite-50 font-medium' : 'text-graphite-200'}
-    {!isSelected ? 'hover:bg-graphite-800 hover:text-graphite-50' : ''}"
+    {isSelected ? 'bg-surface-selection text-accent' : entry.isDir ? 'text-text-primary font-medium' : 'text-text-primary'}
+    {!isSelected ? 'hover:bg-surface-highlight hover:text-text-primary' : ''}"
   style="padding-left: {depth * 18 + 12}px"
   onclick={handleClick}
   role="treeitem"
@@ -58,18 +58,24 @@
 >
   <span class="w-3.5 flex items-center justify-center shrink-0">
     {#if entry.isDir}
-      <span class="text-[10px] text-graphite-400">{isExpanded ? "▾" : "▸"}</span>
+      <span class="text-xs text-text-secondary">{isExpanded ? "▾" : "▸"}</span>
     {:else}
-      <span class="w-1 h-1 rounded-full bg-graphite-400 opacity-50"></span>
+      <span class="w-1 h-1 rounded-full bg-border-emphasis opacity-50"></span>
     {/if}
   </span>
   <span class="overflow-hidden text-ellipsis">{entry.name}</span>
-  {#if entry.hasSidecar}
-    <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0 opacity-80"></span>
-  {/if}
-  {#if gitStatus}
-    <span class="text-[11px] font-semibold ml-auto shrink-0 font-mono {gitStatusClass(gitStatus.status)}">{gitStatus.status}</span>
-  {/if}
+  <div class="flex items-center gap-1.5 ml-auto shrink-0">
+    {#if entry.hasSidecar}
+      <span class="flex items-center gap-0.5 text-xs font-semibold tracking-wide uppercase px-1 py-px rounded bg-accent-subtle text-accent border border-accent/20">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+      </span>
+    {/if}
+    {#if gitStatus}
+      <span class="text-xs font-semibold font-mono {gitStatusClass(gitStatus.status)}">{gitStatus.status}</span>
+    {/if}
+  </div>
 </div>
 
 {#if entry.isDir && isExpanded}

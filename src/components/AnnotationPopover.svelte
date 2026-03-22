@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Button, Kbd } from "flowbite-svelte";
+  import Kbd from "./ui/Kbd.svelte";
+  import Button from "./ui/Button.svelte";
 
   let {
     onSubmit,
@@ -43,8 +44,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div class="fixed inset-0 z-[99]" onclick={onCancel}></div>
 <div
-  class="fixed z-[100] bg-graphite-950 border border-graphite-700 rounded-xl p-3.5 w-[340px] shadow-2xl flex flex-col gap-2.5"
-  style="left: {position.x}px; top: {position.y}px"
+  class="fixed z-[100] border border-border-default/60 rounded-xl p-3.5 w-[340px] flex flex-col gap-2.5 backdrop-blur-sm"
+  style="left: {position.x}px; top: {position.y}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
   onkeydown={handleKeydown}
   role="dialog"
   tabindex="-1"
@@ -54,21 +55,23 @@
     bind:value={body}
     placeholder="Add your annotation..."
     rows="3"
-    class="w-full bg-graphite-900 border-graphite-700 text-graphite-50 text-sm rounded-md p-2 resize-y min-h-[70px] focus:border-amber-400 focus:ring-amber-400/20"
+    class="w-full bg-surface-panel border-border-default/60 text-text-primary text-sm rounded-md p-2 resize-y min-h-[70px] focus:border-accent focus:ring-accent/20"
+    style="box-shadow: var(--shadow-inset)"
   ></textarea>
 
   <input
     type="text"
     bind:value={labelsInput}
     placeholder="Labels (comma-separated)"
-    class="w-full bg-graphite-900 border-graphite-700 text-graphite-50 text-sm rounded-md p-2 focus:border-amber-400 focus:ring-amber-400/20"
+    class="w-full bg-surface-panel border-border-default/60 text-text-primary text-sm rounded-md p-2 focus:border-accent focus:ring-accent/20"
+    style="box-shadow: var(--shadow-inset)"
   />
 
   <div class="flex justify-end gap-2">
-    <Button size="xs" color="alternative" onclick={onCancel}>Cancel</Button>
-    <Button size="xs" color="primary" onclick={handleSubmit} class="gap-2">
+    <Button variant="secondary" size="sm" onclick={onCancel}>Cancel</Button>
+    <Button size="sm" onclick={handleSubmit}>
       Save
-      <Kbd class="!px-1 !py-0 !text-[10px] opacity-70">Cmd+Return</Kbd>
+      <kbd class="text-xs opacity-60 font-mono">Cmd+Return</kbd>
     </Button>
   </div>
 </div>

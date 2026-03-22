@@ -5,7 +5,7 @@ export const redPenTheme = EditorView.theme({
     height: "100%",
     fontSize: "14px",
     fontFamily: "var(--font-mono)",
-    backgroundColor: "var(--bg-editor)",
+    backgroundColor: "var(--surface-editor)",
   },
   ".cm-content": {
     padding: "8px 0",
@@ -15,8 +15,8 @@ export const redPenTheme = EditorView.theme({
     borderLeftColor: "var(--accent)",
   },
   ".cm-gutters": {
-    backgroundColor: "var(--bg-editor)",
-    borderRight: "1px solid var(--border-color)",
+    backgroundColor: "var(--surface-editor)",
+    borderRight: "1px solid var(--border-default)",
     color: "var(--text-muted)",
     fontSize: "12px",
     minWidth: "48px",
@@ -30,28 +30,37 @@ export const redPenTheme = EditorView.theme({
     opacity: "1",
   },
   ".cm-activeLine": {
-    backgroundColor: "rgba(42, 36, 32, 0.5)",
+    backgroundColor: "color-mix(in srgb, var(--surface-highlight) 50%, transparent)",
   },
   ".cm-selectionBackground, ::selection": {
-    backgroundColor: "var(--bg-selection) !important",
+    backgroundColor: "var(--surface-selection) !important",
   },
   // Annotation highlight
   ".rp-annotation": {
-    backgroundColor: "rgba(227, 154, 45, 0.12)",
-    borderBottom: "2px solid rgba(227, 154, 45, 0.5)",
+    backgroundColor: "var(--accent-subtle)",
+    borderBottom: "2px solid var(--accent-annotation-border)",
   },
   ".rp-annotation-orphaned": {
     backgroundColor: "rgba(217, 107, 95, 0.12)",
     borderBottom: "2px solid rgba(217, 107, 95, 0.5)",
   },
-  // Gutter dots
-  ".rp-gutter-dot": {
-    width: "6px",
-    height: "6px",
-    borderRadius: "50%",
-    display: "inline-block",
-    marginLeft: "6px",
-    backgroundColor: "#E39A2D",
+  // Gutter markers
+  ".rp-annotation-gutter": {
+    width: "14px",
   },
-  ".rp-gutter-dot-orphaned": { backgroundColor: "#D96B5F" },
+  ".rp-gutter-marker": {
+    width: "3px",
+    height: "100%",
+    display: "block",
+    backgroundColor: "var(--accent-annotation-border)",
+    borderRadius: "1px",
+    marginLeft: "5px",
+    transition: "background-color 150ms",
+  },
+  ".rp-gutter-marker:hover": {
+    backgroundColor: "var(--accent)",
+  },
+  ".rp-gutter-marker-orphaned": {
+    backgroundColor: "rgba(217, 107, 95, 0.5)",
+  },
 });

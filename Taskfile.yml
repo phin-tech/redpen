@@ -1,6 +1,35 @@
 version: "3"
 
 tasks:
+  dev:
+    desc: "Run Tauri in development mode"
+    cmds:
+      - bun run tauri dev
+
+  dev:up:
+    desc: "Install all dependencies (frontend + Rust)"
+    cmds:
+      - bun install
+      - cargo check --workspace
+
+  dev:install:
+    desc: "Build and install the desktop app and CLI locally"
+    cmds:
+      - bun run tauri build
+      - |
+        # Install desktop app
+        APP="/Applications/Red Pen.app"
+        if [ -d "$APP" ]; then
+          echo "Removing existing $APP"
+          rm -rf "$APP"
+        fi
+        cp -R target/release/bundle/macos/Red\ Pen.app /Applications/
+        echo "Installed Red Pen.app to /Applications"
+      - |
+        # Install CLI
+        cargo install --path crates/redpen-cli
+        echo "Installed redpen-cli to $(which redpen)"
+
   release:
     desc: "Bump version, update all manifests, commit, tag, and push. Usage: task release BUMP=patch|minor|major"
     requires:

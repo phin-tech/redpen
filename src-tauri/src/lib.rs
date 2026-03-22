@@ -4,6 +4,7 @@ mod state;
 use state::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 
 #[tauri::command]
 fn get_pending_deep_links(state: tauri::State<AppState>) -> Vec<String> {
@@ -23,6 +24,7 @@ pub fn run() {
             commands::files::read_directory,
             commands::files::read_file,
             commands::annotations::get_annotations,
+            commands::annotations::get_all_annotations,
             commands::annotations::create_annotation,
             commands::annotations::update_annotation,
             commands::annotations::delete_annotation,
@@ -35,6 +37,61 @@ pub fn run() {
             get_pending_deep_links,
         ])
         .setup(|app| {
+            // Build native menu bar
+            let settings_item = MenuItemBuilder::with_id("settings", "Settings...")
+                .accelerator("Cmd+,")
+                .build(app)?;
+
+            let app_submenu = SubmenuBuilder::new(app, "Red Pen")
+                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
+                .separator()
+                .item(&settings_item)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
+            let edit_submenu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+
+            let view_submenu = SubmenuBuilder::new(app, "View")
+                .fullscreen()
+                .build()?;
+
+            let window_submenu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .close_window()
+                .build()?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&app_submenu)
+                .item(&edit_submenu)
+                .item(&view_submenu)
+                .item(&window_submenu)
+                .build()?;
+
+            app.set_menu(menu)?;
+
+            // Handle menu events
+            let handle_menu = app.handle().clone();
+            app.on_menu_event(move |_app, event| {
+                if event.id().0 == "settings" {
+                    let _ = handle_menu.emit("open-settings", ());
+                }
+            });
+
             // Handle deep links received while app is running (warm start)
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {

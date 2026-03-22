@@ -1,105 +1,102 @@
 @import "tailwindcss";
 
-/* Flowbite Svelte component styles */
-@plugin "flowbite/plugin";
+/* ── Semantic design tokens ── */
+:root {
+  /* Surfaces */
+  --surface-base: #0E0F11;
+  --surface-panel: #131417;
+  --surface-editor: #1A1C21;
+  --surface-raised: #22252B;
+  --surface-highlight: #2A2D35;
+  --surface-selection: #2A1E1E;
 
-/* Warm graphite + amber palette for Tailwind */
-@theme {
-  --color-graphite-50: #F3EEE7;
-  --color-graphite-100: #E5DDD2;
-  --color-graphite-200: #C8B9A9;
-  --color-graphite-300: #A89A8A;
-  --color-graphite-400: #8C7E70;
-  --color-graphite-500: #6B5E52;
-  --color-graphite-600: #4A4038;
-  --color-graphite-700: #342E27;
-  --color-graphite-800: #2A2420;
-  --color-graphite-900: #1E1B17;
-  --color-graphite-950: #171512;
+  /* Text */
+  --text-primary: #F0F1F3;
+  --text-secondary: #B3B7BF;
+  --text-muted: #6B7280;
 
-  --color-amber-50: #FFF8EB;
-  --color-amber-100: #FDECC8;
-  --color-amber-200: #F5D590;
-  --color-amber-300: #F0AE4A;
-  --color-amber-400: #E39A2D;
-  --color-amber-500: #D08A1F;
-  --color-amber-600: #B47218;
-  --color-amber-700: #8C5712;
-  --color-amber-800: #6B420E;
-  --color-amber-900: #4A2D0A;
-  --color-amber-950: #2A1A06;
+  /* Borders */
+  --border-default: #2B2E36;
+  --border-subtle: rgba(255, 255, 255, 0.03);
+  --border-emphasis: #3B3F4A;
 
-  /* Map primary color to amber for Flowbite */
-  --color-primary-50: var(--color-amber-50);
-  --color-primary-100: var(--color-amber-100);
-  --color-primary-200: var(--color-amber-200);
-  --color-primary-300: var(--color-amber-300);
-  --color-primary-400: var(--color-amber-400);
-  --color-primary-500: var(--color-amber-500);
-  --color-primary-600: var(--color-amber-600);
-  --color-primary-700: var(--color-amber-700);
-  --color-primary-800: var(--color-amber-800);
-  --color-primary-900: var(--color-amber-900);
-  --color-primary-950: var(--color-amber-950);
+  /* Accent */
+  --accent: #F47A63;
+  --accent-hover: #FF9E87;
+  --accent-subtle: rgba(244, 122, 99, 0.12);
+  --accent-annotation-border: rgba(244, 122, 99, 0.45);
 
-  /* Semantic colors */
+  /* Status */
   --color-success: #74B97A;
   --color-warning: #E3B341;
   --color-danger: #D96B5F;
+  --accent-purple: #B07ACC;
+  --accent-teal: #6FA39B;
+  --accent-blue: #5B9BD5;
 
-  /* Surface tokens — CSS variables for direct use */
-  --color-surface-base: #0F0E0C;
-  --color-surface-panel: #171512;
-  --color-surface-editor: #1E1B17;
-  --color-surface-highlight: #2A2420;
-  --color-surface-selection: #3A2A18;
+  /* Elevation */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5), 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+
+  /* Gradients */
+  --gradient-panel: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, transparent 100%);
+  --gradient-toolbar: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%);
+
+  /* Typography */
+  --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", monospace;
+
+  color-scheme: dark;
+}
+
+/* ── Tailwind theme integration ── */
+@theme {
+  /* Surfaces */
+  --color-surface-base: var(--surface-base);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-editor: var(--surface-editor);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-highlight: var(--surface-highlight);
+  --color-surface-selection: var(--surface-selection);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  /* Text */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  /* Borders */
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-emphasis: var(--border-emphasis);
+
+  /* Status */
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+
+  /* Extended accents */
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-teal: var(--accent-teal);
+  --color-accent-blue: var(--accent-blue);
 
   /* Font families */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
   --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", monospace;
 }
 
-/* ── Legacy CSS variable aliases (used by CodeMirror theme + components mid-migration) ── */
-:root {
-  --bg-primary: #0F0E0C;
-  --bg-panel: #171512;
-  --bg-editor: #1E1B17;
-  --bg-surface: var(--bg-panel);
-  --bg-highlight: #2A2420;
-  --bg-selection: #3A2A18;
-  --border-color: #342E27;
-
-  --text-primary: #F3EEE7;
-  --text-secondary: #C8B9A9;
-  --text-subtle: var(--text-secondary);
-  --text-muted: #8C7E70;
-
-  --accent: #E39A2D;
-  --accent-hover: #F0AE4A;
-  --accent-subtle: rgba(227, 154, 45, 0.12);
-  --focus-ring: #F5B24F;
-
-  --accent-green: #74B97A;
-  --accent-yellow: #E3B341;
-  --accent-red: #D96B5F;
-  --accent-purple: #B07ACC;
-  --accent-teal: #6FA39B;
-  --accent-blue: var(--accent);
-
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-base: 14px;
-  --font-size-lg: 16px;
-
-  color-scheme: dark;
-}
-
 /* ── Base styles ── */
 body {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-base);
-  background: var(--bg-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: var(--surface-base);
   color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
@@ -124,15 +121,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-color);
+  background: var(--border-default);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
-}
-
-/* ── Flowbite dark mode override — force dark always ── */
-:root {
-  color-scheme: dark;
 }

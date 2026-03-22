@@ -77,18 +77,18 @@ const annotationDecorations = EditorView.decorations.compute(
   }
 );
 
-// Gutter marker for annotated lines
+// Gutter marker for annotated lines — vertical bar indicator
 class AnnotationGutterMarker extends GutterMarker {
   constructor(private orphaned: boolean) {
     super();
   }
 
   toDOM() {
-    const dot = document.createElement("span");
-    dot.className = this.orphaned
-      ? "rp-gutter-dot rp-gutter-dot-orphaned"
-      : "rp-gutter-dot";
-    return dot;
+    const bar = document.createElement("span");
+    bar.className = this.orphaned
+      ? "rp-gutter-marker rp-gutter-marker-orphaned"
+      : "rp-gutter-marker";
+    return bar;
   }
 }
 

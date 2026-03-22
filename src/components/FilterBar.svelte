@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { AnnotationFilter } from "$lib/types";
   import { getAnnotationsState, setFilter } from "$lib/stores/annotations.svelte";
-  import { ButtonGroup, Button } from "flowbite-svelte";
+  import Button from "./ui/Button.svelte";
+
+  type AnnotationFilter = "all" | "comment" | "lineNote" | "label";
 
   const annotationsState = getAnnotationsState();
   let allAnnotations = $derived(annotationsState.sidecar?.annotations ?? []);
@@ -19,18 +20,18 @@
   ];
 </script>
 
-<div class="px-2.5 py-2 border-b border-graphite-700">
-  <ButtonGroup class="w-full">
+<div class="px-2.5 py-2 border-b border-border-default">
+  <div class="flex w-full gap-1">
     {#each filters as f}
       <Button
-        size="xs"
-        color={annotationsState.filter === f.value ? "primary" : "alternative"}
+        variant={annotationsState.filter === f.value ? "primary" : "secondary"}
+        size="sm"
         onclick={() => setFilter(f.value)}
-        class="flex-1 !text-[11px] gap-1"
+        class="flex-1"
       >
         {f.label}
-        <span class="opacity-60 font-mono text-[10px]">{countForFilter(f.value)}</span>
+        <span class="opacity-60 font-mono text-xs">{countForFilter(f.value)}</span>
       </Button>
     {/each}
-  </ButtonGroup>
+  </div>
 </div>
