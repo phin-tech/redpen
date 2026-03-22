@@ -4,6 +4,7 @@
   import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
   import AnnotationPopover from "./components/AnnotationPopover.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import { openFile, getEditor } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
@@ -21,6 +22,11 @@
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
   let showSettings = $state(false);
+  let showCommandPalette = $state(false);
+  let commandPaletteMode = $state<"default" | "file">("default");
+
+  // Double-shift detection
+  let lastShiftKeyup = 0;
 
   // Resizable panel widths
   let leftPanelWidth = $state(240);
@@ -154,11 +160,39 @@
     editorRef?.scrollToLine(line);
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && selection && editor.currentFilePath) {
-      e.preventDefault();
+  function openAnnotationPopover() {
+    if (selection && editor.currentFilePath) {
       popoverPosition = { x: window.innerWidth / 2 - 160, y: window.innerHeight / 3 };
       showPopover = true;
+    }
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      openAnnotationPopover();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      commandPaletteMode = "default";
+      showCommandPalette = true;
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      e.preventDefault();
+      showSettings = true;
+    }
+  }
+
+  function handleKeyup(e: KeyboardEvent) {
+    if (e.key === "Shift") {
+      const now = Date.now();
+      if (now - lastShiftKeyup < 300) {
+        commandPaletteMode = "file";
+        showCommandPalette = true;
+        lastShiftKeyup = 0;
+      } else {
+        lastShiftKeyup = now;
+      }
     }
   }
 
@@ -178,7 +212,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
+<svelte:window onkeydown={handleKeydown} onkeyup={handleKeyup} oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="app-root">
   <div class="flex flex-1 overflow-hidden">
@@ -216,4 +250,12 @@
   {#if showSettings}
     <SettingsDialog onClose={() => (showSettings = false)} />
   {/if}
+
+  <CommandPalette
+    open={showCommandPalette}
+    initialMode={commandPaletteMode}
+    onClose={() => (showCommandPalette = false)}
+    onOpenSettings={() => { showCommandPalette = false; showSettings = true; }}
+    onAddAnnotation={() => { showCommandPalette = false; openAnnotationPopover(); }}
+  />
 </div>
