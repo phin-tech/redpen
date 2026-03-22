@@ -3,7 +3,13 @@ mod state;
 
 use state::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+#[tauri::command]
+fn get_pending_deep_links(state: tauri::State<AppState>) -> Vec<String> {
+    let mut pending = state.pending_deep_links.lock().unwrap();
+    pending.drain(..).collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,11 +28,14 @@ pub fn run() {
             commands::annotations::delete_annotation,
             commands::annotations::update_settings,
             commands::annotations::get_settings,
+            commands::annotations::signal_review_done,
+            commands::git::get_git_root,
             commands::git::get_git_status,
             commands::export::export_annotations,
+            get_pending_deep_links,
         ])
         .setup(|app| {
-            // Handle deep links received while app is running
+            // Handle deep links received while app is running (warm start)
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
@@ -35,10 +44,12 @@ pub fn run() {
             });
 
             // Handle deep link that launched the app (cold start)
+            // Store in state so the frontend can fetch on mount
             if let Ok(Some(urls)) = app.deep_link().get_current() {
-                let handle = app.handle().clone();
+                let state = app.state::<AppState>();
+                let mut pending = state.pending_deep_links.lock().unwrap();
                 for url in urls {
-                    let _ = handle.emit("deep-link-open", url.to_string());
+                    pending.push(url.to_string());
                 }
             }
 

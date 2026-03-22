@@ -9,6 +9,18 @@ pub struct GitFileStatus {
 }
 
 #[tauri::command]
+pub fn get_git_root(path: String) -> Result<Option<String>, String> {
+    let p = Path::new(&path);
+    match git2::Repository::discover(p) {
+        Ok(repo) => {
+            let workdir = repo.workdir().ok_or("bare repository")?;
+            Ok(Some(workdir.to_string_lossy().trim_end_matches('/').to_string()))
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+#[tauri::command]
 pub fn get_git_status(directory: String) -> Result<Vec<GitFileStatus>, String> {
     let dir_path = Path::new(&directory);
     let repo = match git2::Repository::discover(dir_path) {

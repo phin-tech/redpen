@@ -11,11 +11,12 @@
   import { addRootFolder } from "$lib/stores/workspace.svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+  import { listen } from "@tauri-apps/api/event";
   import { watch } from "@tauri-apps/plugin-fs";
+  import { invoke } from "@tauri-apps/api/core";
+
   import { onMount, onDestroy } from "svelte";
   import { debounce } from "$lib/utils/debounce";
-  import type { AnnotationKind } from "$lib/types";
-
   const editor = getEditor();
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
@@ -62,8 +63,9 @@
     stopWatcher = await watch(path, reloadFile, { recursive: false });
   }
 
-  // Deep link cleanup function
+  // Deep link cleanup functions
   let unlistenDeepLink: (() => void) | undefined;
+  let unlistenDeepLinkEvent: (() => void) | undefined;
 
   onMount(async () => {
     // Drag-and-drop handling
@@ -88,28 +90,48 @@
     });
 
     // Deep link handling
+    async function handleDeepLinkUrl(rawUrl: string) {
+      try {
+        const url = new URL(rawUrl);
+        const filePath = url.searchParams.get("file");
+        const line = url.searchParams.get("line");
+
+        if (filePath) {
+          // Use git repo root if available, otherwise fall back to parent directory
+          const gitRoot = await invoke<string | null>("get_git_root", { path: filePath });
+          const rootDir = gitRoot ?? filePath.substring(0, filePath.lastIndexOf("/"));
+          if (rootDir) await addRootFolder(rootDir);
+          await handleFileSelect(filePath);
+          if (line) {
+            setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);
+          }
+        }
+      } catch (e) {
+        console.error("Invalid deep link URL:", rawUrl, e);
+      }
+    }
+
+    // Listen for deep links while app is running (warm start)
     unlistenDeepLink = await onOpenUrl(async (urls: string[]) => {
       for (const rawUrl of urls) {
-        try {
-          const url = new URL(rawUrl);
-          const filePath = url.searchParams.get("file");
-          const line = url.searchParams.get("line");
-
-          if (filePath) {
-            await handleFileSelect(filePath);
-            if (line) {
-              setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);
-            }
-          }
-        } catch (e) {
-          console.error("Invalid deep link URL:", rawUrl, e);
-        }
+        await handleDeepLinkUrl(rawUrl);
       }
     });
+
+    unlistenDeepLinkEvent = await listen<string>("deep-link-open", async (event) => {
+      await handleDeepLinkUrl(event.payload);
+    });
+
+    // Check for cold-start deep links stored in Rust state
+    const pendingUrls = await invoke<string[]>("get_pending_deep_links");
+    for (const rawUrl of pendingUrls) {
+      await handleDeepLinkUrl(rawUrl);
+    }
   });
 
   onDestroy(() => {
     unlistenDeepLink?.();
+    unlistenDeepLinkEvent?.();
     stopWatcher?.();
   });
 
@@ -126,28 +148,18 @@
     editorRef?.scrollToLine(line);
   }
 
-  // Cmd+Return to create annotation, Cmd+Shift+Return for line note
-  let initialAnnotationKind: AnnotationKind = $state("comment");
-
   function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && selection && editor.currentFilePath) {
       e.preventDefault();
-      initialAnnotationKind = e.shiftKey ? "lineNote" : "comment";
-      // Position popover near center of viewport
       popoverPosition = { x: window.innerWidth / 2 - 160, y: window.innerHeight / 3 };
       showPopover = true;
     }
   }
 
-  async function handleAnnotationSubmit(
-    body: string,
-    labels: string[],
-    kind: AnnotationKind
-  ) {
+  async function handleAnnotationSubmit(body: string, labels: string[]) {
     if (!selection || !editor.currentFilePath) return;
     await addAnnotation(
       editor.currentFilePath,
-      kind,
       body,
       labels,
       selection.fromLine,
@@ -160,13 +172,13 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="app-root">
   <Toolbar onSettingsClick={() => (showSettings = true)} />
 
-  <div class="main-layout">
-    <div class="panel-left" style="width: {leftPanelWidth}px">
+  <div class="flex flex-1 overflow-hidden">
+    <div class="shrink-0 border-r border-graphite-700 bg-graphite-950 overflow-hidden" style="width: {leftPanelWidth}px">
       <FileTree
         onFileSelect={handleFileSelect}
         selectedPath={editor.currentFilePath}
@@ -175,7 +187,7 @@
 
     <ResizeHandle onResize={resizeLeft} />
 
-    <div class="panel-center">
+    <div class="flex-1 min-w-[200px] overflow-hidden">
       <Editor
         bind:ref={editorRef}
         onSelectionChange={handleSelectionChange}
@@ -184,7 +196,7 @@
 
     <ResizeHandle onResize={resizeRight} />
 
-    <div class="panel-right" style="width: {rightPanelWidth}px">
+    <div class="shrink-0 border-l border-graphite-700 overflow-hidden" style="width: {rightPanelWidth}px">
       <AnnotationSidebar onAnnotationClick={handleAnnotationClick} />
     </div>
   </div>
@@ -192,7 +204,6 @@
   {#if showPopover}
     <AnnotationPopover
       position={popoverPosition}
-      initialKind={initialAnnotationKind}
       onSubmit={handleAnnotationSubmit}
       onCancel={() => (showPopover = false)}
     />
@@ -202,30 +213,3 @@
     <SettingsDialog onClose={() => (showSettings = false)} />
   {/if}
 </div>
-
-<style>
-  .main-layout {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .panel-left {
-    flex-shrink: 0;
-    border-right: 1px solid var(--border-color);
-    background: var(--bg-surface);
-    overflow: hidden;
-  }
-
-  .panel-center {
-    flex: 1;
-    min-width: 200px;
-    overflow: hidden;
-  }
-
-  .panel-right {
-    flex-shrink: 0;
-    border-left: 1px solid var(--border-color);
-    overflow: hidden;
-  }
-</style>
