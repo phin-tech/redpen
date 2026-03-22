@@ -5,6 +5,7 @@
   import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
   import AnnotationPopover from "./components/AnnotationPopover.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
+  import ResizeHandle from "./components/ResizeHandle.svelte";
   import { openFile, getEditor } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
   import { addRootFolder } from "$lib/stores/workspace.svelte";
@@ -20,6 +21,18 @@
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
   let showSettings = $state(false);
+
+  // Resizable panel widths
+  let leftPanelWidth = $state(240);
+  let rightPanelWidth = $state(300);
+
+  function resizeLeft(delta: number) {
+    leftPanelWidth = Math.max(140, Math.min(500, leftPanelWidth + delta));
+  }
+
+  function resizeRight(delta: number) {
+    rightPanelWidth = Math.max(160, Math.min(600, rightPanelWidth - delta));
+  }
 
   // File watcher cleanup
   let stopWatcher: (() => void) | null = null;
@@ -153,12 +166,14 @@
   <Toolbar onSettingsClick={() => (showSettings = true)} />
 
   <div class="main-layout">
-    <div class="panel-left">
+    <div class="panel-left" style="width: {leftPanelWidth}px">
       <FileTree
         onFileSelect={handleFileSelect}
         selectedPath={editor.currentFilePath}
       />
     </div>
+
+    <ResizeHandle onResize={resizeLeft} />
 
     <div class="panel-center">
       <Editor
@@ -167,7 +182,9 @@
       />
     </div>
 
-    <div class="panel-right">
+    <ResizeHandle onResize={resizeRight} />
+
+    <div class="panel-right" style="width: {rightPanelWidth}px">
       <AnnotationSidebar onAnnotationClick={handleAnnotationClick} />
     </div>
   </div>
@@ -194,8 +211,7 @@
   }
 
   .panel-left {
-    width: 240px;
-    min-width: 180px;
+    flex-shrink: 0;
     border-right: 1px solid var(--border-color);
     background: var(--bg-surface);
     overflow: hidden;
@@ -203,12 +219,12 @@
 
   .panel-center {
     flex: 1;
+    min-width: 200px;
     overflow: hidden;
   }
 
   .panel-right {
-    width: 300px;
-    min-width: 200px;
+    flex-shrink: 0;
     border-left: 1px solid var(--border-color);
     overflow: hidden;
   }

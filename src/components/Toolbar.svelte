@@ -33,7 +33,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 12px;
+    padding: 6px 12px 6px 78px;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border-color);
     height: 36px;
