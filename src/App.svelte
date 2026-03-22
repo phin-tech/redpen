@@ -168,6 +168,11 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape" && showCommandPalette) {
+      e.preventDefault();
+      showCommandPalette = false;
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       openAnnotationPopover();

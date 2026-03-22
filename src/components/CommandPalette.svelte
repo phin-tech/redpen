@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Command, Dialog } from "bits-ui";
+  import { tick } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import {
     getWorkspace,
@@ -30,19 +31,24 @@
   let mode = $state<"default" | "file">("default");
   let loadingFiles = $state(false);
   let fileList = $state<FileEntry[]>([]);
-  // Key forces Command.Root to remount (and reset search) when mode changes
-  let commandKey = $state(0);
+  let searchValue = $state("");
+  let contentEl: HTMLDivElement | undefined;
 
   $effect(() => {
     if (isOpen) {
       mode = initialMode;
-      commandKey++;
+      searchValue = "";
       fileList = [];
       if (initialMode === "file") {
         (async () => await loadFiles())();
       }
     }
   });
+
+  async function focusInput() {
+    await tick();
+    contentEl?.querySelector<HTMLInputElement>("input")?.focus();
+  }
 
   async function loadFiles() {
     loadingFiles = true;
@@ -59,8 +65,9 @@
 
   async function enterFileMode() {
     mode = "file";
-    commandKey++;
+    searchValue = "";
     await loadFiles();
+    await focusInput();
   }
 
   function close() {
@@ -84,9 +91,8 @@
 
 <Dialog.Root
   open={isOpen}
-  onOpenChange={(v) => {
-    if (!v) close();
-  }}
+  onOpenChange={(v) => { if (!v) close(); }}
+  onOpenChangeComplete={(v) => { if (v) focusInput(); }}
 >
   <Dialog.Portal>
     <Dialog.Overlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]" />
@@ -95,7 +101,7 @@
       class="fixed left-1/2 top-20 z-50 -translate-x-1/2 w-[520px] rounded-xl border border-border-emphasis overflow-hidden focus:outline-none"
       style="background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     >
-      {#key commandKey}
+      <div bind:this={contentEl}>
         <Command.Root loop class="flex flex-col">
           <!-- Search input row -->
           <div class="flex items-center gap-2.5 px-3.5 py-3 border-b border-border-default/60">
@@ -104,16 +110,13 @@
               <path d="M11 11L14.5 14.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
             </svg>
             <Command.Input
-              autofocus
+              bind:value={searchValue}
               placeholder={mode === "file" ? "Search files…" : "Type a command or search…"}
               class="flex-1 bg-transparent border-none outline-none text-sm text-text-primary placeholder:text-text-muted"
             />
             {#if mode === "file"}
               <button
-                onclick={() => {
-                  mode = "default";
-                  commandKey++;
-                }}
+                onclick={() => { mode = "default"; searchValue = ""; focusInput(); }}
                 class="text-[10px] text-text-muted hover:text-text-secondary px-1.5 py-0.5 rounded border border-border-default/60 bg-surface-raised transition-colors"
               >
                 back
@@ -132,9 +135,7 @@
                 <Command.GroupItems>
                   <Command.Item
                     value="go to file"
-                    onSelect={() => {
-                      (async () => await enterFileMode())();
-                    }}
+                    onSelect={() => { (async () => await enterFileMode())(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-blue">
@@ -147,9 +148,7 @@
                   </Command.Item>
                   <Command.Item
                     value="open folder"
-                    onSelect={() => {
-                      (async () => await handleOpenFolder())();
-                    }}
+                    onSelect={() => { (async () => await handleOpenFolder())(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-teal">
@@ -170,9 +169,7 @@
                 <Command.GroupItems>
                   <Command.Item
                     value="expand all folders"
-                    onSelect={() => {
-                      (async () => { await expandAllFolders(); close(); })();
-                    }}
+                    onSelect={() => { (async () => { await expandAllFolders(); close(); })(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
@@ -184,10 +181,7 @@
                   </Command.Item>
                   <Command.Item
                     value="collapse all folders"
-                    onSelect={() => {
-                      collapseAllFolders();
-                      close();
-                    }}
+                    onSelect={() => { collapseAllFolders(); close(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
@@ -199,10 +193,7 @@
                   </Command.Item>
                   <Command.Item
                     value="toggle changed files only show changed"
-                    onSelect={() => {
-                      toggleShowChangedOnly();
-                      close();
-                    }}
+                    onSelect={() => { toggleShowChangedOnly(); close(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60" style="color: var(--color-warning)">
@@ -226,10 +217,7 @@
                 <Command.GroupItems>
                   <Command.Item
                     value="add annotation comment"
-                    onSelect={() => {
-                      close();
-                      onAddAnnotation();
-                    }}
+                    onSelect={() => { close(); onAddAnnotation(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0" style="background: rgba(244,122,99,0.1); border: 1px solid rgba(244,122,99,0.25); color: var(--accent)">
@@ -254,10 +242,7 @@
                 <Command.GroupItems>
                   <Command.Item
                     value="open settings preferences"
-                    onSelect={() => {
-                      close();
-                      onOpenSettings();
-                    }}
+                    onSelect={() => { close(); onOpenSettings(); }}
                     class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                   >
                     <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-purple">
@@ -290,10 +275,7 @@
                     <Command.Item
                       value={file.path}
                       keywords={[file.name]}
-                      onSelect={() => {
-                        openFile(file.path);
-                        close();
-                      }}
+                      onSelect={() => { openFile(file.path); close(); }}
                       class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
                     >
                       <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
@@ -331,7 +313,7 @@
             </div>
           </div>
         </Command.Root>
-      {/key}
+      </div>
     </Dialog.Content>
   </Dialog.Portal>
 </Dialog.Root>
