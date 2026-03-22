@@ -7,6 +7,10 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import { openFile, getEditor } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
+  import { addRootFolder } from "$lib/stores/workspace.svelte";
+  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+  import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+  import { onMount, onDestroy } from "svelte";
   import type { AnnotationKind } from "$lib/types";
 
   const editor = getEditor();
@@ -29,6 +33,56 @@
     await openFile(path);
     await loadAnnotations(path);
   }
+
+  // Deep link cleanup function
+  let unlistenDeepLink: (() => void) | undefined;
+
+  onMount(async () => {
+    // Drag-and-drop handling
+    const appWindow = getCurrentWebviewWindow();
+    await appWindow.onDragDropEvent(async (event) => {
+      if (event.payload.type === "drop") {
+        for (const path of event.payload.paths) {
+          try {
+            const { readDirectory } = await import("$lib/tauri");
+            const entries = await readDirectory(path);
+            // If readDirectory succeeds, it's a directory — add as root
+            await addRootFolder(path);
+          } catch {
+            // It's a file — open it directly
+            // Add its parent directory as a root folder, then open the file
+            const parentDir = path.substring(0, path.lastIndexOf("/"));
+            if (parentDir) await addRootFolder(parentDir);
+            await handleFileSelect(path);
+          }
+        }
+      }
+    });
+
+    // Deep link handling
+    unlistenDeepLink = await onOpenUrl(async (urls: string[]) => {
+      for (const rawUrl of urls) {
+        try {
+          const url = new URL(rawUrl);
+          const filePath = url.searchParams.get("file");
+          const line = url.searchParams.get("line");
+
+          if (filePath) {
+            await handleFileSelect(filePath);
+            if (line) {
+              setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);
+            }
+          }
+        } catch (e) {
+          console.error("Invalid deep link URL:", rawUrl, e);
+        }
+      }
+    });
+  });
+
+  onDestroy(() => {
+    unlistenDeepLink?.();
+  });
 
   function handleSelectionChange(
     fromLine: number,
