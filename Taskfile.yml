@@ -43,8 +43,9 @@ tasks:
 
         # Commit, tag, push
         git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml
-        git commit -m "release: v${NEW}"
+        git commit -m "release: v${NEW} [skip ci]"
         git tag "v${NEW}"
-        git push origin main "v${NEW}"
+        git push origin main
+        git push origin "v${NEW}"
 
         echo "Released v${NEW}"
