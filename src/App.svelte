@@ -10,6 +10,7 @@
   import { addRootFolder } from "$lib/stores/workspace.svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
+  import { watch } from "@tauri-apps/plugin-fs";
   import { onMount, onDestroy } from "svelte";
   import type { AnnotationKind } from "$lib/types";
 
@@ -18,6 +19,9 @@
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
   let showSettings = $state(false);
+
+  // File watcher cleanup
+  let stopWatcher: (() => void) | null = null;
 
   // Selection state for annotation creation
   let selection: {
@@ -32,6 +36,16 @@
   async function handleFileSelect(path: string) {
     await openFile(path);
     await loadAnnotations(path);
+
+    // Set up file watcher for source change detection
+    stopWatcher?.();
+    stopWatcher = await watch(path, async () => {
+      // Source file changed externally — reload content and re-anchor annotations
+      if (editor.currentFilePath) {
+        await openFile(editor.currentFilePath);
+        await loadAnnotations(editor.currentFilePath);
+      }
+    }, { recursive: false });
   }
 
   // Deep link cleanup function
@@ -82,6 +96,7 @@
 
   onDestroy(() => {
     unlistenDeepLink?.();
+    stopWatcher?.();
   });
 
   function handleSelectionChange(
