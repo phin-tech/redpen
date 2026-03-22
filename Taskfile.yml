@@ -13,7 +13,12 @@ tasks:
     cmds:
       - |
         # Get current version from latest tag (strip leading v), default to 0.1.0
-        CURRENT=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.1.0")
+        TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+        if [ -z "$TAG" ]; then
+          CURRENT="0.1.0"
+        else
+          CURRENT=$(echo "$TAG" | sed 's/^v//')
+        fi
         IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
         case "{{.BUMP}}" in
