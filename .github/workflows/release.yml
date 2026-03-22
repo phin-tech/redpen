@@ -9,8 +9,13 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    name: CI Check
+    uses: ./.github/workflows/ci.yml
+
   release:
     name: Build & Release
+    needs: ci
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
