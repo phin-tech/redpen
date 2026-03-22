@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "redpen": {
+      "command": "bun",
+      "args": ["./channels/redpen-channel/redpen-channel.ts"]
+    }
+  }
+}
