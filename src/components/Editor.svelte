@@ -76,7 +76,7 @@
   }
 
   function navigateMatch(dir: 1 | -1) {
-    if (matchPositions.length === 0) return;
+    if (!showSearch || matchPositions.length === 0) return;
     matchIndex = (matchIndex + dir + matchPositions.length) % matchPositions.length;
     view?.dispatch({ effects: setSearchEffect.of({ matches: matchPositions, currentIdx: matchIndex }) });
     scrollToMatch(matchIndex);
@@ -94,6 +94,8 @@
 
   function closeSearch() {
     showSearch = false;
+    matchPositions = [];
+    searchQuery = "";
     view?.dispatch({ effects: setSearchEffect.of(null) });
   }
 

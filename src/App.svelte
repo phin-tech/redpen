@@ -242,7 +242,7 @@
       e.preventDefault();
       editorRef?.openSearch();
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "g") {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
       e.preventDefault();
       editorRef?.navigateMatch(e.shiftKey ? -1 : 1);
     }
