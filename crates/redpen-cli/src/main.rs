@@ -246,6 +246,41 @@ fn cmd_wait(file: &Path, timeout: Option<u64>) -> Result<(), Box<dyn std::error:
     }
 }
 
+#[cfg(target_os = "macos")]
+fn is_app_running() -> bool {
+    std::process::Command::new("pgrep")
+        .args(["-x", "Red Pen"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_app_running() -> Result<(), Box<dyn std::error::Error>> {
+    if is_app_running() {
+        return Ok(());
+    }
+
+    eprintln!("Red Pen is not running, launching...");
+    std::process::Command::new("open")
+        .args(["-a", "Red Pen"])
+        .status()?;
+
+    // Wait for the app to start (up to 5 seconds)
+    for _ in 0..25 {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        if is_app_running() {
+            // Extra delay for the app to initialize its deep link handler
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            return Ok(());
+        }
+    }
+
+    Err("Could not launch Red Pen. Is it installed? Download it from https://github.com/phin-tech/redpen/releases".into())
+}
+
 fn cmd_open(file: &Path, line: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let mut url = format!("redpen://open?file={}", urlencoding::encode(&abs_path.to_string_lossy()));
@@ -254,6 +289,7 @@ fn cmd_open(file: &Path, line: Option<u32>) -> Result<(), Box<dyn std::error::Er
     }
     #[cfg(target_os = "macos")]
     {
+        ensure_app_running()?;
         std::process::Command::new("open").arg(&url).spawn()?;
     }
     println!("Opening {}", url);
