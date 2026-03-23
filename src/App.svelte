@@ -32,7 +32,7 @@
   const commands = createCommandRegistry();
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
-  let editorRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
+  let editorRef: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined = $state(undefined);
   let showSettings = $state(false);
   let showCommandPalette = $state(false);
   let commandPaletteMode = $state<"default" | "file">("default");
@@ -237,6 +237,14 @@
     if ((e.metaKey || e.ctrlKey) && e.key === ",") {
       e.preventDefault();
       void runCommand("view.openSettings");
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+      e.preventDefault();
+      editorRef?.openSearch();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
+      e.preventDefault();
+      editorRef?.navigateMatch(e.shiftKey ? -1 : 1);
     }
   }
 
