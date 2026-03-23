@@ -10,6 +10,7 @@
   import { readDirectory } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
+  import { addReviewFile } from "$lib/stores/review.svelte";
   import {
     addRootFolder,
     getWorkspace,
@@ -123,6 +124,7 @@
           const gitRoot = await invoke<string | null>("get_git_root", { path: filePath });
           const rootDir = gitRoot ?? filePath.substring(0, filePath.lastIndexOf("/"));
           if (rootDir) await addRootFolder(rootDir);
+          addReviewFile(filePath);
           await handleFileSelect(filePath);
           if (line) {
             setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);

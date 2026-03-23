@@ -15,17 +15,12 @@ Open a plan or spec document in the Red Pen desktop app for human review before 
    - If multiple candidates exist, pick the most recently modified one
    - If no plan files are found, inform the user and stop
 
-2. **Open in Red Pen:**
+2. **Open in Red Pen and wait for review:**
    ```bash
-   redpen open <plan-file>
+   redpen open <plan-file> --wait --timeout 600
    ```
 
-3. **Wait for review:**
-   ```bash
-   redpen wait <plan-file> --timeout 600
-   ```
-
-4. **Parse and act on the verdict:**
+3. **Parse and act on the verdict:**
    - **approved** — report approval. The plan is good to proceed with implementation.
    - **changes_requested** — read each annotation's `body` as feedback on the plan. The `anchor.startLine` and `anchor.lineContent` indicate which section of the plan the feedback applies to. Revise the plan document accordingly, then ask: "Plan updated. Want to review again in Red Pen?"
 

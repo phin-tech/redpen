@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getWorkspace, removeRootFolder, getChangedFilePaths } from "$lib/stores/workspace.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
+  import ReviewSession from "./ReviewSession.svelte";
   import IconButton from "./ui/IconButton.svelte";
 
   let {
@@ -77,6 +78,8 @@
 <svelte:window onclick={() => showContextMenu && closeContextMenu()} />
 
 <div class="h-full overflow-y-auto overflow-x-hidden" role="tree">
+  <ReviewSession {onFileSelect} {selectedPath} />
+
   {#if workspace.rootFolders.length > 0}
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
       <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Folders</span>

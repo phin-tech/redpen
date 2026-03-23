@@ -50,6 +50,12 @@ enum Commands {
         paths: Vec<PathBuf>,
         #[arg(long)]
         line: Option<u32>,
+        /// Block until review is complete (combines open + wait)
+        #[arg(long)]
+        wait: bool,
+        /// Timeout in seconds when using --wait (default: no timeout)
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Wait for review to complete (blocks until "Done Reviewing" is clicked in the app)
     Wait {
@@ -71,7 +77,11 @@ fn main() {
         Commands::List { file } => cmd_list(&file),
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
         Commands::Status { file } => cmd_status(&file),
-        Commands::Open { paths, line } => cmd_open(&paths, line),
+        Commands::Open { paths, line, wait, timeout } => {
+            cmd_open(&paths, line).and_then(|_| {
+                if wait { cmd_wait(&paths, timeout) } else { Ok(()) }
+            })
+        }
         Commands::Wait { paths, timeout } => cmd_wait(&paths, timeout),
     };
     if let Err(e) = result {

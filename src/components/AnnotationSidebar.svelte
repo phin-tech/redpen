@@ -10,6 +10,7 @@
   } from "$lib/stores/annotations.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { clearReviewSession } from "$lib/stores/review.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -34,6 +35,7 @@
   async function handleReviewVerdict(verdict: "approved" | "changes_requested") {
     if (!editor.currentFilePath) return;
     await invoke("signal_review_done", { filePath: editor.currentFilePath, verdict });
+    clearReviewSession();
     reviewDone = verdict;
     setTimeout(() => (reviewDone = null), 3000);
   }

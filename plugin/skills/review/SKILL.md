@@ -20,18 +20,13 @@ Open files in the Red Pen desktop app for human review, block until the reviewer
    - If no argument, get all changed files via `git diff --name-only HEAD` and `git diff --name-only --staged`
    - If no changed files exist, inform the user and stop
 
-2. **Open files in Red Pen:**
+2. **Open files in Red Pen and wait for review:**
    ```bash
-   redpen open <file1> <file2> ...
+   redpen open <file1> <file2> ... --wait --timeout 600
    ```
+   This opens all files and blocks until the reviewer clicks "Approve" or "Request Changes".
 
-3. **Wait for review verdict:**
-   ```bash
-   redpen wait <file1> <file2> ...
-   ```
-   This blocks until the reviewer clicks "Approve" or "Request Changes" in the Red Pen app.
-
-4. **Parse the output** — `redpen wait` outputs JSON:
+3. **Parse the output** — the command outputs JSON:
    ```json
    {
      "verdict": "approved" | "changes_requested",
@@ -41,7 +36,7 @@ Open files in the Red Pen desktop app for human review, block until the reviewer
    }
    ```
 
-5. **Act on the verdict:**
+4. **Act on the verdict:**
    - **approved** (or no annotations) — report approval and proceed
    - **changes_requested** — for each annotation, read the `body` field as reviewer feedback and the `anchor.lineContent` / `anchor.range.startLine` to locate the relevant code. Implement the requested changes. After making all changes, ask the user if they want another review pass.
 
@@ -55,6 +50,6 @@ Each annotation in the output has:
 
 ## Important
 
-- Always use `--timeout 600` with `redpen wait` to avoid blocking indefinitely (10 minute timeout)
+- Always use `--wait --timeout 600` to avoid blocking indefinitely (10 minute timeout)
 - If the reviewer has no annotations and clicks Approve, the `files` array will be empty — this means approved
 - After implementing changes from a "changes_requested" verdict, ask: "Changes applied. Want to do another review pass in Red Pen?"

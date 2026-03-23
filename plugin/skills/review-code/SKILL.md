@@ -20,17 +20,12 @@ Open all changed code files in the Red Pen desktop app for human review, typical
    ```
    Combine and deduplicate the lists. If no changed files, inform the user and stop.
 
-2. **Open all changed files in Red Pen:**
+2. **Open all changed files in Red Pen and wait for review:**
    ```bash
-   redpen open <file1> <file2> ...
+   redpen open <file1> <file2> ... --wait --timeout 600
    ```
 
-3. **Wait for review:**
-   ```bash
-   redpen wait <file1> <file2> ... --timeout 600
-   ```
-
-4. **Parse and act on the verdict:**
+3. **Parse and act on the verdict:**
    - **approved** — report approval. Code is ready to push.
    - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes, commit them, then ask: "Changes applied and committed. Want to review again in Red Pen?"
 
