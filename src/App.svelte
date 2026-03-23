@@ -1,6 +1,6 @@
 <script lang="ts">
   import FileTree from "./components/FileTree.svelte";
-  import Editor from "./components/Editor.svelte";
+  import EditorPane from "./components/EditorPane.svelte";
   import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
   import AnnotationPopover from "./components/AnnotationPopover.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
@@ -8,7 +8,7 @@
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { readDirectory } from "$lib/tauri";
-  import { openFile, getEditor } from "$lib/stores/editor.svelte";
+  import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
   import {
     addRootFolder,
@@ -211,6 +211,8 @@
     toggleShowChangedOnly,
     hasRoots: () => workspace.rootFolders.length > 0,
     canAddAnnotation: () => Boolean(selection && editor.currentFilePath),
+    isMarkdownFile,
+    toggleMarkdownPreview: togglePreview,
   };
 
   async function runCommand(id: string) {
@@ -233,6 +235,11 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault();
       openCommandPalette("default");
+    }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "m") {
+      e.preventDefault();
+      void runCommand("view.toggleMarkdownPreview");
+      return;
     }
     if ((e.metaKey || e.ctrlKey) && e.key === ",") {
       e.preventDefault();
@@ -286,7 +293,7 @@
     <ResizeHandle onResize={resizeLeft} />
 
     <div class="flex-1 min-w-[200px] overflow-hidden" style="box-shadow: var(--shadow-xs)">
-      <Editor
+      <EditorPane
         bind:ref={editorRef}
         onSelectionChange={handleSelectionChange}
       />

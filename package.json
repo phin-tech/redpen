@@ -35,13 +35,17 @@
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-shell": "^2.3.5",
-    "bits-ui": "^2.16.3"
+    "bits-ui": "^2.16.3",
+    "dompurify": "^3.3.3",
+    "marked": "^17.0.5",
+    "mermaid": "^11.13.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5",
     "@tailwindcss/vite": "^4.2.2",
     "@tauri-apps/cli": "^2",
     "@testing-library/svelte": "^5.3.1",
+    "@types/dompurify": "^3.2.0",
     "@vitest/browser": "^4.1.0",
     "jsdom": "^29.0.1",
     "svelte": "^5",
