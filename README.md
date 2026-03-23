@@ -6,12 +6,21 @@ Built with [Tauri](https://tauri.app), [Svelte 5](https://svelte.dev), and [Code
 
 ## Install
 
+### From Releases
+
+Download the latest `.dmg` from the [Releases](https://github.com/phin-tech/redpen/releases) page.
+
+> **Note:** The app is currently unsigned. macOS will quarantine it on first download. Run the following to clear the quarantine flag:
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/Red\ Pen.app
+> ```
+
 ### From Source
 
 ```bash
-pnpm install
-pnpm tauri build
-cp -R target/release/bundle/macos/Red\ Pen.app /Applications/
+bun install
+bun run tauri build
+cp -R src-tauri/target/release/bundle/macos/Red\ Pen.app /Applications/
 ```
 
 ### CLI
@@ -135,8 +144,8 @@ Syntax highlighting for: JavaScript, TypeScript, JSX, TSX, Python, Rust, Go, Jav
 ## Development
 
 ```bash
-pnpm install
-pnpm tauri dev
+bun install
+bun run tauri dev
 ```
 
 ### Project Structure
