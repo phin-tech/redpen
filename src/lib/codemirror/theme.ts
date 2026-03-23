@@ -63,4 +63,13 @@ export const redPenTheme = EditorView.theme({
   ".rp-gutter-marker-orphaned": {
     backgroundColor: "rgba(217, 107, 95, 0.5)",
   },
+  // Search highlights
+  ".rp-search-match": {
+    backgroundColor: "rgba(251, 191, 36, 0.2)",
+    borderBottom: "2px solid rgba(251, 191, 36, 0.45)",
+  },
+  ".rp-search-current": {
+    backgroundColor: "rgba(251, 191, 36, 0.45)",
+    borderBottom: "2px solid rgba(251, 191, 36, 0.9)",
+  },
 });

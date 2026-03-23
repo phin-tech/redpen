@@ -13,6 +13,7 @@ import {
 } from "@codemirror/language";
 import { redPenTheme } from "./theme";
 import { annotationExtensions } from "./annotations";
+import { searchExtension } from "./search";
 import { getLanguageForExtension } from "./languages";
 
 export interface EditorConfig {
@@ -40,6 +41,7 @@ export function createEditor(config: EditorConfig): EditorView {
     oneDark,
     redPenTheme,
     ...annotationExtensions(),
+    ...searchExtension(),
   ];
 
   // Add language support if available
