@@ -34,6 +34,7 @@ pub fn run() {
             commands::annotations::create_annotation,
             commands::annotations::update_annotation,
             commands::annotations::delete_annotation,
+            commands::annotations::clear_annotations,
             commands::annotations::update_settings,
             commands::annotations::get_settings,
             commands::annotations::signal_review_done,

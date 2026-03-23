@@ -10,6 +10,8 @@ export interface AppCommandContext {
   toggleShowChangedOnly: () => void;
   hasRoots: () => boolean;
   canAddAnnotation: () => boolean;
+  hasAnnotations: () => boolean;
+  clearAnnotations: () => Promise<void>;
   isMarkdownFile: () => boolean;
   toggleMarkdownPreview: () => void;
 }
@@ -81,6 +83,14 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       shortcut: ["Cmd", "Return"],
       isEnabled: (context) => context.canAddAnnotation(),
       run: (context) => context.openAddAnnotation(),
+    },
+    {
+      id: "annotations.clear",
+      title: "Clear all annotations",
+      section: "Annotations",
+      keywords: ["clear", "remove", "delete", "reset", "annotations"],
+      isEnabled: (context) => context.hasAnnotations(),
+      run: (context) => context.clearAnnotations(),
     },
     {
       id: "view.toggleMarkdownPreview",

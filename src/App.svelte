@@ -9,7 +9,7 @@
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { readDirectory } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
-  import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
+  import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
   import {
     addRootFolder,
     getWorkspace,
@@ -211,6 +211,15 @@
     toggleShowChangedOnly,
     hasRoots: () => workspace.rootFolders.length > 0,
     canAddAnnotation: () => Boolean(selection && editor.currentFilePath),
+    hasAnnotations: () => {
+      const annotationsState = getAnnotationsState();
+      return Boolean(editor.currentFilePath && annotationsState.sidecar && annotationsState.sidecar.annotations.length > 0);
+    },
+    clearAnnotations: async () => {
+      if (editor.currentFilePath) {
+        await clearAllAnnotations(editor.currentFilePath);
+      }
+    },
     isMarkdownFile,
     toggleMarkdownPreview: togglePreview,
   };

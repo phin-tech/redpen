@@ -1,4 +1,4 @@
-import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, getAllAnnotations } from "$lib/tauri";
+import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, clearAnnotations as clearAnnotationsApi, getAllAnnotations } from "$lib/tauri";
 import type { Annotation, FileAnnotations, SidecarFile } from "$lib/types";
 
 type AnnotationFilter = "all" | "comment" | "lineNote" | "label";
@@ -91,5 +91,12 @@ export async function removeAnnotation(filePath: string, annotationId: string) {
   await deleteAnnotation(filePath, annotationId);
   if (state.sidecar) {
     state.sidecar.annotations = state.sidecar.annotations.filter((a) => a.id !== annotationId);
+  }
+}
+
+export async function clearAllAnnotations(filePath: string) {
+  await clearAnnotationsApi(filePath);
+  if (state.sidecar) {
+    state.sidecar.annotations = [];
   }
 }

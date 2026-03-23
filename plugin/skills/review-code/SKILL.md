@@ -1,0 +1,63 @@
+---
+name: review-code
+description: This skill should be used when the user says "/review-code", "review the code", "review before push", "code review in red pen", or wants a human to review code changes in the Red Pen desktop app before pushing to remote.
+allowed-tools: Bash, Read, Glob
+---
+
+# Review Code with Red Pen
+
+Open all changed code files in the Red Pen desktop app for human review, typically before pushing to remote.
+
+## Workflow
+
+1. **Identify changed files:**
+   ```bash
+   git diff --name-only HEAD
+   ```
+   Also include staged changes:
+   ```bash
+   git diff --name-only --staged
+   ```
+   Combine and deduplicate the lists. If no changed files, inform the user and stop.
+
+2. **Open all changed files in Red Pen:**
+   ```bash
+   redpen open <file1> <file2> ...
+   ```
+
+3. **Wait for review:**
+   ```bash
+   redpen wait <file1> <file2> ... --timeout 600
+   ```
+
+4. **Parse and act on the verdict:**
+   - **approved** — report approval. Code is ready to push.
+   - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes, commit them, then ask: "Changes applied and committed. Want to review again in Red Pen?"
+
+## Output Format
+
+`redpen wait` outputs JSON with verdict and per-file annotations:
+```json
+{
+  "verdict": "approved" | "changes_requested",
+  "files": [
+    {
+      "file": "relative/path/to/file",
+      "annotations": [
+        {
+          "body": "reviewer comment",
+          "anchor": {
+            "range": { "startLine": 42 },
+            "lineContent": "the exact line"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Important
+
+- Only include actual source files in the review, not build artifacts or lock files
+- After implementing changes, create a new commit with the fixes before offering another review pass

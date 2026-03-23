@@ -3080,6 +3080,7 @@ dependencies = [
  "redpen-core",
  "serde_json",
  "urlencoding",
+ "uuid",
  "whoami",
 ]
 

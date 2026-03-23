@@ -37,6 +37,22 @@ impl SidecarFile {
             .join(relative.with_file_name(format!("{}.signal", file_name)))
     }
 
+    /// Session-level signal path — one signal for the whole review session
+    pub fn session_signal_path(project_root: &Path) -> PathBuf {
+        project_root
+            .join(".redpen")
+            .join("signals")
+            .join("review.signal")
+    }
+
+    /// Session file path — contains the current session ID so the GUI knows which session to signal
+    pub fn session_file_path(project_root: &Path) -> PathBuf {
+        project_root
+            .join(".redpen")
+            .join("signals")
+            .join("review.session")
+    }
+
     pub fn load(path: &Path) -> Result<Self, SidecarError> {
         let content = fs::read_to_string(path)?;
         let sidecar: SidecarFile = serde_json::from_str(&content)?;

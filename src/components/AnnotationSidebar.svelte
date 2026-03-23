@@ -29,13 +29,13 @@
 
   let editingId: string | null = $state(null);
   let editBody = $state("");
-  let reviewDone = $state(false);
+  let reviewDone: string | null = $state(null);
 
-  async function handleDoneReviewing() {
+  async function handleReviewVerdict(verdict: "approved" | "changes_requested") {
     if (!editor.currentFilePath) return;
-    await invoke("signal_review_done", { filePath: editor.currentFilePath });
-    reviewDone = true;
-    setTimeout(() => (reviewDone = false), 3000);
+    await invoke("signal_review_done", { filePath: editor.currentFilePath, verdict });
+    reviewDone = verdict;
+    setTimeout(() => (reviewDone = null), 3000);
   }
 
   function handleClick(id: string, line: number) {
@@ -219,14 +219,21 @@
   {/if}
 
   <!-- Bottom action bar -->
-  {#if annotationsState.sidebarView === 'file' && editor.currentFilePath && annotations.length > 0}
+  {#if annotationsState.sidebarView === 'file' && editor.currentFilePath}
     <div class="px-2.5 py-2 border-t border-border-default/60" style="box-shadow: var(--shadow-xs)">
       {#if reviewDone}
-        <Button variant="secondary" disabled class="w-full bg-success/20 text-success border-success/30">Review sent!</Button>
-      {:else}
-        <Button onclick={handleDoneReviewing} class="w-full">
-          Send {annotations.length} {annotations.length === 1 ? 'annotation' : 'annotations'}
+        <Button variant="secondary" disabled class="w-full {reviewDone === 'approved' ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
+          {reviewDone === 'approved' ? 'Approved!' : 'Changes requested!'}
         </Button>
+      {:else}
+        <div class="flex gap-2">
+          <Button variant="secondary" onclick={() => handleReviewVerdict("approved")} class="flex-1">
+            Approve
+          </Button>
+          <Button onclick={() => handleReviewVerdict("changes_requested")} class="flex-1">
+            Request changes
+          </Button>
+        </div>
       {/if}
     </div>
   {/if}
