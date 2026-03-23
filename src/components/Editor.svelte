@@ -13,7 +13,7 @@
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
-    ref?: { scrollToLine: (line: number) => void; openSearch: () => void } | undefined;
+    ref?: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined;
   } = $props();
 
   let container: HTMLDivElement;
@@ -62,7 +62,7 @@
       matchIndex = 0;
       view.dispatch({ effects: setSearchEffect.of(null) });
     } else {
-      matchIndex = Math.min(matchIndex, matches.length - 1);
+      matchIndex = 0;
       view.dispatch({ effects: setSearchEffect.of({ matches, currentIdx: matchIndex }) });
       scrollToMatch(matchIndex);
     }
@@ -110,7 +110,7 @@
 
   // Expose functions to parent via ref
   $effect(() => {
-    ref = { scrollToLine, openSearch };
+    ref = { scrollToLine, openSearch, closeSearch, navigateMatch };
   });
 
   onDestroy(() => {
@@ -177,6 +177,7 @@
         {/if}
       </span>
       <button
+        type="button"
         class="nav-btn"
         onclick={() => navigateMatch(-1)}
         disabled={matchPositions.length === 0}
@@ -187,6 +188,7 @@
         </svg>
       </button>
       <button
+        type="button"
         class="nav-btn"
         onclick={() => navigateMatch(1)}
         disabled={matchPositions.length === 0}
@@ -196,7 +198,7 @@
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </button>
-      <button class="close-btn" onclick={closeSearch} title="Close (Escape)">
+      <button type="button" class="close-btn" onclick={() => closeSearch()} title="Close (Escape)">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
