@@ -13,6 +13,7 @@ export default defineConfig(async () => ({
     alias: {
       $lib: path.resolve("./src/lib"),
     },
+    conditions: ["browser"],
   },
 
   // Vite options tailored for Tauri development
@@ -31,5 +32,9 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
   },
 }));

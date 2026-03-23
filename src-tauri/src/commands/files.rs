@@ -1,6 +1,12 @@
+use crate::state::AppState;
+use crate::workspace_index::{
+    QueryWorkspaceFilesRequest, WorkspaceFileQueryResponse, WorkspaceIndexStatus,
+    WorkspaceRootsRequest,
+};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
+use tauri::State;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +52,33 @@ pub fn read_directory(path: String) -> Result<Vec<FileEntry>, String> {
             .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(entries)
+}
+
+#[tauri::command]
+pub fn register_workspace_root(root: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.workspace_index.register_root(&root)
+}
+
+#[tauri::command]
+pub fn unregister_workspace_root(root: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.workspace_index.unregister_root(&root);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_workspace_index_status(
+    request: WorkspaceRootsRequest,
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkspaceIndexStatus>, String> {
+    Ok(state.workspace_index.get_statuses(request.roots.as_deref()))
+}
+
+#[tauri::command]
+pub fn query_workspace_files(
+    request: QueryWorkspaceFilesRequest,
+    state: State<'_, AppState>,
+) -> Result<WorkspaceFileQueryResponse, String> {
+    Ok(state.workspace_index.query(request))
 }
 
 #[tauri::command]

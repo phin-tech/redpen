@@ -1,48 +1,80 @@
 <script lang="ts">
   import { Command, Dialog } from "bits-ui";
-  import { tick } from "svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
-  import {
-    getWorkspace,
-    addRootFolder,
-    expandAllFolders,
-    collapseAllFolders,
-    toggleShowChangedOnly,
-  } from "$lib/stores/workspace.svelte";
-  import { openFile } from "$lib/stores/editor.svelte";
-  import type { FileEntry } from "$lib/types";
+  import { onDestroy, tick } from "svelte";
+  import { COMMAND_SECTIONS } from "$lib/commands";
+  import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { queryWorkspaceFiles } from "$lib/tauri";
+  import type {
+    AppCommandContext,
+    AppCommandDefinition,
+    CommandPaletteMode,
+  } from "$lib/commands";
+  import type { WorkspaceFileMatch, WorkspaceIndexStatus } from "$lib/types";
 
   let {
     open: isOpen,
+    mode,
+    onModeChange,
     onClose,
-    initialMode = "default",
-    onOpenSettings,
-    onAddAnnotation,
+    commands,
+    commandContext,
+    onSelectFile,
   }: {
     open: boolean;
+    mode: CommandPaletteMode;
+    onModeChange: (mode: CommandPaletteMode) => void;
     onClose: () => void;
-    initialMode?: "default" | "file";
-    onOpenSettings: () => void;
-    onAddAnnotation: () => void;
+    commands: AppCommandDefinition[];
+    commandContext: AppCommandContext;
+    onSelectFile: (path: string) => Promise<void> | void;
   } = $props();
 
   const workspace = getWorkspace();
 
-  let mode = $state<"default" | "file">("default");
-  let loadingFiles = $state(false);
-  let fileList = $state<FileEntry[]>([]);
   let searchValue = $state("");
+  let fileResults = $state<WorkspaceFileMatch[]>([]);
+  let fileStatuses = $state<WorkspaceIndexStatus[]>([]);
+  let loadingFiles = $state(false);
+  let fileError = $state<string | null>(null);
   let contentEl: HTMLDivElement | undefined;
+  let fileQueryVersion = 0;
+  let paletteStateSignature = "";
+  let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  let isIndexing = $derived(fileStatuses.some((status) => status.state === "indexing"));
+  let isStale = $derived(fileStatuses.some((status) => status.state === "stale"));
+  let isTruncated = $derived(fileStatuses.some((status) => status.truncated));
+  let hasStatusError = $derived(fileStatuses.some((status) => status.state === "error"));
 
   $effect(() => {
+    const signature = `${isOpen}:${mode}`;
+    if (signature === paletteStateSignature) return;
+    paletteStateSignature = signature;
+
+    stopPolling();
+    searchValue = "";
+    fileResults = [];
+    fileStatuses = [];
+    loadingFiles = false;
+    fileError = null;
+
     if (isOpen) {
-      mode = initialMode;
-      searchValue = "";
-      fileList = [];
-      if (initialMode === "file") {
-        (async () => await loadFiles())();
-      }
+      void focusInput();
     }
+  });
+
+  $effect(() => {
+    if (!(isOpen && mode === "file")) return;
+
+    const timeout = setTimeout(() => {
+      void loadFiles();
+    }, searchValue ? 120 : 0);
+
+    return () => clearTimeout(timeout);
+  });
+
+  onDestroy(() => {
+    stopPolling();
   });
 
   async function focusInput() {
@@ -50,49 +82,94 @@
     contentEl?.querySelector<HTMLInputElement>("input")?.focus();
   }
 
-  async function loadFiles() {
-    loadingFiles = true;
-    await expandAllFolders();
-    const files: FileEntry[] = [];
-    for (const entries of workspace.fileTree.values()) {
-      for (const entry of entries) {
-        if (!entry.isDir) files.push(entry);
-      }
+  function stopPolling() {
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
     }
-    fileList = files;
-    loadingFiles = false;
   }
 
-  async function enterFileMode() {
-    mode = "file";
-    searchValue = "";
-    await loadFiles();
-    await focusInput();
+  function schedulePolling(statuses: WorkspaceIndexStatus[]) {
+    stopPolling();
+    if (!statuses.some((status) => status.state === "indexing" || status.state === "stale")) {
+      return;
+    }
+    pollTimer = setTimeout(() => {
+      if (isOpen && mode === "file") {
+        void loadFiles();
+      }
+    }, 500);
+  }
+
+  async function loadFiles() {
+    if (workspace.rootFolders.length === 0) {
+      fileResults = [];
+      fileStatuses = [];
+      fileError = null;
+      loadingFiles = false;
+      stopPolling();
+      return;
+    }
+
+    const queryVersion = ++fileQueryVersion;
+    loadingFiles = true;
+    fileError = null;
+
+    try {
+      const response = await queryWorkspaceFiles(searchValue, workspace.rootFolders);
+      if (queryVersion !== fileQueryVersion) return;
+      fileResults = response.results;
+      fileStatuses = response.statuses;
+      schedulePolling(response.statuses);
+    } catch (error) {
+      if (queryVersion !== fileQueryVersion) return;
+      fileResults = [];
+      fileStatuses = [];
+      fileError = error instanceof Error ? error.message : String(error);
+      stopPolling();
+    } finally {
+      if (queryVersion === fileQueryVersion) {
+        loadingFiles = false;
+      }
+    }
   }
 
   function close() {
+    stopPolling();
     onClose();
   }
 
-  async function handleOpenFolder() {
+  async function closeThen(action: () => Promise<void> | void) {
     close();
-    const paths = await open({ directory: true, multiple: true });
-    if (paths) {
-      for (const path of Array.isArray(paths) ? paths : [paths]) {
-        await addRootFolder(path);
-      }
-    }
+    await action();
   }
 
-  function shortPath(path: string): string {
-    return path.replace(/^\/Users\/[^/]+/, "~");
+  function isCommandEnabled(command: AppCommandDefinition): boolean {
+    return command.isEnabled ? command.isEnabled(commandContext) : true;
+  }
+
+  async function runCommand(command: AppCommandDefinition) {
+    if (!isCommandEnabled(command)) return;
+    if (command.closeOnRun === false) {
+      await command.run(commandContext);
+      return;
+    }
+    await closeThen(() => command.run(commandContext));
+  }
+
+  function rootLabel(root: string): string {
+    return root.split("/").pop() ?? root;
   }
 </script>
 
 <Dialog.Root
   open={isOpen}
-  onOpenChange={(v) => { if (!v) close(); }}
-  onOpenChangeComplete={(v) => { if (v) focusInput(); }}
+  onOpenChange={(value) => {
+    if (!value) close();
+  }}
+  onOpenChangeComplete={(value) => {
+    if (value) void focusInput();
+  }}
 >
   <Dialog.Portal>
     <Dialog.Overlay class="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]" />
@@ -102,8 +179,7 @@
       style="background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     >
       <div bind:this={contentEl}>
-        <Command.Root loop class="flex flex-col">
-          <!-- Search input row -->
+        <Command.Root loop shouldFilter={mode === "default"} class="flex flex-col">
           <div class="flex items-center gap-2.5 px-3.5 py-3 border-b border-border-default/60">
             <svg class="text-text-muted shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none">
               <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" />
@@ -111,12 +187,12 @@
             </svg>
             <Command.Input
               bind:value={searchValue}
-              placeholder={mode === "file" ? "Search files…" : "Type a command or search…"}
+              placeholder={mode === "file" ? "Search files..." : "Type a command or search..."}
               class="flex-1 bg-transparent border-none outline-none text-sm text-text-primary placeholder:text-text-muted"
             />
             {#if mode === "file"}
               <button
-                onclick={() => { mode = "default"; searchValue = ""; focusInput(); }}
+                onclick={() => onModeChange("default")}
                 class="text-[10px] text-text-muted hover:text-text-secondary px-1.5 py-0.5 rounded border border-border-default/60 bg-surface-raised transition-colors"
               >
                 back
@@ -124,180 +200,117 @@
             {/if}
           </div>
 
-          <!-- Command list -->
           <Command.List class="max-h-[360px] overflow-y-auto py-1">
             {#if mode === "default"}
-              <!-- Navigation -->
-              <Command.Group>
-                <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  Navigation
-                </Command.GroupHeading>
-                <Command.GroupItems>
-                  <Command.Item
-                    value="go to file"
-                    onSelect={() => { (async () => await enterFileMode())(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-blue">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 10V3a1 1 0 011-1h4l3 3v5a1 1 0 01-1 1H3a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.2" />
-                        <path d="M7 2v3h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Go to file…</span>
-                  </Command.Item>
-                  <Command.Item
-                    value="open folder"
-                    onSelect={() => { (async () => await handleOpenFolder())(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-teal">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <path d="M1 9V4.5a1 1 0 011-1h2.5l1 1H10a1 1 0 011 1V9a1 1 0 01-1 1H2a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.2" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Open folder…</span>
-                  </Command.Item>
-                </Command.GroupItems>
-              </Command.Group>
-
-              <!-- Workspace -->
-              <Command.Group>
-                <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  Workspace
-                </Command.GroupHeading>
-                <Command.GroupItems>
-                  <Command.Item
-                    value="expand all folders"
-                    onSelect={() => { (async () => { await expandAllFolders(); close(); })(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Expand all folders</span>
-                  </Command.Item>
-                  <Command.Item
-                    value="collapse all folders"
-                    onSelect={() => { collapseAllFolders(); close(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 8l4-4 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Collapse all folders</span>
-                  </Command.Item>
-                  <Command.Item
-                    value="toggle changed files only show changed"
-                    onSelect={() => { toggleShowChangedOnly(); close(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60" style="color: var(--color-warning)">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="6" r="2" fill="currentColor" />
-                        <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">
-                      {workspace.showChangedOnly ? "Show all files" : "Show changed files only"}
-                    </span>
-                  </Command.Item>
-                </Command.GroupItems>
-              </Command.Group>
-
-              <!-- Annotations -->
-              <Command.Group>
-                <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  Annotations
-                </Command.GroupHeading>
-                <Command.GroupItems>
-                  <Command.Item
-                    value="add annotation comment"
-                    onSelect={() => { close(); onAddAnnotation(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0" style="background: rgba(244,122,99,0.1); border: 1px solid rgba(244,122,99,0.25); color: var(--accent)">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Add annotation</span>
-                    <div class="flex gap-1">
-                      <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">⌘</kbd>
-                      <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">↵</kbd>
-                    </div>
-                  </Command.Item>
-                </Command.GroupItems>
-              </Command.Group>
-
-              <!-- View -->
-              <Command.Group>
-                <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  View
-                </Command.GroupHeading>
-                <Command.GroupItems>
-                  <Command.Item
-                    value="open settings preferences"
-                    onSelect={() => { close(); onOpenSettings(); }}
-                    class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                  >
-                    <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-accent-purple">
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                        <circle cx="6" cy="6" r="2" stroke="currentColor" stroke-width="1.2" />
-                        <path d="M6 1v1.5M6 9.5V11M1 6h1.5M9.5 6H11" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
-                      </svg>
-                    </div>
-                    <span class="flex-1 text-sm text-text-secondary">Open settings</span>
-                    <div class="flex gap-1">
-                      <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">⌘</kbd>
-                      <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">,</kbd>
-                    </div>
-                  </Command.Item>
-                </Command.GroupItems>
-              </Command.Group>
+              {#each COMMAND_SECTIONS as section}
+                {@const sectionCommands = commands.filter((command) => command.section === section)}
+                {#if sectionCommands.length > 0}
+                  <Command.Group>
+                    <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                      {section}
+                    </Command.GroupHeading>
+                    <Command.GroupItems>
+                      {#each sectionCommands as command (command.id)}
+                        <Command.Item
+                          value={command.title}
+                          keywords={command.keywords}
+                          disabled={!isCommandEnabled(command)}
+                          onSelect={() => {
+                            void runCommand(command);
+                          }}
+                          class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[selected]:bg-accent-subtle data-[disabled]:opacity-50"
+                        >
+                          <span class="flex-1 text-sm text-text-secondary">{command.title}</span>
+                          {#if command.shortcut}
+                            <div class="flex gap-1">
+                              {#each command.shortcut as key}
+                                <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">
+                                  {key}
+                                </kbd>
+                              {/each}
+                            </div>
+                          {/if}
+                        </Command.Item>
+                      {/each}
+                    </Command.GroupItems>
+                  </Command.Group>
+                {/if}
+              {/each}
 
               <Command.Empty class="px-3.5 py-8 text-sm text-text-muted text-center">
                 No commands found
               </Command.Empty>
-
             {:else}
-              <!-- File mode -->
-              <Command.Group>
-                <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
-                  {loadingFiles ? "Loading files…" : "Files"}
-                </Command.GroupHeading>
-                <Command.GroupItems>
-                  {#each fileList as file (file.path)}
-                    <Command.Item
-                      value={file.path}
-                      keywords={[file.name]}
-                      onSelect={() => { openFile(file.path); close(); }}
-                      class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[highlighted]:bg-accent-subtle"
-                    >
-                      <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
-                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 10V2a1 1 0 011-1h4l3 3v6a1 1 0 01-1 1H3a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.2" />
-                          <path d="M7 1v3h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </div>
-                      <span class="flex-1 text-sm text-text-secondary truncate">{file.name}</span>
-                      <span class="text-[11px] text-text-muted font-mono truncate max-w-[200px]">{shortPath(file.path)}</span>
-                    </Command.Item>
-                  {/each}
-                </Command.GroupItems>
-              </Command.Group>
+              {#if fileError}
+                <div class="px-3.5 py-2 text-xs text-danger">
+                  {fileError}
+                </div>
+              {:else}
+                {#if isIndexing}
+                  <div class="px-3.5 py-2 text-[11px] text-text-muted">
+                    Indexing workspace files...
+                  </div>
+                {:else if isStale}
+                  <div class="px-3.5 py-2 text-[11px] text-text-muted">
+                    Refreshing file index...
+                  </div>
+                {:else if hasStatusError}
+                  <div class="px-3.5 py-2 text-[11px] text-danger">
+                    Some roots failed to index.
+                  </div>
+                {/if}
 
-              <Command.Empty class="px-3.5 py-8 text-sm text-text-muted text-center">
-                {loadingFiles ? "Loading…" : "No files found"}
-              </Command.Empty>
+                {#if isTruncated}
+                  <div class="px-3.5 py-2 text-[11px] text-text-muted border-b border-border-default/40">
+                    Some files are omitted due to indexing limits.
+                  </div>
+                {/if}
+
+                <Command.Group>
+                  <Command.GroupHeading class="px-3.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                    {loadingFiles ? "Loading files..." : "Files"}
+                  </Command.GroupHeading>
+                  <Command.GroupItems>
+                    {#each fileResults as file (file.path)}
+                      <Command.Item
+                        value={file.relativePath}
+                        keywords={[file.name, file.path, file.root]}
+                        onSelect={() => {
+                          void closeThen(() => onSelectFile(file.path));
+                        }}
+                        class="flex items-center gap-2.5 px-3.5 py-[7px] cursor-pointer data-[selected]:bg-accent-subtle"
+                      >
+                        <div class="w-5 h-5 rounded flex items-center justify-center shrink-0 bg-surface-raised border border-border-default/60 text-text-muted">
+                          <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 10V2a1 1 0 011-1h4l3 3v6a1 1 0 01-1 1H3a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.2" />
+                            <path d="M7 1v3h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <div class="text-sm text-text-secondary truncate">{file.name}</div>
+                          <div class="text-[11px] text-text-muted font-mono truncate">{file.relativePath}</div>
+                        </div>
+                        <span class="text-[10px] uppercase tracking-wide text-text-muted shrink-0">
+                          {rootLabel(file.root)}
+                        </span>
+                      </Command.Item>
+                    {/each}
+                  </Command.GroupItems>
+                </Command.Group>
+
+                {#if workspace.rootFolders.length === 0}
+                  <div class="px-3.5 py-8 text-sm text-text-muted text-center">
+                    No workspace folders open
+                  </div>
+                {:else if !loadingFiles && fileResults.length === 0}
+                  <div class="px-3.5 py-8 text-sm text-text-muted text-center">
+                    No files found
+                  </div>
+                {/if}
+              {/if}
             {/if}
           </Command.List>
 
-          <!-- Footer -->
           <div class="border-t border-border-default/50 px-3.5 py-2 flex items-center gap-4" style="background: rgba(0,0,0,0.15)">
             <div class="flex items-center gap-1.5 text-[11px] text-text-muted">
               <kbd class="inline-flex items-center px-1 py-0.5 text-[10px] font-mono rounded bg-surface-raised border border-border-default">↑↓</kbd>

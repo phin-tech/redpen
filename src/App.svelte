@@ -6,9 +6,19 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { readDirectory } from "$lib/tauri";
   import { openFile, getEditor } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation } from "$lib/stores/annotations.svelte";
-  import { addRootFolder } from "$lib/stores/workspace.svelte";
+  import {
+    addRootFolder,
+    getWorkspace,
+    expandAllFolders,
+    collapseAllFolders,
+    toggleShowChangedOnly,
+  } from "$lib/stores/workspace.svelte";
+  import { createCommandRegistry, findCommand } from "$lib/commands";
+  import type { AppCommandContext } from "$lib/commands";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { listen } from "@tauri-apps/api/event";
@@ -18,6 +28,8 @@
   import { onMount, onDestroy } from "svelte";
   import { debounce } from "$lib/utils/debounce";
   const editor = getEditor();
+  const workspace = getWorkspace();
+  const commands = createCommandRegistry();
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
@@ -85,8 +97,7 @@
       if (event.payload.type === "drop") {
         for (const path of event.payload.paths) {
           try {
-            const { readDirectory } = await import("$lib/tauri");
-            const entries = await readDirectory(path);
+            await readDirectory(path);
             // If readDirectory succeeds, it's a directory — add as root
             await addRootFolder(path);
           } catch {
@@ -167,6 +178,48 @@
     }
   }
 
+  function openCommandPalette(mode: "default" | "file") {
+    commandPaletteMode = mode;
+    showCommandPalette = true;
+  }
+
+  function openSettingsPanel() {
+    showCommandPalette = false;
+    showSettings = true;
+  }
+
+  function openAnnotationCommand() {
+    showCommandPalette = false;
+    openAnnotationPopover();
+  }
+
+  async function openFolderPicker() {
+    const selected = await openDialog({ directory: true, multiple: true });
+    if (!selected) return;
+    for (const path of Array.isArray(selected) ? selected : [selected]) {
+      if (path) await addRootFolder(path);
+    }
+  }
+
+  const commandContext: AppCommandContext = {
+    openCommandPalette,
+    openFolder: openFolderPicker,
+    openSettings: openSettingsPanel,
+    openAddAnnotation: openAnnotationCommand,
+    expandAllFolders,
+    collapseAllFolders,
+    toggleShowChangedOnly,
+    hasRoots: () => workspace.rootFolders.length > 0,
+    canAddAnnotation: () => Boolean(selection && editor.currentFilePath),
+  };
+
+  async function runCommand(id: string) {
+    const command = findCommand(commands, id);
+    if (!command) return;
+    if (command.isEnabled && !command.isEnabled(commandContext)) return;
+    await command.run(commandContext);
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && showCommandPalette) {
       e.preventDefault();
@@ -175,16 +228,15 @@
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
-      openAnnotationPopover();
+      void runCommand("annotations.add");
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault();
-      commandPaletteMode = "default";
-      showCommandPalette = true;
+      openCommandPalette("default");
     }
     if ((e.metaKey || e.ctrlKey) && e.key === ",") {
       e.preventDefault();
-      showSettings = true;
+      void runCommand("view.openSettings");
     }
   }
 
@@ -192,8 +244,7 @@
     if (e.key === "Shift") {
       const now = Date.now();
       if (now - lastShiftKeyup < 300) {
-        commandPaletteMode = "file";
-        showCommandPalette = true;
+        openCommandPalette("file");
         lastShiftKeyup = 0;
       } else {
         lastShiftKeyup = now;
@@ -225,6 +276,10 @@
       <FileTree
         onFileSelect={handleFileSelect}
         selectedPath={editor.currentFilePath}
+        onOpenFolder={openFolderPicker}
+        onExpandAll={expandAllFolders}
+        onCollapseAll={collapseAllFolders}
+        onToggleShowChangedOnly={toggleShowChangedOnly}
       />
     </div>
 
@@ -258,9 +313,11 @@
 
   <CommandPalette
     open={showCommandPalette}
-    initialMode={commandPaletteMode}
+    mode={commandPaletteMode}
+    onModeChange={openCommandPalette}
     onClose={() => (showCommandPalette = false)}
-    onOpenSettings={() => { showCommandPalette = false; showSettings = true; }}
-    onAddAnnotation={() => { showCommandPalette = false; openAnnotationPopover(); }}
+    commands={commands}
+    commandContext={commandContext}
+    onSelectFile={handleFileSelect}
   />
 </div>
