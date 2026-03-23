@@ -26,7 +26,11 @@ Open all changed code files in the Red Pen desktop app for human review, typical
    ```
 
 3. **Parse and act on the verdict:**
-   - **approved** — report approval. Code is ready to push.
+   - **approved** — create the push approval signal so the pre-push hook allows the next push:
+     ```bash
+     mkdir -p .redpen/signals && echo "approved" > .redpen/signals/push-approved
+     ```
+     Report approval. Code is ready to push.
    - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes, commit them, then ask: "Changes applied and committed. Want to review again in Red Pen?"
 
 ## Output Format
