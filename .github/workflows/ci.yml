@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   check:
-    name: Check & Test
+    name: Check
     if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
     runs-on: macos-latest
     steps:
@@ -25,8 +25,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - uses: oven-sh/setup-bun@v2
 
@@ -35,11 +33,20 @@ jobs:
 
       - name: Cargo check
         run: cargo check --workspace
-        working-directory: src-tauri
-
-      - name: Cargo test
-        run: cargo test --workspace
-        working-directory: src-tauri
 
       - name: Build frontend
         run: bun run build
+
+  test:
+    name: Test
+    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cargo test
+        run: cargo test --workspace
