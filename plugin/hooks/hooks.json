@@ -1,0 +1,29 @@
+{
+  "description": "Red Pen review gates for pushes and plan documents",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if the Bash command contains 'git push'. If it does, respond with: {\"decision\": \"block\", \"reason\": \"Run /review-code to review changes in Red Pen before pushing.\"}. If it does NOT contain 'git push', respond with: {\"decision\": \"approve\"}. Only block on 'git push' — do not block other git commands.",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if the file just written matches a plan or spec document (path contains 'docs/superpowers/specs/' or filename contains 'plan' or 'spec' and ends in .md). If it does, respond with: {\"systemMessage\": \"A plan/spec document was just written. Suggest running /review-plan to get human review in Red Pen before proceeding with implementation.\"}. If it does not match, respond with empty output.",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

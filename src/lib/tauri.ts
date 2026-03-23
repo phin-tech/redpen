@@ -68,6 +68,10 @@ export async function deleteAnnotation(filePath: string, annotationId: string): 
   return invoke("delete_annotation", { filePath, annotationId });
 }
 
+export async function clearAnnotations(filePath: string): Promise<void> {
+  return invoke("clear_annotations", { filePath });
+}
+
 export async function getAllAnnotations(rootFolder: string): Promise<FileAnnotations[]> {
   return invoke("get_all_annotations", { rootFolder });
 }

@@ -214,6 +214,16 @@ pub fn delete_annotation(file_path: String, annotation_id: String) -> Result<(),
 }
 
 #[tauri::command]
+pub fn clear_annotations(file_path: String) -> Result<(), String> {
+    let source_path = Path::new(&file_path);
+    let project_root = resolve_project_root(source_path);
+    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
+    sidecar.annotations.clear();
+    save_sidecar(&sidecar, &project_root, source_path)?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_settings(
     request: UpdateSettingsRequest,
     state: State<'_, AppState>,
@@ -238,16 +248,21 @@ pub fn update_settings(
 }
 
 #[tauri::command]
-pub fn signal_review_done(file_path: String) -> Result<(), String> {
+pub fn signal_review_done(file_path: String, verdict: Option<String>) -> Result<(), String> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
 
-    // Write signal file for `redpen wait` CLI
-    let signal_path = SidecarFile::signal_path(&project_root, source_path);
+    // Read session ID (written by `redpen wait`) and include it in the signal
+    let session_file = SidecarFile::session_file_path(&project_root);
+    let session_id = fs::read_to_string(&session_file).unwrap_or_default();
+    let verdict_str = verdict.as_deref().unwrap_or("approved");
+    let signal_content = format!("{}\n{}", session_id.trim(), verdict_str);
+
+    let signal_path = SidecarFile::session_signal_path(&project_root);
     if let Some(parent) = signal_path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    fs::write(&signal_path, "done").map_err(|e| e.to_string())?;
+    fs::write(&signal_path, signal_content).map_err(|e| e.to_string())?;
 
     // Also POST annotations to the redpen channel (if running)
     let sidecar = load_sidecar_for_file(&project_root, source_path)?;

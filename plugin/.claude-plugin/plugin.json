@@ -1,0 +1,10 @@
+{
+  "name": "redpen-review",
+  "version": "0.1.0",
+  "description": "Human-in-the-loop code and plan review using the Red Pen desktop app",
+  "author": {
+    "name": "Phin Tech"
+  },
+  "repository": "https://github.com/phin-tech/redpen",
+  "keywords": ["review", "code-review", "plan-review", "human-in-the-loop"]
+}
