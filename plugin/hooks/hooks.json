@@ -6,8 +6,8 @@
         "matcher": "Bash",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Check if the Bash command contains 'git push'. If it does, respond with: {\"decision\": \"block\", \"reason\": \"Run /review-code to review changes in Red Pen before pushing.\"}. If it does NOT contain 'git push', respond with: {\"decision\": \"approve\"}. Only block on 'git push' — do not block other git commands.",
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/hooks/scripts/check-git-push.sh",
             "timeout": 10
           }
         ]
