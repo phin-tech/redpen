@@ -165,7 +165,7 @@
       <input
         bind:this={searchInput}
         bind:value={searchQuery}
-        oninput={() => performSearch(searchQuery)}
+        oninput={(e) => performSearch((e.currentTarget as HTMLInputElement).value)}
         onkeydown={handleSearchKeydown}
         placeholder="Find in file…"
         spellcheck="false"
