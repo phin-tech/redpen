@@ -1,8 +1,39 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Annotation, FileAnnotations, FileEntry, GitFileStatus, SidecarFile } from "./types";
+import type {
+  Annotation,
+  AppSettings,
+  FileAnnotations,
+  FileEntry,
+  GitFileStatus,
+  SidecarFile,
+  WorkspaceFileQueryResponse,
+  WorkspaceIndexStatus,
+} from "./types";
 
 export async function readDirectory(path: string): Promise<FileEntry[]> {
   return invoke("read_directory", { path });
+}
+
+export async function registerWorkspaceRoot(root: string): Promise<void> {
+  return invoke("register_workspace_root", { root });
+}
+
+export async function unregisterWorkspaceRoot(root: string): Promise<void> {
+  return invoke("unregister_workspace_root", { root });
+}
+
+export async function getWorkspaceIndexStatus(
+  roots?: string[]
+): Promise<WorkspaceIndexStatus[]> {
+  return invoke("get_workspace_index_status", { request: { roots } });
+}
+
+export async function queryWorkspaceFiles(
+  query: string,
+  roots?: string[],
+  limit?: number
+): Promise<WorkspaceFileQueryResponse> {
+  return invoke("query_workspace_files", { request: { query, roots, limit } });
 }
 
 export async function readFile(path: string): Promise<string> {
@@ -49,10 +80,12 @@ export async function exportAnnotations(filePath: string): Promise<string> {
   return invoke("export_annotations", { filePath });
 }
 
-export async function updateSettings(author?: string, defaultLabels?: string[]): Promise<void> {
-  return invoke("update_settings", { author, defaultLabels });
+export async function updateSettings(
+  patch: Partial<AppSettings>
+): Promise<AppSettings> {
+  return invoke("update_settings", { request: patch });
 }
 
-export async function getSettings(): Promise<[string, string[]]> {
+export async function getSettings(): Promise<AppSettings> {
   return invoke("get_settings");
 }

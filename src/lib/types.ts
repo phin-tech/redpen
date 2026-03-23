@@ -54,3 +54,31 @@ export interface GitFileStatus {
   status: string;
 }
 
+export interface AppSettings {
+  author: string;
+  defaultLabels: string[];
+  ignoredFolderNames: string[];
+}
+
+export type WorkspaceIndexState = "indexing" | "ready" | "stale" | "error";
+
+export interface WorkspaceIndexStatus {
+  root: string;
+  state: WorkspaceIndexState;
+  indexedCount: number;
+  truncated: boolean;
+  lastUpdated: string | null;
+  error: string | null;
+}
+
+export interface WorkspaceFileMatch {
+  root: string;
+  path: string;
+  name: string;
+  relativePath: string;
+}
+
+export interface WorkspaceFileQueryResponse {
+  results: WorkspaceFileMatch[];
+  statuses: WorkspaceIndexStatus[];
+}

@@ -1,15 +1,22 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
-  import { getWorkspace, addRootFolder, removeRootFolder, toggleShowChangedOnly, getChangedFilePaths, expandAllFolders, collapseAllFolders } from "$lib/stores/workspace.svelte";
+  import { getWorkspace, removeRootFolder, getChangedFilePaths } from "$lib/stores/workspace.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
   import IconButton from "./ui/IconButton.svelte";
 
   let {
     onFileSelect,
     selectedPath,
+    onOpenFolder,
+    onExpandAll,
+    onCollapseAll,
+    onToggleShowChangedOnly,
   }: {
     onFileSelect: (path: string) => void;
     selectedPath: string | null;
+    onOpenFolder: () => Promise<void>;
+    onExpandAll: () => Promise<void>;
+    onCollapseAll: () => void;
+    onToggleShowChangedOnly: () => void;
   } = $props();
 
   import { SvelteSet } from "svelte/reactivity";
@@ -23,16 +30,6 @@
       collapsedRoots.delete(folder);
     } else {
       collapsedRoots.add(folder);
-    }
-  }
-
-  async function openFolder() {
-    const selected = await open({ directory: true, multiple: true });
-    if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected];
-      for (const path of paths) {
-        if (path) await addRootFolder(path);
-      }
     }
   }
 
@@ -71,7 +68,7 @@
 
   function handleCollapseAll() {
     if (contextMenuFolder) {
-      workspace.expandedFolders.clear();
+      onCollapseAll();
     }
     closeContextMenu();
   }
@@ -84,24 +81,24 @@
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
       <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Folders</span>
       <div class="flex items-center gap-1.5">
-        <IconButton label="Expand all" onclick={expandAllFolders}>
+        <IconButton label="Expand all" onclick={onExpandAll}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M7 8l5 5 5-5" />
             <path d="M7 13l5 5 5-5" />
           </svg>
         </IconButton>
-        <IconButton label="Collapse all" onclick={collapseAllFolders}>
+        <IconButton label="Collapse all" onclick={onCollapseAll}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M7 16l5-5 5 5" />
             <path d="M7 11l5-5 5 5" />
           </svg>
         </IconButton>
-        <IconButton label={workspace.showChangedOnly ? "Show all files" : "Changed only"} active={workspace.showChangedOnly} onclick={toggleShowChangedOnly}>
+        <IconButton label={workspace.showChangedOnly ? "Show all files" : "Changed only"} active={workspace.showChangedOnly} onclick={onToggleShowChangedOnly}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
           </svg>
         </IconButton>
-        <IconButton label="Add folder" onclick={openFolder}>
+        <IconButton label="Add folder" onclick={onOpenFolder}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M12 5v14M5 12h14" />
           </svg>
@@ -115,15 +112,15 @@
     {@const entries = changedPaths ? allEntries.filter(e => changedPaths.has(e.path)) : allEntries}
     {#if !changedPaths || entries.length > 0}
       <div>
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold uppercase text-text-secondary tracking-wider select-none cursor-pointer hover:text-text-primary transition-colors"
+        <button
+          type="button"
+          class="flex w-full items-center gap-1 px-3 py-1.5 text-xs font-semibold uppercase text-text-secondary tracking-wider select-none cursor-pointer hover:text-text-primary transition-colors text-left"
           onclick={() => toggleRoot(folder)}
           oncontextmenu={(e) => handleContextMenu(e, folder)}
         >
           <span class="text-xs">{collapsedRoots.has(folder) ? "▸" : "▾"}</span>
           {folder.split("/").pop()}
-        </div>
+        </button>
         {#if !collapsedRoots.has(folder)}
           {#each entries as entry (entry.path)}
             <FileTreeItem {entry} {onFileSelect} {selectedPath} {changedPaths} />
@@ -137,7 +134,7 @@
     <div class="flex justify-center p-6">
       <button
         class="px-4 py-1.5 rounded-md text-sm font-semibold bg-accent text-surface-base hover:bg-accent-hover transition-colors"
-        onclick={openFolder}
+        onclick={onOpenFolder}
       >
         Open Folder
       </button>

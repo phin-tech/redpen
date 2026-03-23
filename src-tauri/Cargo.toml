@@ -19,3 +19,8 @@ git2 = "0.20"
 whoami = "1"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
+notify = "8"
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"

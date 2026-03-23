@@ -1,4 +1,5 @@
 use crate::state::AppState;
+use crate::settings::{AppSettings, UpdateSettingsRequest};
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
 use redpen_core::hash::{hash_file, hash_string};
@@ -159,7 +160,7 @@ pub fn create_annotation(
         last_known_line: request.start_line,
     };
 
-    let author = state.author.lock().unwrap().clone();
+    let author = state.settings.lock().unwrap().author.clone();
     let annotation = Annotation::new(
         AnnotationKind::Comment,
         request.body,
@@ -214,17 +215,26 @@ pub fn delete_annotation(file_path: String, annotation_id: String) -> Result<(),
 
 #[tauri::command]
 pub fn update_settings(
-    author: Option<String>,
-    default_labels: Option<Vec<String>>,
+    request: UpdateSettingsRequest,
     state: State<'_, AppState>,
-) -> Result<(), String> {
-    if let Some(a) = author {
-        *state.author.lock().unwrap() = a;
+) -> Result<AppSettings, String> {
+    let updated_settings = {
+        let settings = state.settings.lock().unwrap();
+        let mut next_settings = settings.clone();
+        request.apply(&mut next_settings);
+        next_settings
+    };
+
+    updated_settings.save_to_path(&state.settings_path)?;
+
+    {
+        let mut settings = state.settings.lock().unwrap();
+        *settings = updated_settings.clone();
     }
-    if let Some(l) = default_labels {
-        *state.default_labels.lock().unwrap() = l;
-    }
-    Ok(())
+
+    state.workspace_index.refresh_all();
+
+    Ok(updated_settings)
 }
 
 #[tauri::command]
@@ -267,8 +277,6 @@ pub fn signal_review_done(file_path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> Result<(String, Vec<String>), String> {
-    let author = state.author.lock().unwrap().clone();
-    let labels = state.default_labels.lock().unwrap().clone();
-    Ok((author, labels))
+pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    Ok(state.settings.lock().unwrap().clone())
 }

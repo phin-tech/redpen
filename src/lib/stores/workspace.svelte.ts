@@ -1,11 +1,18 @@
 import { SvelteMap, SvelteSet } from "svelte/reactivity";
-import { readDirectory, getGitStatus } from "$lib/tauri";
-import type { FileEntry, GitFileStatus } from "$lib/types";
+import {
+  readDirectory,
+  getGitStatus,
+  getWorkspaceIndexStatus,
+  registerWorkspaceRoot,
+  unregisterWorkspaceRoot,
+} from "$lib/tauri";
+import type { FileEntry, GitFileStatus, WorkspaceIndexStatus } from "$lib/types";
 
 interface WorkspaceState {
   rootFolders: string[];
   fileTree: SvelteMap<string, FileEntry[]>;
   gitStatuses: SvelteMap<string, GitFileStatus[]>;
+  indexStatuses: SvelteMap<string, WorkspaceIndexStatus>;
   expandedFolders: SvelteSet<string>;
   showChangedOnly: boolean;
 }
@@ -14,6 +21,7 @@ let state = $state<WorkspaceState>({
   rootFolders: [],
   fileTree: new SvelteMap(),
   gitStatuses: new SvelteMap(),
+  indexStatuses: new SvelteMap(),
   expandedFolders: new SvelteSet(),
   showChangedOnly: false,
 });
@@ -22,17 +30,28 @@ export function getWorkspace() {
   return state;
 }
 
+export function resetWorkspaceForTests() {
+  state.rootFolders = [];
+  state.fileTree.clear();
+  state.gitStatuses.clear();
+  state.indexStatuses.clear();
+  state.expandedFolders.clear();
+  state.showChangedOnly = false;
+}
+
 export async function addRootFolder(path: string) {
   if (state.rootFolders.includes(path)) return;
+  await registerWorkspaceRoot(path);
   state.rootFolders = [...state.rootFolders, path];
-  await loadDirectory(path);
-  await loadGitStatus(path);
+  await Promise.all([loadDirectory(path), loadGitStatus(path), refreshWorkspaceIndexStatus([path])]);
 }
 
 export async function removeRootFolder(path: string) {
+  await unregisterWorkspaceRoot(path);
   state.rootFolders = state.rootFolders.filter((f) => f !== path);
   state.fileTree.delete(path);
   state.gitStatuses.delete(path);
+  state.indexStatuses.delete(path);
 }
 
 export async function loadDirectory(path: string) {
@@ -43,6 +62,27 @@ export async function loadDirectory(path: string) {
 export async function loadGitStatus(directory: string) {
   const statuses = await getGitStatus(directory);
   state.gitStatuses.set(directory, statuses);
+}
+
+export async function refreshWorkspaceIndexStatus(roots?: string[]) {
+  const statuses = await getWorkspaceIndexStatus(roots);
+  const requestedRoots = roots ? new Set(roots) : null;
+
+  if (requestedRoots) {
+    for (const root of requestedRoots) {
+      state.indexStatuses.delete(root);
+    }
+  } else {
+    state.indexStatuses.clear();
+  }
+
+  for (const status of statuses) {
+    state.indexStatuses.set(status.root, status);
+  }
+}
+
+export function getWorkspaceIndexStatusForRoot(root: string): WorkspaceIndexStatus | undefined {
+  return state.indexStatuses.get(root);
 }
 
 export function toggleFolder(path: string) {

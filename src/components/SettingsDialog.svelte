@@ -7,11 +7,16 @@
 
   let author = $state("");
   let defaultLabels = $state("");
+  let ignoredFolderNames = $state("");
+  const authorInputId = "settings-author";
+  const defaultLabelsInputId = "settings-default-labels";
+  const ignoredFoldersInputId = "settings-ignored-folders";
 
   onMount(async () => {
-    const [a, labels] = await getSettings();
-    author = a;
-    defaultLabels = labels.join(", ");
+    const settings = await getSettings();
+    author = settings.author;
+    defaultLabels = settings.defaultLabels.join(", ");
+    ignoredFolderNames = settings.ignoredFolderNames.join(", ");
   });
 
   async function save() {
@@ -19,7 +24,15 @@
       .split(",")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    await updateSettings(author, labels);
+    const ignoredFolders = ignoredFolderNames
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+    await updateSettings({
+      author,
+      defaultLabels: labels,
+      ignoredFolderNames: ignoredFolders,
+    });
     onClose();
   }
 
@@ -44,8 +57,9 @@
     <h3 class="text-base font-semibold text-text-primary">Settings</h3>
 
     <div class="flex flex-col gap-1.5">
-      <label class="text-xs text-text-secondary font-medium">Author name</label>
+      <label class="text-xs text-text-secondary font-medium" for={authorInputId}>Author name</label>
       <input
+        id={authorInputId}
         bind:value={author}
         class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
         style="box-shadow: var(--shadow-inset)"
@@ -53,10 +67,22 @@
     </div>
 
     <div class="flex flex-col gap-1.5">
-      <label class="text-xs text-text-secondary font-medium">Default labels (comma-separated)</label>
+      <label class="text-xs text-text-secondary font-medium" for={defaultLabelsInputId}>Default labels (comma-separated)</label>
       <input
+        id={defaultLabelsInputId}
         bind:value={defaultLabels}
         placeholder="todo, bug, question"
+        class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
+        style="box-shadow: var(--shadow-inset)"
+      />
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs text-text-secondary font-medium" for={ignoredFoldersInputId}>Ignored folders (comma-separated)</label>
+      <input
+        id={ignoredFoldersInputId}
+        bind:value={ignoredFolderNames}
+        placeholder=".git, node_modules, .venv"
         class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
         style="box-shadow: var(--shadow-inset)"
       />
