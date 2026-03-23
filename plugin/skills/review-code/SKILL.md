@@ -31,7 +31,7 @@ Open all changed code files in the Red Pen desktop app for human review, typical
      mkdir -p .redpen/signals && echo "approved" > .redpen/signals/push-approved
      ```
      Report approval. Code is ready to push.
-   - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes, commit them, then ask: "Changes applied and committed. Want to review again in Red Pen?"
+   - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes and reply to each annotation with `redpen annotate <file> --body "Done — <summary>" --reply-to <annotation-id>`. Commit the fixes. Only ask clarifying questions if feedback is genuinely unclear.
 
 ## Output Format
 
@@ -44,6 +44,7 @@ Open all changed code files in the Red Pen desktop app for human review, typical
       "file": "relative/path/to/file",
       "annotations": [
         {
+          "id": "annotation-uuid",
           "body": "reviewer comment",
           "anchor": {
             "range": { "startLine": 42 },

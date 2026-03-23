@@ -3,12 +3,14 @@
 
   let {
     annotation,
+    isReply = false,
     isSelected = false,
     onClick,
     onDoubleClick,
     onDelete,
   }: {
     annotation: Annotation;
+    isReply?: boolean;
     isSelected?: boolean;
     onClick: () => void;
     onDoubleClick: () => void;
@@ -18,6 +20,7 @@
 
 <div
   class="group px-3 py-2.5 my-1 cursor-pointer transition-all duration-150 border-l-[3px] rounded-md
+    {isReply ? 'ml-4' : ''}
     {isSelected ? 'bg-surface-selection border-l-accent annotation-card-selected' : 'border-l-border-default/60 hover:bg-surface-highlight/70 annotation-card'}
     {annotation.isOrphaned ? 'border-l-danger opacity-60' : ''}"
   onclick={onClick}
@@ -27,9 +30,13 @@
   onkeydown={(e) => e.key === "Enter" && onClick()}
 >
   <div class="flex items-center gap-2 mb-1.5">
-    <span class="text-xs text-text-secondary font-mono">
-      L{annotation.anchor.range.startLine}
-    </span>
+    {#if isReply}
+      <span class="text-xs text-text-muted">↳ reply</span>
+    {:else}
+      <span class="text-xs text-text-secondary font-mono">
+        L{annotation.anchor.range.startLine}
+      </span>
+    {/if}
     {#if annotation.isOrphaned}
       <span class="text-xs text-danger font-semibold uppercase tracking-wide">orphaned</span>
     {/if}

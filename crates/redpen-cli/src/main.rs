@@ -32,6 +32,9 @@ enum Commands {
         author: String,
         #[arg(long, default_value = "comment")]
         kind: String,
+        /// Reply to an existing annotation by ID (inherits parent's anchor)
+        #[arg(long)]
+        reply_to: Option<String>,
     },
     /// List all annotations as JSON
     List { file: PathBuf },
@@ -71,8 +74,8 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
-        Commands::Annotate { file, line, range, body, label, author, kind } => {
-            cmd_annotate(&file, line, range.as_deref(), &body, &label, &author, &kind)
+        Commands::Annotate { file, line, range, body, label, author, kind, reply_to } => {
+            cmd_annotate(&file, line, range.as_deref(), &body, &label, &author, &kind, reply_to.as_deref())
         }
         Commands::List { file } => cmd_list(&file),
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
@@ -139,8 +142,29 @@ fn load_or_create_sidecar(project_root: &Path, source_path: &Path) -> Result<Sid
 fn cmd_annotate(
     file: &Path, line: Option<u32>, range_str: Option<&str>,
     body: &str, labels: &[String], author: &str, kind: &str,
+    reply_to: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
+    let project_root = resolve_project_root(&abs_path);
+
+    // If replying, clone parent's anchor instead of building a new one
+    if let Some(parent_id) = reply_to {
+        let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
+        let parent = sidecar.get_annotation(parent_id)
+            .ok_or_else(|| format!("Annotation {} not found", parent_id))?;
+        let parent_anchor = parent.anchor.clone();
+        let start_line = parent.line();
+
+        let reply = Annotation::new_reply(
+            body.to_string(), author.to_string(), parent_id.to_string(), parent_anchor,
+        );
+        let id = reply.id.clone();
+        sidecar.add_annotation(reply);
+        sidecar.save_for_source(&project_root, &abs_path)?;
+        println!("Created reply {} to {} on line {}", id, parent_id, start_line);
+        return Ok(());
+    }
+
     let content = fs::read_to_string(&abs_path)?;
     let source_lines: Vec<&str> = content.lines().collect();
 
@@ -159,7 +183,6 @@ fn cmd_annotate(
     let end = (line_idx + 3).min(source_lines.len());
     let surrounding_lines: Vec<String> = source_lines[start..end].iter().map(|s| s.to_string()).collect();
 
-    // Range is Copy, so range.start_line works after moving range into the struct
     let start_line = range.start_line;
     let anchor = Anchor::TextContext {
         line_content: line_content.clone(),
@@ -173,7 +196,6 @@ fn cmd_annotate(
         parse_kind(kind)?, body.to_string(), labels.to_vec(), author.to_string(), anchor,
     );
 
-    let project_root = resolve_project_root(&abs_path);
     let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let id = annotation.id.clone();
     sidecar.add_annotation(annotation);

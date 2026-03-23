@@ -54,9 +54,38 @@ export function setFilter(filter: AnnotationFilter) {
 
 export function sortedAnnotations(): Annotation[] {
   if (!state.sidecar) return [];
-  let annotations = [...state.sidecar.annotations];
-  annotations.sort((a, b) => a.anchor.range.startLine - b.anchor.range.startLine);
-  return annotations;
+  const all = [...state.sidecar.annotations];
+  const roots = all.filter((a) => !a.replyTo);
+  const replies = all.filter((a) => a.replyTo);
+
+  // Group replies by parent ID, sorted by createdAt
+  const replyMap = new Map<string, Annotation[]>();
+  for (const r of replies) {
+    const group = replyMap.get(r.replyTo!) || [];
+    group.push(r);
+    replyMap.set(r.replyTo!, group);
+  }
+  for (const group of replyMap.values()) {
+    group.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  }
+
+  // Sort roots by line, then interleave replies after their parent
+  roots.sort((a, b) => a.anchor.range.startLine - b.anchor.range.startLine);
+  const result: Annotation[] = [];
+  for (const root of roots) {
+    result.push(root);
+    result.push(...(replyMap.get(root.id) || []));
+  }
+
+  // Orphan replies (parent deleted) go at end
+  const rootIds = new Set(roots.map((r) => r.id));
+  for (const r of replies) {
+    if (!rootIds.has(r.replyTo!)) {
+      result.push(r);
+    }
+  }
+
+  return result;
 }
 
 export function selectAnnotation(id: string | null) {

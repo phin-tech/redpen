@@ -43,13 +43,22 @@ Open files in the Red Pen desktop app for human review, block until the reviewer
 ## Annotation Format
 
 Each annotation in the output has:
+- `id` — unique annotation ID (use with `--reply-to` to reply)
 - `body` — the reviewer's comment (treat as an instruction)
 - `anchor.range.startLine` — line number in the file
 - `anchor.lineContent` — the exact line of code commented on
 - `labels` — any tags the reviewer applied
 
+## Replying to Annotations
+
+After implementing changes for an annotation, reply to acknowledge what was done:
+```bash
+redpen annotate <file> --body "Done — <brief summary>" --reply-to <annotation-id>
+```
+This creates a threaded reply visible in the Red Pen sidebar.
+
 ## Important
 
 - Always use `--wait --timeout 600` to avoid blocking indefinitely (10 minute timeout)
 - If the reviewer has no annotations and clicks Approve, the `files` array will be empty — this means approved
-- After implementing changes from a "changes_requested" verdict, ask: "Changes applied. Want to do another review pass in Red Pen?"
+- After implementing changes from a "changes_requested" verdict, reply to each annotation with what was done. Only ask clarifying questions if the feedback is genuinely unclear.

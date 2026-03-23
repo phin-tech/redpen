@@ -11,7 +11,9 @@ const mcp = new Server(
     instructions: `Events from the redpen channel contain code review annotations from a human reviewer using the Red Pen desktop app.
 
 Each event is a JSON array of annotations. Each annotation has:
+- "id": unique annotation ID (use with \`redpen annotate --reply-to <id>\` to reply)
 - "body": the reviewer's comment text
+- "replyTo": if present, this annotation is a reply to another annotation
 - "anchor.lineContent": the exact line of code/text they commented on
 - "anchor.range.startLine": the line number
 - "labels": any tags the reviewer applied
@@ -20,7 +22,8 @@ When you receive a redpen event:
 1. Parse the annotations JSON
 2. For each annotation, understand what the reviewer is saying about that specific line/section
 3. Act on the feedback — revise your plan, fix code, or respond to questions
-4. The "file_path" meta attribute tells you which file was reviewed`,
+4. Reply to each annotation: \`redpen annotate <file> --body "Done — <summary>" --reply-to <annotation-id>\`
+5. The "file_path" meta attribute tells you which file was reviewed`,
   }
 );
 

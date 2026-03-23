@@ -22,7 +22,7 @@ Open a plan or spec document in the Red Pen desktop app for human review before 
 
 3. **Parse and act on the verdict:**
    - **approved** — report approval. The plan is good to proceed with implementation.
-   - **changes_requested** — read each annotation's `body` as feedback on the plan. The `anchor.startLine` and `anchor.lineContent` indicate which section of the plan the feedback applies to. Revise the plan document accordingly, then ask: "Plan updated. Want to review again in Red Pen?"
+   - **changes_requested** — read each annotation's `body` as feedback on the plan. The `anchor.startLine` and `anchor.lineContent` indicate which section of the plan the feedback applies to. Revise the plan document and reply to each annotation with `redpen annotate <file> --body "Updated — <summary>" --reply-to <annotation-id>`. Only ask clarifying questions if feedback is genuinely unclear.
 
 ## Finding Plan Files
 

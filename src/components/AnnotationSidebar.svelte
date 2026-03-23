@@ -140,6 +140,7 @@
         {:else}
           <AnnotationCard
             {annotation}
+            isReply={!!annotation.replyTo}
             isSelected={annotationsState.selectedAnnotationId === annotation.id}
             onClick={() => handleClick(annotation.id, annotation.anchor.range.startLine)}
             onDoubleClick={() => handleDoubleClick(annotation.id, annotation.body)}

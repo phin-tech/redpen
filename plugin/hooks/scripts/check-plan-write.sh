@@ -10,7 +10,7 @@ fi
 
 # Check if this is a plan/spec markdown file
 case "$file_path" in
-  *docs/superpowers/specs/*.md)
+  *docs/superpowers/specs/*.md|*/.claude/plans/*.md)
     echo '{"systemMessage": "A plan/spec document was just written. Consider running /review-plan to get human review in Red Pen before proceeding with implementation."}'
     exit 0
     ;;

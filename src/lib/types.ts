@@ -24,6 +24,7 @@ export interface Annotation {
   labels: string[];
   author: string;
   isOrphaned: boolean;
+  replyTo: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   anchor: Anchor;

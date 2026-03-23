@@ -81,6 +81,8 @@ pub struct Annotation {
     pub labels: Vec<String>,
     pub author: String,
     pub is_orphaned: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
     #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
@@ -104,6 +106,28 @@ impl Annotation {
             labels,
             author,
             is_orphaned: false,
+            reply_to: None,
+            created_at: Some(now),
+            updated_at: Some(now),
+            anchor,
+        }
+    }
+
+    pub fn new_reply(
+        body: String,
+        author: String,
+        reply_to: String,
+        anchor: Anchor,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string().to_uppercase(),
+            kind: AnnotationKind::Comment,
+            body,
+            labels: vec![],
+            author,
+            is_orphaned: false,
+            reply_to: Some(reply_to),
             created_at: Some(now),
             updated_at: Some(now),
             anchor,
@@ -243,5 +267,62 @@ mod tests {
         };
         let a = Annotation::new(AnnotationKind::LineNote, "note".into(), vec![], "sam".into(), anchor);
         assert_eq!(a.line(), 42);
+    }
+
+    #[test]
+    fn test_reply_to_none_by_default() {
+        let anchor = Anchor::TextContext {
+            line_content: "test".to_string(),
+            surrounding_lines: vec![],
+            content_hash: "abc".to_string(),
+            range: Range { start_line: 1, start_column: 0, end_line: 1, end_column: 4 },
+            last_known_line: 1,
+        };
+        let a = Annotation::new(AnnotationKind::Comment, "note".into(), vec![], "sam".into(), anchor);
+        assert!(a.reply_to.is_none());
+        // Should not appear in JSON when None
+        let json = serde_json::to_string(&a).unwrap();
+        assert!(!json.contains("replyTo"));
+    }
+
+    #[test]
+    fn test_new_reply_sets_reply_to() {
+        let anchor = Anchor::TextContext {
+            line_content: "test".to_string(),
+            surrounding_lines: vec![],
+            content_hash: "abc".to_string(),
+            range: Range { start_line: 1, start_column: 0, end_line: 1, end_column: 4 },
+            last_known_line: 1,
+        };
+        let parent_id = "PARENT-1234".to_string();
+        let reply = Annotation::new_reply("I fixed this".into(), "agent".into(), parent_id.clone(), anchor);
+        assert_eq!(reply.reply_to, Some(parent_id));
+        assert_eq!(reply.kind, AnnotationKind::Comment);
+        // Should appear in JSON
+        let json = serde_json::to_string(&reply).unwrap();
+        assert!(json.contains("\"replyTo\":\"PARENT-1234\""));
+    }
+
+    #[test]
+    fn test_backward_compat_no_reply_to_field() {
+        // Old JSON without replyTo should deserialize fine
+        let json = r#"{
+            "id": "TEST-ID",
+            "kind": "comment",
+            "body": "old annotation",
+            "labels": [],
+            "author": "sam",
+            "isOrphaned": false,
+            "anchor": {
+                "type": "textContext",
+                "lineContent": "test",
+                "surroundingLines": [],
+                "contentHash": "abc",
+                "range": { "startLine": 1, "startColumn": 0, "endLine": 1, "endColumn": 4 },
+                "lastKnownLine": 1
+            }
+        }"#;
+        let a: Annotation = serde_json::from_str(json).unwrap();
+        assert!(a.reply_to.is_none());
     }
 }
