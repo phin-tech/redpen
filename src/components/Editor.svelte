@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
@@ -129,10 +129,12 @@
           }
         : undefined,
     });
-    // Re-apply search if open
-    if (showSearch && searchQuery) {
-      performSearch(searchQuery);
-    }
+    // Re-apply search after file change without tracking these as effect dependencies
+    untrack(() => {
+      if (showSearch && searchQuery) {
+        performSearch(searchQuery);
+      }
+    });
   }
 
   // Recreate view when file changes
