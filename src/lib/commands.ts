@@ -10,6 +10,8 @@ export interface AppCommandContext {
   toggleShowChangedOnly: () => void;
   hasRoots: () => boolean;
   canAddAnnotation: () => boolean;
+  isMarkdownFile: () => boolean;
+  toggleMarkdownPreview: () => void;
 }
 
 export interface AppCommandDefinition {
@@ -79,6 +81,15 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       shortcut: ["Cmd", "Return"],
       isEnabled: (context) => context.canAddAnnotation(),
       run: (context) => context.openAddAnnotation(),
+    },
+    {
+      id: "view.toggleMarkdownPreview",
+      title: "Toggle markdown preview",
+      section: "View",
+      keywords: ["markdown", "preview", "rendered", "md"],
+      shortcut: ["Cmd", "Shift", "M"],
+      isEnabled: (context) => context.isMarkdownFile(),
+      run: (context) => context.toggleMarkdownPreview(),
     },
     {
       id: "view.openSettings",

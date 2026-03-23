@@ -69,6 +69,8 @@ function createCommandContext(overrides: Partial<AppCommandContext> = {}): AppCo
     toggleShowChangedOnly: vi.fn(),
     hasRoots: () => true,
     canAddAnnotation: () => true,
+    isMarkdownFile: () => false,
+    toggleMarkdownPreview: vi.fn(),
     ...overrides,
   };
 }
