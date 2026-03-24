@@ -11,8 +11,9 @@ fi
 # Check if the command starts with or contains "git push" as an actual command
 # (not just in a string/message). Look for git push at the start or after && ; |
 if echo "$command" | grep -qE '(^|&&|\|\||;)\s*git push'; then
-  # Check if a review approval exists
-  approval_file="$CLAUDE_PROJECT_DIR/.redpen/signals/push-approved"
+  # Check if a review approval exists — use git toplevel so this works in worktrees too
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo "$CLAUDE_PROJECT_DIR")
+  approval_file="$repo_root/.redpen/signals/push-approved"
   if [ -f "$approval_file" ]; then
     # Consume the approval (one-time use)
     rm -f "$approval_file"
