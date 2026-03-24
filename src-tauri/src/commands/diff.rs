@@ -201,5 +201,61 @@ pub fn compute_diff(
 
 #[tauri::command]
 pub fn list_refs(directory: String) -> Result<RefList, String> {
-    todo!()
+    let repo = Repository::discover(&directory).map_err(|e| e.to_string())?;
+
+    // Collect branches
+    let branch_iter = repo
+        .branches(Some(git2::BranchType::Local))
+        .map_err(|e| e.to_string())?;
+
+    let mut branches: Vec<BranchInfo> = branch_iter
+        .filter_map(|b| b.ok())
+        .filter_map(|(branch, _)| {
+            let name = branch.name().ok()??.to_string();
+            let is_current = branch.is_head();
+            Some(BranchInfo { name, is_current })
+        })
+        .collect();
+
+    // Sort: current branch first, then alphabetical
+    branches.sort_by(|a, b| match (a.is_current, b.is_current) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
+    });
+
+    // Collect tags
+    let mut tags: Vec<String> = Vec::new();
+    repo.tag_foreach(|_oid, name| {
+        if let Ok(name_str) = std::str::from_utf8(name) {
+            let tag_name = name_str.strip_prefix("refs/tags/").unwrap_or(name_str);
+            tags.push(tag_name.to_string());
+        }
+        true
+    })
+    .map_err(|e| e.to_string())?;
+
+    // Collect recent commits from HEAD
+    let mut recent_commits: Vec<CommitInfo> = Vec::new();
+    if let Ok(mut revwalk) = repo.revwalk() {
+        let _ = revwalk.push_head();
+        for oid_result in revwalk.take(10) {
+            if let Ok(oid) = oid_result {
+                if let Ok(commit) = repo.find_commit(oid) {
+                    let sha = oid.to_string()[..7].to_string();
+                    let short_message = commit
+                        .summary()
+                        .unwrap_or("")
+                        .to_string();
+                    recent_commits.push(CommitInfo { sha, short_message });
+                }
+            }
+        }
+    }
+
+    Ok(RefList {
+        branches,
+        tags,
+        recent_commits,
+    })
 }
