@@ -57,18 +57,33 @@ tasks:
       - task: sign
 
   release:upload:
-    desc: "Upload the signed DMG to the GitHub release, creating it if needed"
+    desc: "Upload the signed DMG and CLI binary to the GitHub release"
     cmds:
       - |
-        VERSION=$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')
-        DMG="target/release/bundle/dmg/Red Pen_${VERSION}_aarch64.dmg"
+        VERSION=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
         TAG="v${VERSION}"
         if ! gh release view "$TAG" &>/dev/null; then
           gh release create "$TAG" --title "$TAG" --notes ""
           echo "Created release $TAG"
         fi
+
+        # Upload DMG
+        DMG="target/release/bundle/dmg/Red Pen_${VERSION}_aarch64.dmg"
         gh release upload "$TAG" "$DMG" --clobber
         echo "Uploaded $DMG to $TAG"
+
+        # Build and upload CLI binary tarball
+        cargo build --release -p redpen-cli
+        TARBALL="redpen-${VERSION}-aarch64-apple-darwin.tar.gz"
+        tar -czf "$TARBALL" -C target/release redpen
+        gh release upload "$TAG" "$TARBALL" --clobber
+        rm -f "$TARBALL"
+        echo "Uploaded $TARBALL to $TAG"
+
+  release:brew:
+    desc: "Update homebrew-tap with latest release"
+    cmds:
+      - ./scripts/update-homebrew-tap.sh
 
   release:
     desc: "Bump version, update all manifests, commit, tag, and push. Usage: task release BUMP=patch|minor|major"

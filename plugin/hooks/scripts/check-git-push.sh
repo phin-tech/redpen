@@ -20,7 +20,7 @@ if echo "$command" | grep -qE '(^|&&|\|\||;)\s*git push'; then
     exit 0
   fi
 
-  echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}' >&2
+  echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}'
   exit 2
 fi
 

@@ -1,6 +1,6 @@
 ---
 name: review-plan
-description: This skill should be used when the user says "/review-plan", "review the plan", "review the spec", "send plan to red pen", or wants a human to review a plan or spec document in the Red Pen desktop app before implementation begins.
+description: This skill should be used when the user says "/review-plan", "review the plan", "review the spec", "send plan to red pen", or wants a human to review a plan or spec document in the Red Pen desktop app before implementation begins. Also triggers when the plan-write hook blocks after writing a spec or plan file.
 allowed-tools: Bash, Read, Glob
 ---
 
@@ -21,7 +21,11 @@ Open a plan or spec document in the Red Pen desktop app for human review before 
    ```
 
 3. **Parse and act on the verdict:**
-   - **approved** — report approval. The plan is good to proceed with implementation.
+   - **approved** — create the plan review approval signal so the post-write hook allows proceeding:
+     ```bash
+     mkdir -p .redpen/signals && echo "approved" > .redpen/signals/plan-reviewed
+     ```
+     Report approval. The plan is good to proceed with implementation.
    - **changes_requested** — read each annotation's `body` as feedback on the plan. The `anchor.startLine` and `anchor.lineContent` indicate which section of the plan the feedback applies to. Revise the plan document and reply to each annotation with `redpen annotate <file> --body "Updated — <summary>" --reply-to <annotation-id>`. Only ask clarifying questions if feedback is genuinely unclear.
 
 ## Finding Plan Files
