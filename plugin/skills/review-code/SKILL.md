@@ -28,7 +28,8 @@ Open all changed code files in the Red Pen desktop app for human review, typical
 3. **Parse and act on the verdict:**
    - **approved** — create the push approval signal so the pre-push hook allows the next push:
      ```bash
-     mkdir -p .redpen/signals && echo "approved" > .redpen/signals/push-approved
+     repo_root=$(git rev-parse --show-toplevel)
+     mkdir -p "$repo_root/.redpen/signals" && echo "approved" > "$repo_root/.redpen/signals/push-approved"
      ```
      Report approval. Code is ready to push.
    - **changes_requested** — for each file's annotations, read the `body` as reviewer feedback on that specific line (`anchor.range.startLine`, `anchor.lineContent`). Implement the requested changes and reply to each annotation with `redpen annotate <file> --body "Done — <summary>" --reply-to <annotation-id>`. Commit the fixes. Only ask clarifying questions if feedback is genuinely unclear.
