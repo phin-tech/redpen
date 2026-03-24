@@ -1,9 +1,13 @@
 {
-  "schema_version": "1.0",
+  "name": "phin-tech-redpen",
+  "owner": {
+    "name": "Phin Tech"
+  },
   "plugins": [
     {
       "name": "redpen-review",
-      "path": "plugin"
+      "source": "./plugin",
+      "description": "Human-in-the-loop code and plan review using the Red Pen desktop app"
     }
   ]
 }
