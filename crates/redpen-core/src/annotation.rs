@@ -1,5 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use chrono::{DateTime, Utc};
+use ts_rs::TS;
 use uuid::Uuid;
 
 /// Deserializes datetime from either ISO 8601 string or millisecond timestamp.
@@ -42,16 +43,18 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub enum AnnotationKind {
     Comment,
     LineNote,
     Label,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct Range {
     pub start_line: u32,
     pub start_column: u32,
@@ -59,8 +62,9 @@ pub struct Range {
     pub end_column: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub enum Anchor {
     #[serde(rename_all = "camelCase")]
     TextContext {
@@ -72,8 +76,9 @@ pub enum Anchor {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct Annotation {
     pub id: String,
     pub kind: AnnotationKind,

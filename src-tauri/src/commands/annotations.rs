@@ -8,8 +8,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct CreateAnnotationRequest {
     pub file_path: String,
     pub body: String,
@@ -63,8 +64,9 @@ pub fn get_annotations(file_path: String) -> Result<SidecarFile, String> {
     load_sidecar_for_file(&project_root, source_path)
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct FileAnnotations {
     pub file_path: String,
     pub file_name: String,

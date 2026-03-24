@@ -1,6 +1,24 @@
 version: "3"
 
 tasks:
+  generate:bindings:
+    desc: "Generate TypeScript bindings from Rust types via ts-rs"
+    sources:
+      - crates/redpen-core/src/**/*.rs
+      - src-tauri/src/**/*.rs
+      - crates/redpen-core/Cargo.toml
+      - src-tauri/Cargo.toml
+    generates:
+      - src/lib/bindings/*.ts
+    cmds:
+      - cargo test --workspace -- export_bindings
+
+  check:bindings:
+    desc: "Check that generated TypeScript bindings are up-to-date"
+    cmds:
+      - task: generate:bindings
+      - git diff --exit-code src/lib/bindings/ || (echo "Bindings are stale. Run 'task generate:bindings' and commit." && exit 1)
+
   dev:
     desc: "Run Tauri in development mode"
     cmds:
@@ -11,6 +29,7 @@ tasks:
     cmds:
       - bun install
       - cargo check --workspace
+      - task: generate:bindings
 
   dev:install:
     desc: "Build and install the desktop app and CLI locally"

@@ -8,8 +8,9 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::State;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct FileEntry {
     pub name: String,
     pub path: String,
