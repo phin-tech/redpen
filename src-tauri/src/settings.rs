@@ -13,6 +13,12 @@ pub struct AppSettings {
     pub default_labels: Vec<String>,
     #[serde(default)]
     pub ignored_folder_names: Vec<String>,
+    #[serde(default = "default_diff_algorithm")]
+    pub diff_algorithm: String,
+}
+
+fn default_diff_algorithm() -> String {
+    "patience".to_string()
 }
 
 impl Default for AppSettings {
@@ -21,6 +27,7 @@ impl Default for AppSettings {
             author: whoami::username(),
             default_labels: Vec::new(),
             ignored_folder_names: Vec::new(),
+            diff_algorithm: default_diff_algorithm(),
         }
     }
 }
@@ -31,6 +38,7 @@ pub struct UpdateSettingsRequest {
     pub author: Option<String>,
     pub default_labels: Option<Vec<String>>,
     pub ignored_folder_names: Option<Vec<String>>,
+    pub diff_algorithm: Option<String>,
 }
 
 impl UpdateSettingsRequest {
@@ -43,6 +51,9 @@ impl UpdateSettingsRequest {
         }
         if let Some(ignored_folder_names) = self.ignored_folder_names {
             settings.ignored_folder_names = normalize_ignored_folder_names(ignored_folder_names);
+        }
+        if let Some(diff_algorithm) = self.diff_algorithm {
+            settings.diff_algorithm = diff_algorithm;
         }
     }
 }
@@ -130,6 +141,7 @@ mod tests {
             author: "sam".to_string(),
             default_labels: vec!["todo".to_string(), "bug".to_string()],
             ignored_folder_names: vec!["node_modules".to_string(), ".venv".to_string()],
+            diff_algorithm: "patience".to_string(),
         };
 
         settings.save_to_path(&path).unwrap();
@@ -151,6 +163,7 @@ mod tests {
                 " .venv ".to_string(),
                 "".to_string(),
             ]),
+            diff_algorithm: None,
         }
         .apply(&mut settings);
 
