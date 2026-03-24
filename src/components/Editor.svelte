@@ -1,10 +1,13 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
   import { EditorView } from "@codemirror/view";
+  import { Compartment, StateEffect } from "@codemirror/state";
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
   import { setSearchEffect } from "$lib/codemirror/search";
   import { getEditor, getFileExtension } from "$lib/stores/editor.svelte";
+  import { getDiffState } from "$lib/stores/diff.svelte";
+  import { highlightsModeExtensions } from "$lib/codemirror/diff";
   import { sortedAnnotations } from "$lib/stores/annotations.svelte";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
@@ -27,6 +30,8 @@
   let searchInput: HTMLInputElement;
 
   const editor = getEditor();
+  const diff = getDiffState();
+  const diffCompartment = new Compartment();
 
   function scrollToLine(line: number) {
     if (!view) return;
@@ -131,6 +136,10 @@
           }
         : undefined,
     });
+    // Add diff compartment to the editor state (initially empty)
+    view.dispatch({
+      effects: StateEffect.appendConfig.of(diffCompartment.of([])),
+    });
     // Re-apply search after file change without tracking these as effect dependencies
     untrack(() => {
       if (showSearch && searchQuery) {
@@ -152,6 +161,20 @@
     if (view) {
       view.dispatch({
         effects: setAnnotationsEffect.of(annotations),
+      });
+    }
+  });
+
+  // Highlights mode: add/remove diff decorations
+  $effect(() => {
+    if (!view) return;
+    if (diff.enabled && diff.mode === "highlights" && diff.diffResult) {
+      view.dispatch({
+        effects: diffCompartment.reconfigure(highlightsModeExtensions(diff.diffResult)),
+      });
+    } else {
+      view.dispatch({
+        effects: diffCompartment.reconfigure([]),
       });
     }
   });

@@ -20,6 +20,7 @@
   } from "$lib/stores/workspace.svelte";
   import { createCommandRegistry, findCommand } from "$lib/commands";
   import type { AppCommandContext } from "$lib/commands";
+  import { getDiffState, enterDiff, exitDiff, setDiffMode, computeDiff } from "$lib/stores/diff.svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { listen } from "@tauri-apps/api/event";
@@ -31,6 +32,8 @@
   const editor = getEditor();
   const workspace = getWorkspace();
   const commands = createCommandRegistry();
+  const diff = getDiffState();
+  let savedLeftPanelWidth = $state(240);
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined = $state(undefined);
@@ -239,7 +242,38 @@
     },
     isMarkdownFile,
     toggleMarkdownPreview: togglePreview,
+    enterDiffMode: (mode) => {
+      if (editor.currentFilePath && workspace.rootFolders.length > 0) {
+        setDiffMode(mode);
+        if (!diff.enabled) {
+          enterDiff(workspace.rootFolders[0], editor.currentFilePath);
+        }
+      }
+    },
+    exitDiffMode: () => exitDiff(),
+    hasDiffMode: () => diff.enabled,
+    hasOpenFile: () => Boolean(editor.currentFilePath),
   };
+
+  // Auto-collapse file tree in split mode
+  $effect(() => {
+    if (diff.enabled && diff.mode === "split") {
+      savedLeftPanelWidth = leftPanelWidth;
+      leftPanelWidth = 0;
+    } else if (!diff.enabled || diff.mode !== "split") {
+      if (leftPanelWidth === 0 && savedLeftPanelWidth > 0) {
+        leftPanelWidth = savedLeftPanelWidth;
+      }
+    }
+  });
+
+  // Re-diff when switching files while diff mode is active
+  $effect(() => {
+    const filePath = editor.currentFilePath;
+    if (diff.enabled && filePath && workspace.rootFolders.length > 0) {
+      computeDiff(workspace.rootFolders[0], filePath);
+    }
+  });
 
   async function runCommand(id: string) {
     const command = findCommand(commands, id);
