@@ -93,3 +93,11 @@ export async function updateSettings(
 export async function getSettings(): Promise<AppSettings> {
   return invoke("get_settings");
 }
+
+export async function sendNotification(
+  kind: string,
+  fileName: string,
+  line?: number
+): Promise<void> {
+  return invoke("send_notification", { kind, fileName, line });
+}

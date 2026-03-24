@@ -8,6 +8,10 @@
   let author = $state("");
   let defaultLabels = $state("");
   let ignoredFolderNames = $state("");
+  let notifyAnnotationReply = $state(true);
+  let notifyReviewComplete = $state(true);
+  let notifyNewAnnotation = $state(false);
+  let notifyDeepLink = $state(true);
   const authorInputId = "settings-author";
   const defaultLabelsInputId = "settings-default-labels";
   const ignoredFoldersInputId = "settings-ignored-folders";
@@ -17,6 +21,12 @@
     author = settings.author;
     defaultLabels = settings.defaultLabels.join(", ");
     ignoredFolderNames = settings.ignoredFolderNames.join(", ");
+    if (settings.notifications) {
+      notifyAnnotationReply = settings.notifications.annotationReply;
+      notifyReviewComplete = settings.notifications.reviewComplete;
+      notifyNewAnnotation = settings.notifications.newAnnotation;
+      notifyDeepLink = settings.notifications.deepLink;
+    }
   });
 
   async function save() {
@@ -32,6 +42,12 @@
       author,
       defaultLabels: labels,
       ignoredFolderNames: ignoredFolders,
+      notifications: {
+        annotationReply: notifyAnnotationReply,
+        reviewComplete: notifyReviewComplete,
+        newAnnotation: notifyNewAnnotation,
+        deepLink: notifyDeepLink,
+      },
     });
     onClose();
   }
@@ -86,6 +102,34 @@
         class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
         style="box-shadow: var(--shadow-inset)"
       />
+    </div>
+
+    <div class="flex flex-col gap-2 pt-2 border-t border-border-default/40">
+      <span class="text-xs text-text-secondary font-medium">Notifications</span>
+
+      <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+        <input type="checkbox" bind:checked={notifyAnnotationReply}
+          class="accent-accent rounded" />
+        Agent replied to annotation
+      </label>
+
+      <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+        <input type="checkbox" bind:checked={notifyReviewComplete}
+          class="accent-accent rounded" />
+        Review complete
+      </label>
+
+      <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+        <input type="checkbox" bind:checked={notifyNewAnnotation}
+          class="accent-accent rounded" />
+        New annotation on file
+      </label>
+
+      <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+        <input type="checkbox" bind:checked={notifyDeepLink}
+          class="accent-accent rounded" />
+        Deep link received
+      </label>
     </div>
 
     <div class="flex justify-end gap-2 mt-1">

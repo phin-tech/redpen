@@ -23,11 +23,23 @@ describe("SettingsDialog", () => {
       author: "sam",
       defaultLabels: ["todo", "bug"],
       ignoredFolderNames: ["node_modules", ".venv"],
+      notifications: {
+        annotationReply: true,
+        reviewComplete: true,
+        newAnnotation: false,
+        deepLink: true,
+      },
     });
     updateSettingsMock.mockResolvedValue({
       author: "samwise",
       defaultLabels: ["todo", "question"],
       ignoredFolderNames: ["node_modules", "dist"],
+      notifications: {
+        annotationReply: true,
+        reviewComplete: true,
+        newAnnotation: false,
+        deepLink: true,
+      },
     });
 
     const onClose = vi.fn();
@@ -55,6 +67,12 @@ describe("SettingsDialog", () => {
         author: "samwise",
         defaultLabels: ["todo", "question"],
         ignoredFolderNames: ["node_modules", "dist"],
+        notifications: {
+          annotationReply: true,
+          reviewComplete: true,
+          newAnnotation: false,
+          deepLink: true,
+        },
       });
       expect(onClose).toHaveBeenCalled();
     });

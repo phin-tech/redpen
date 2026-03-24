@@ -7,7 +7,7 @@
   import CommandPalette from "./components/CommandPalette.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
-  import { readDirectory } from "$lib/tauri";
+  import { readDirectory, sendNotification, getSettings } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
   import { addReviewFile } from "$lib/stores/review.svelte";
@@ -72,10 +72,35 @@
 
     // Set up file watcher for source change detection
     stopWatcher?.();
+    let lastAnnotationIds = new Set(
+      getAnnotationsState().sidecar?.annotations.map(a => a.id) ?? []
+    );
     const reloadFile = debounce(async () => {
       if (editor.currentFilePath) {
         await openFile(editor.currentFilePath);
         await loadAnnotations(editor.currentFilePath);
+
+        // Detect new annotations from other authors
+        const state = getAnnotationsState();
+        const currentSettings = await getSettings();
+        const currentAuthor = currentSettings.author;
+        const newAnnotations = (state.sidecar?.annotations ?? []).filter(
+          a => !lastAnnotationIds.has(a.id) && a.author !== currentAuthor
+        );
+        lastAnnotationIds = new Set(
+          state.sidecar?.annotations.map(a => a.id) ?? []
+        );
+
+        // No extra debounce needed — reloadFile is already debounced at 500ms,
+        // so burst file-watch events are collapsed into a single detection pass.
+        if (newAnnotations.length > 0) {
+          const fileName = editor.currentFilePath.split("/").pop() ?? "unknown";
+          for (const ann of newAnnotations) {
+            const kind = ann.replyTo ? "annotation_reply" : "new_annotation";
+            const line = ann.anchor?.range?.startLine;
+            sendNotification(kind, fileName, line).catch(() => {});
+          }
+        }
       }
     }, 500);
     stopWatcher = await watch(path, reloadFile, { recursive: false });
