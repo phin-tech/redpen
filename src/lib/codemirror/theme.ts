@@ -72,4 +72,20 @@ export const redPenTheme = EditorView.theme({
     backgroundColor: "rgba(251, 191, 36, 0.45)",
     borderBottom: "2px solid rgba(251, 191, 36, 0.9)",
   },
+  // Diff highlights
+  ".rp-diff-added": {
+    backgroundColor: "rgba(63, 185, 80, 0.15)",
+  },
+  ".rp-diff-added .cm-gutterElement": {
+    color: "#7ee787",
+  },
+  ".rp-diff-removed": {
+    backgroundColor: "rgba(248, 81, 73, 0.15)",
+  },
+  ".rp-diff-removed .cm-gutterElement": {
+    color: "#ffa198",
+  },
+  ".rp-diff-ghost": {
+    backgroundColor: "rgba(110, 118, 129, 0.05)",
+  },
 });
