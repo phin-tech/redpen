@@ -7,3 +7,10 @@ dist/
 .claude/settings.local.json
 .superpowers/
 .env*
+
+# Signing certificates and keys
+*.crt
+*.csr
+*.key
+*.p12
+*.cer
