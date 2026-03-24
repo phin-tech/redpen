@@ -1,3 +1,4 @@
+use crate::notification::{NotificationKind, NotificationService};
 use crate::state::AppState;
 use crate::settings::{AppSettings, UpdateSettingsRequest};
 use redpen_core::anchor::reanchor_annotations;
@@ -248,7 +249,12 @@ pub fn update_settings(
 }
 
 #[tauri::command]
-pub fn signal_review_done(file_path: String, verdict: Option<String>) -> Result<(), String> {
+pub fn signal_review_done(
+    file_path: String,
+    verdict: Option<String>,
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
 
@@ -263,6 +269,17 @@ pub fn signal_review_done(file_path: String, verdict: Option<String>) -> Result<
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(&signal_path, signal_content).map_err(|e| e.to_string())?;
+
+    // Fire OS notification for review complete
+    let settings = state.settings.lock().unwrap();
+    let service = NotificationService::new(app_handle);
+    let _ = service.send(
+        NotificationKind::ReviewComplete,
+        "Review complete",
+        &format!("Verdict: {}", verdict_str),
+        &settings,
+    );
+    drop(settings);
 
     // Also POST annotations to the redpen channel (if running)
     let sidecar = load_sidecar_for_file(&project_root, source_path)?;
@@ -289,6 +306,29 @@ pub fn signal_review_done(file_path: String, verdict: Option<String>) -> Result<
     });
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn send_notification(
+    kind: String,
+    file_name: String,
+    line: Option<u32>,
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let notification_kind = match kind.as_str() {
+        "annotation_reply" => NotificationKind::AnnotationReply,
+        "review_complete" => NotificationKind::ReviewComplete,
+        "new_annotation" => NotificationKind::NewAnnotation,
+        "deep_link" => NotificationKind::DeepLink,
+        _ => return Err(format!("Unknown notification kind: {}", kind)),
+    };
+
+    let (title, body) = notification_kind.default_title_body(&file_name, line);
+
+    let settings = state.settings.lock().unwrap();
+    let service = NotificationService::new(app_handle);
+    service.send(notification_kind, &title, &body, &settings)
 }
 
 #[tauri::command]

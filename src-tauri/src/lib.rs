@@ -42,6 +42,7 @@ pub fn run() {
             commands::annotations::update_settings,
             commands::annotations::get_settings,
             commands::annotations::signal_review_done,
+            commands::annotations::send_notification,
             commands::git::get_git_root,
             commands::git::get_git_status,
             commands::export::export_annotations,
