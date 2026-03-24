@@ -109,4 +109,15 @@ mod tests {
         assert!(!settings.is_enabled(NotificationKind::NewAnnotation));
         assert!(settings.is_enabled(NotificationKind::DeepLink));
     }
+
+    #[test]
+    fn parse_notify_url() {
+        let url = url::Url::parse("redpen://notify?kind=annotation_reply&file=%2Ftmp%2Fmain.rs&line=42").unwrap();
+        assert_eq!(url.host_str(), Some("notify"));
+        let params: std::collections::HashMap<String, String> =
+            url.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        assert_eq!(params.get("kind").map(|s| s.as_str()), Some("annotation_reply"));
+        assert_eq!(params.get("file").map(|s| s.as_str()), Some("/tmp/main.rs"));
+        assert_eq!(params.get("line").map(|s| s.as_str()), Some("42"));
+    }
 }

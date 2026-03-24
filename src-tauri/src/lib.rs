@@ -4,10 +4,12 @@ mod state;
 mod workspace_index;
 mod notification;
 
+use notification::{NotificationKind, NotificationService};
 use state::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use url::Url;
 
 #[tauri::command]
 fn get_pending_deep_links(state: tauri::State<AppState>) -> Vec<String> {
@@ -101,11 +103,62 @@ pub fn run() {
                 }
             });
 
+            let notification_service = NotificationService::new(app.handle().clone());
+
             // Handle deep links received while app is running (warm start)
             let handle = app.handle().clone();
+            let state_for_links = app.state::<AppState>();
+            let settings_for_links = state_for_links.settings.clone();
             app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    let _ = handle.emit("deep-link-open", url.to_string());
+                for raw_url in event.urls() {
+                    let url_str = raw_url.to_string();
+                    if let Ok(parsed) = Url::parse(&url_str) {
+                        match parsed.host_str() {
+                            Some("notify") => {
+                                let params: std::collections::HashMap<String, String> =
+                                    parsed.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+                                let kind_str = params.get("kind").map(|s| s.as_str()).unwrap_or("");
+                                let file = params.get("file");
+                                let line = params.get("line");
+
+                                let kind = match kind_str {
+                                    "annotation_reply" => Some(NotificationKind::AnnotationReply),
+                                    "review_complete" => Some(NotificationKind::ReviewComplete),
+                                    "new_annotation" => Some(NotificationKind::NewAnnotation),
+                                    // "deep_link" is not handled here by design — DeepLink
+                                    // notifications are fired in the default branch below
+                                    _ => None,
+                                };
+
+                                if let Some(kind) = kind {
+                                    let settings = settings_for_links.lock().unwrap();
+                                    let file_name = file
+                                        .and_then(|f| f.rsplit('/').next().map(|s| s.to_string()))
+                                        .unwrap_or_else(|| "unknown".to_string());
+                                    let line_num = line.and_then(|l| l.parse::<u32>().ok());
+                                    let (title, body) = kind.default_title_body(&file_name, line_num);
+                                    let _ = notification_service.send(kind, &title, &body, &settings);
+                                }
+
+                                // Emit refresh first so annotations reload, then navigate
+                                if let Some(file) = file {
+                                    let refresh_url = format!("redpen://refresh?file={}", file);
+                                    let _ = handle.emit("deep-link-open", refresh_url);
+                                    let mut nav_url = format!("redpen://open?file={}", file);
+                                    if let Some(line) = line {
+                                        nav_url.push_str(&format!("&line={}", line));
+                                    }
+                                    let _ = handle.emit("deep-link-open", nav_url);
+                                }
+                            }
+                            _ => {
+                                // Existing behavior for open, refresh, etc.
+                                let _ = handle.emit("deep-link-open", url_str);
+                            }
+                        }
+                    } else {
+                        let _ = handle.emit("deep-link-open", url_str);
+                    }
                 }
             });
 
