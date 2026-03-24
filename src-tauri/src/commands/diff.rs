@@ -1,4 +1,7 @@
+use git2::Repository;
 use serde::Serialize;
+use similar::{Algorithm, ChangeTag, TextDiff};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +62,46 @@ pub struct CommitInfo {
     pub short_message: String,
 }
 
+fn get_file_at_ref(repo: &Repository, file_path: &str, git_ref: &str) -> Result<String, String> {
+    if git_ref == "working-tree" {
+        let workdir = repo.workdir().ok_or("bare repository has no working directory")?;
+        let full_path = workdir.join(file_path);
+        return std::fs::read_to_string(&full_path)
+            .map_err(|e| format!("failed to read working tree file: {}", e));
+    }
+
+    let commit = if git_ref == "HEAD" {
+        let head = repo.head().map_err(|e| e.to_string())?;
+        head.peel_to_commit().map_err(|e| e.to_string())?
+    } else {
+        // Try local branch first
+        if let Ok(branch) = repo.find_branch(git_ref, git2::BranchType::Local) {
+            branch
+                .get()
+                .peel_to_commit()
+                .map_err(|e| e.to_string())?
+        } else if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", git_ref)) {
+            reference.peel_to_commit().map_err(|e| e.to_string())?
+        } else if let Ok(reference) = repo.find_reference(&format!("refs/heads/{}", git_ref)) {
+            reference.peel_to_commit().map_err(|e| e.to_string())?
+        } else {
+            // Try as raw SHA
+            let oid = git2::Oid::from_str(git_ref).map_err(|e| e.to_string())?;
+            repo.find_commit(oid).map_err(|e| e.to_string())?
+        }
+    };
+
+    let tree = commit.tree().map_err(|e| e.to_string())?;
+    let entry = tree
+        .get_path(Path::new(file_path))
+        .map_err(|e| format!("file not found at ref {}: {}", git_ref, e))?;
+    let object = entry.to_object(repo).map_err(|e| e.to_string())?;
+    let blob = object.as_blob().ok_or("not a blob")?;
+    std::str::from_utf8(blob.content())
+        .map(|s| s.to_string())
+        .map_err(|e| format!("file is not valid UTF-8: {}", e))
+}
+
 #[tauri::command]
 pub fn compute_diff(
     directory: String,
@@ -67,7 +110,93 @@ pub fn compute_diff(
     target_ref: String,
     algorithm: String,
 ) -> Result<DiffResult, String> {
-    todo!()
+    let repo = Repository::discover(&directory).map_err(|e| e.to_string())?;
+
+    // Resolve file_path relative to repo root
+    let workdir = repo.workdir().ok_or("bare repository has no working directory")?;
+    let abs_file = Path::new(&directory).join(&file_path);
+    let rel_file = if abs_file.starts_with(workdir) {
+        abs_file
+            .strip_prefix(workdir)
+            .map_err(|e| e.to_string())?
+            .to_string_lossy()
+            .to_string()
+    } else {
+        file_path.clone()
+    };
+
+    let old_content = get_file_at_ref(&repo, &rel_file, &base_ref).unwrap_or_default();
+    let new_content = get_file_at_ref(&repo, &rel_file, &target_ref).unwrap_or_default();
+
+    let algo = if algorithm == "myers" {
+        Algorithm::Myers
+    } else {
+        Algorithm::Patience
+    };
+
+    let diff = TextDiff::configure()
+        .algorithm(algo)
+        .diff_lines(&old_content, &new_content);
+
+    let mut hunks: Vec<DiffHunk> = Vec::new();
+
+    for group in diff.grouped_ops(3) {
+        let mut changes: Vec<DiffChange> = Vec::new();
+        let mut old_start = u32::MAX;
+        let mut old_end = 0u32;
+        let mut new_start = u32::MAX;
+        let mut new_end = 0u32;
+
+        for op in &group {
+            for change in diff.iter_changes(op) {
+                let tag = change.tag();
+                let old_idx = change.old_index().map(|i| i as u32 + 1);
+                let new_idx = change.new_index().map(|i| i as u32 + 1);
+
+                if let Some(ol) = old_idx {
+                    if ol < old_start { old_start = ol; }
+                    if ol > old_end { old_end = ol; }
+                }
+                if let Some(nl) = new_idx {
+                    if nl < new_start { new_start = nl; }
+                    if nl > new_end { new_end = nl; }
+                }
+
+                let kind = match tag {
+                    ChangeTag::Equal => ChangeKind::Equal,
+                    ChangeTag::Insert => ChangeKind::Insert,
+                    ChangeTag::Delete => ChangeKind::Delete,
+                };
+                changes.push(DiffChange {
+                    kind,
+                    old_line: old_idx,
+                    new_line: new_idx,
+                    content: change.value().to_string(),
+                });
+            }
+        }
+
+        let old_start_final = if old_start == u32::MAX { 1 } else { old_start };
+        let new_start_final = if new_start == u32::MAX { 1 } else { new_start };
+        let old_count = if old_end >= old_start_final { old_end - old_start_final + 1 } else { 0 };
+        let new_count = if new_end >= new_start_final { new_end - new_start_final + 1 } else { 0 };
+
+        hunks.push(DiffHunk {
+            old_start: old_start_final,
+            old_count,
+            new_start: new_start_final,
+            new_count,
+            changes,
+        });
+    }
+
+    Ok(DiffResult {
+        base_ref,
+        target_ref,
+        hunks,
+        old_content,
+        new_content,
+    })
 }
 
 #[tauri::command]
