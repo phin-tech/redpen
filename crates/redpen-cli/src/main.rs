@@ -161,7 +161,7 @@ fn cmd_annotate(
         let id = reply.id.clone();
         sidecar.add_annotation(reply);
         sidecar.save_for_source(&project_root, &abs_path)?;
-        notify_app_refresh(&abs_path);
+        notify_app("annotation_reply", &abs_path, Some(start_line));
         println!("Created reply {} to {} on line {}", id, parent_id, start_line);
         return Ok(());
     }
@@ -210,6 +210,24 @@ fn cmd_annotate(
 /// Send a refresh deep link to the desktop app so it reloads annotations
 fn notify_app_refresh(file_path: &Path) {
     let url = format!("redpen://refresh?file={}", urlencoding::encode(&file_path.to_string_lossy()));
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&url).spawn();
+    }
+}
+
+/// Send a notification deep link to the desktop app.
+/// The app's notify handler will fire the OS notification, refresh annotations,
+/// and navigate to the file — so this replaces the need for a separate refresh call.
+fn notify_app(kind: &str, file_path: &Path, line: Option<u32>) {
+    let mut url = format!(
+        "redpen://notify?kind={}&file={}",
+        kind,
+        urlencoding::encode(&file_path.to_string_lossy())
+    );
+    if let Some(l) = line {
+        url.push_str(&format!("&line={}", l));
+    }
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&url).spawn();

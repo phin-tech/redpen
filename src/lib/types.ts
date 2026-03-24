@@ -55,11 +55,19 @@ export interface GitFileStatus {
   status: string;
 }
 
+export interface NotificationSettings {
+  annotationReply: boolean;
+  reviewComplete: boolean;
+  newAnnotation: boolean;
+  deepLink: boolean;
+}
+
 export interface AppSettings {
   author: string;
   defaultLabels: string[];
   ignoredFolderNames: string[];
   diffAlgorithm: "patience" | "myers";
+  notifications: NotificationSettings;
 }
 
 export type WorkspaceIndexState = "indexing" | "ready" | "stale" | "error";

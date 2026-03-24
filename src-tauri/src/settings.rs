@@ -7,6 +7,26 @@ pub const SETTINGS_FILE_NAME: &str = "settings.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    pub annotation_reply: bool,
+    pub review_complete: bool,
+    pub new_annotation: bool,
+    pub deep_link: bool,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self {
+            annotation_reply: true,
+            review_complete: true,
+            new_annotation: false,
+            deep_link: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub author: String,
     #[serde(default)]
@@ -15,6 +35,8 @@ pub struct AppSettings {
     pub ignored_folder_names: Vec<String>,
     #[serde(default = "default_diff_algorithm")]
     pub diff_algorithm: String,
+    #[serde(default)]
+    pub notifications: NotificationSettings,
 }
 
 fn default_diff_algorithm() -> String {
@@ -28,6 +50,7 @@ impl Default for AppSettings {
             default_labels: Vec::new(),
             ignored_folder_names: Vec::new(),
             diff_algorithm: default_diff_algorithm(),
+            notifications: NotificationSettings::default(),
         }
     }
 }
@@ -39,6 +62,7 @@ pub struct UpdateSettingsRequest {
     pub default_labels: Option<Vec<String>>,
     pub ignored_folder_names: Option<Vec<String>>,
     pub diff_algorithm: Option<String>,
+    pub notifications: Option<NotificationSettings>,
 }
 
 impl UpdateSettingsRequest {
@@ -54,6 +78,9 @@ impl UpdateSettingsRequest {
         }
         if let Some(diff_algorithm) = self.diff_algorithm {
             settings.diff_algorithm = diff_algorithm;
+        }
+        if let Some(notifications) = self.notifications {
+            settings.notifications = notifications;
         }
     }
 }
@@ -116,7 +143,7 @@ pub fn normalize_ignored_folder_names(names: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{settings_path, AppSettings, UpdateSettingsRequest, CONFIG_DIRECTORY};
+    use super::{settings_path, AppSettings, NotificationSettings, UpdateSettingsRequest, CONFIG_DIRECTORY};
     use std::path::PathBuf;
     use tempfile::tempdir;
 
@@ -141,7 +168,7 @@ mod tests {
             author: "sam".to_string(),
             default_labels: vec!["todo".to_string(), "bug".to_string()],
             ignored_folder_names: vec!["node_modules".to_string(), ".venv".to_string()],
-            diff_algorithm: "patience".to_string(),
+            ..AppSettings::default()
         };
 
         settings.save_to_path(&path).unwrap();
@@ -164,6 +191,7 @@ mod tests {
                 "".to_string(),
             ]),
             diff_algorithm: None,
+            notifications: None,
         }
         .apply(&mut settings);
 
@@ -179,5 +207,52 @@ mod tests {
         let suffix = PathBuf::from(CONFIG_DIRECTORY).join("settings.json");
 
         assert!(path.ends_with(suffix));
+    }
+
+    #[test]
+    fn notification_settings_serde_roundtrip() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+
+        let settings = AppSettings {
+            author: "sam".to_string(),
+            default_labels: vec![],
+            ignored_folder_names: vec![],
+            notifications: NotificationSettings {
+                annotation_reply: false,
+                review_complete: true,
+                new_annotation: true,
+                deep_link: false,
+            },
+            ..AppSettings::default()
+        };
+
+        settings.save_to_path(&path).unwrap();
+        let reloaded = AppSettings::load_or_default(&path).unwrap();
+        assert_eq!(reloaded.notifications, settings.notifications);
+    }
+
+    #[test]
+    fn loads_settings_without_notifications_key() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+
+        // Write a settings file without the notifications key (old format)
+        let json = r#"{"author":"sam","defaultLabels":[],"ignoredFolderNames":[]}"#;
+        std::fs::write(&path, json).unwrap();
+
+        let settings = AppSettings::load_or_default(&path).unwrap();
+        // Should get defaults
+        assert!(settings.notifications.annotation_reply);
+        assert!(!settings.notifications.new_annotation);
+    }
+
+    #[test]
+    fn notification_settings_defaults() {
+        let settings = AppSettings::default();
+        assert!(settings.notifications.annotation_reply);
+        assert!(settings.notifications.review_complete);
+        assert!(!settings.notifications.new_annotation);
+        assert!(settings.notifications.deep_link);
     }
 }

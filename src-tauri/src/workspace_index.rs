@@ -737,7 +737,7 @@ mod tests {
                 author: "sam".to_string(),
                 default_labels: Vec::new(),
                 ignored_folder_names: vec!["generated".to_string()],
-                diff_algorithm: "patience".to_string(),
+                ..AppSettings::default()
             },
             None,
         )
