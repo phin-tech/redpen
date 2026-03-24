@@ -168,15 +168,17 @@
   // Highlights mode: add/remove diff decorations
   $effect(() => {
     if (!view) return;
-    if (diff.enabled && diff.mode === "highlights" && diff.diffResult) {
+    const diffResult = diff.enabled && diff.mode === "highlights"
+      ? diff.diffResult
+      : null;
+    // Reconfiguration dispatch is imperative; keep it out of dependency tracking.
+    untrack(() => {
       view.dispatch({
-        effects: diffCompartment.reconfigure(highlightsModeExtensions(diff.diffResult)),
+        effects: diffCompartment.reconfigure(
+          diffResult ? highlightsModeExtensions(diffResult) : []
+        ),
       });
-    } else {
-      view.dispatch({
-        effects: diffCompartment.reconfigure([]),
-      });
-    }
+    });
   });
 </script>
 

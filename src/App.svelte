@@ -27,7 +27,7 @@
   import { watch } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
 
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { debounce } from "$lib/utils/debounce";
   const editor = getEditor();
   const workspace = getWorkspace();
@@ -58,6 +58,7 @@
 
   // File watcher cleanup
   let stopWatcher: (() => void) | null = null;
+  let lastDiffedFileKey: string | null = null;
 
   // Selection state for annotation creation
   let selection: {
@@ -258,11 +259,14 @@
   // Auto-collapse file tree in split mode
   $effect(() => {
     if (diff.enabled && diff.mode === "split") {
-      savedLeftPanelWidth = leftPanelWidth;
-      leftPanelWidth = 0;
-    } else if (!diff.enabled || diff.mode !== "split") {
-      if (leftPanelWidth === 0 && savedLeftPanelWidth > 0) {
-        leftPanelWidth = savedLeftPanelWidth;
+      // Save current width without tracking it (avoids infinite loop)
+      const current = untrack(() => leftPanelWidth);
+      if (current > 0) savedLeftPanelWidth = current;
+      if (current !== 0) leftPanelWidth = 0;
+    } else {
+      const saved = untrack(() => savedLeftPanelWidth);
+      if (untrack(() => leftPanelWidth) === 0 && saved > 0) {
+        leftPanelWidth = saved;
       }
     }
   });
@@ -270,8 +274,18 @@
   // Re-diff when switching files while diff mode is active
   $effect(() => {
     const filePath = editor.currentFilePath;
-    if (diff.enabled && filePath && workspace.rootFolders.length > 0) {
-      computeDiff(workspace.rootFolders[0], filePath);
+    const directory = workspace.rootFolders[0];
+    if (diff.enabled && filePath && directory) {
+      const key = `${directory}::${filePath}`;
+      if (key === lastDiffedFileKey) return;
+      lastDiffedFileKey = key;
+      // Keep this effect dependent on file/diff toggle only; computeDiff mutates
+      // diff store fields (loading/error/result) and must not become a feedback edge.
+      untrack(() => {
+        void computeDiff(directory, filePath);
+      });
+    } else {
+      lastDiffedFileKey = null;
     }
   });
 

@@ -18,7 +18,10 @@
     let { content, fileExtension, diffExtensions, showLineNumbers = true, onSelectionChange }: Props = $props();
 
     let container: HTMLDivElement;
-    let view: EditorView | null = $state(null);
+    // EditorView instance is imperative lifecycle state, not render state.
+    // Keep it non-reactive so the recreation effect doesn't subscribe to and
+    // retrigger itself on `view = null` / `view = new EditorView(...)`.
+    let view: EditorView | null = null;
 
     export function getView(): EditorView | null {
         return view;

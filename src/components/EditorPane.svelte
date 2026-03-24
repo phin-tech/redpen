@@ -5,7 +5,7 @@
   import DiffModeToggle from "./DiffModeToggle.svelte";
   import DiffRefPicker from "./DiffRefPicker.svelte";
   import { getEditor, getFileExtension, isMarkdownFile, getShowPreview, togglePreview } from "$lib/stores/editor.svelte";
-  import { getDiffState, exitDiff } from "$lib/stores/diff.svelte";
+  import { getDiffState, enterDiff, exitDiff, setDiffMode } from "$lib/stores/diff.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
   import { sortedAnnotations } from "$lib/stores/annotations.svelte";
   import { highlightsModeExtensions, buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
@@ -36,16 +36,22 @@
   });
 
   // Set up scroll sync for split mode
+  // Only track diff.enabled and diff.mode — not the editor refs (avoids loops on destroy)
   $effect(() => {
+    // Clean up previous sync
     cleanupScrollSync?.();
     cleanupScrollSync = null;
 
-    if (diff.enabled && diff.mode === "split" && leftDiffEditor && rightDiffEditor) {
-      const leftView = leftDiffEditor.getView();
-      const rightView = rightDiffEditor.getView();
-      if (leftView && rightView) {
-        cleanupScrollSync = scrollSync(leftView, rightView);
-      }
+    if (diff.enabled && diff.mode === "split") {
+      // Delay to let DiffEditor instances mount and populate bind:this
+      const timer = setTimeout(() => {
+        const leftView = leftDiffEditor?.getView();
+        const rightView = rightDiffEditor?.getView();
+        if (leftView && rightView) {
+          cleanupScrollSync = scrollSync(leftView, rightView);
+        }
+      }, 50);
+      return () => clearTimeout(timer);
     }
   });
 
@@ -54,6 +60,13 @@
   });
 
   const directory = $derived(workspace.rootFolders[0] ?? "");
+
+  function handleEnterDiff(mode: import("$lib/types").DiffMode) {
+    if (editor.currentFilePath && directory) {
+      setDiffMode(mode);
+      enterDiff(directory, editor.currentFilePath);
+    }
+  }
 
   // For unified mode: filter selections to only allow annotatable (non-delete) lines
   function createUnifiedSelectionHandler(lineMap: Map<number, number>) {
@@ -73,36 +86,30 @@
 </script>
 
 <div class="editor-pane">
-  <!-- Toolbar: markdown toggle OR diff controls -->
-  {#if diff.enabled}
+  <!-- Toolbar: always visible when a file is open -->
+  {#if editor.currentFilePath}
     <div class="toggle-bar">
-      <DiffModeToggle />
-      <DiffRefPicker {directory} filePath={editor.currentFilePath ?? ""} />
-    </div>
-  {:else if isMarkdownFile()}
-    <div class="toggle-bar">
-      <button
-        class="toggle-btn"
-        class:active={!getShowPreview()}
-        onclick={() => { if (getShowPreview()) togglePreview(); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <polyline points="4,2 4,14" /><polyline points="12,2 12,14" />
-          <polyline points="1,5 4,2 7,5" /><polyline points="9,11 12,14 15,11" />
-        </svg>
-        Source
-      </button>
-      <button
-        class="toggle-btn"
-        class:active={getShowPreview()}
-        onclick={() => { if (!getShowPreview()) togglePreview(); }}
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M1 8s3-5 7-5 7 5 7 5-3 5-7 5-7-5-7-5z" />
-          <circle cx="8" cy="8" r="2" />
-        </svg>
-        Preview
-      </button>
+      <DiffModeToggle onEnterDiff={handleEnterDiff} />
+      {#if diff.enabled}
+        <DiffRefPicker {directory} filePath={editor.currentFilePath ?? ""} />
+      {/if}
+      {#if isMarkdownFile() && !diff.enabled}
+        <div class="separator"></div>
+        <button
+          class="toggle-btn"
+          class:active={!getShowPreview()}
+          onclick={() => { if (getShowPreview()) togglePreview(); }}
+        >
+          Source
+        </button>
+        <button
+          class="toggle-btn"
+          class:active={getShowPreview()}
+          onclick={() => { if (!getShowPreview()) togglePreview(); }}
+        >
+          Preview
+        </button>
+      {/if}
     </div>
   {/if}
 
@@ -116,7 +123,9 @@
         <button class="exit-btn" onclick={() => exitDiff()}>Exit diff mode</button>
       </div>
     {:else if diff.enabled && diff.diffResult}
-      {#if diff.mode === "split"}
+      {#if diff.diffResult.hunks.length === 0}
+        <div class="diff-status">No changes between {diff.baseRef} and {diff.targetRef}</div>
+      {:else if diff.mode === "split"}
         {@const splitDeco = buildSplitDecorations(diff.diffResult)}
         <div class="split-diff">
           <DiffEditor
@@ -190,6 +199,12 @@
   }
   .toggle-btn:hover { color: var(--text-secondary); background: var(--surface-raised); }
   .toggle-btn.active { color: var(--accent); background: var(--accent-subtle); }
+  .separator {
+    width: 1px;
+    height: 16px;
+    background: var(--border-default);
+    margin: 0 4px;
+  }
   .pane-content { flex: 1; overflow: hidden; }
   .split-diff {
     display: flex;
