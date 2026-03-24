@@ -12,6 +12,7 @@ export interface AppCommandContext {
   canAddAnnotation: () => boolean;
   hasAnnotations: () => boolean;
   clearAnnotations: () => Promise<void>;
+  reloadAnnotations: () => Promise<void>;
   isMarkdownFile: () => boolean;
   toggleMarkdownPreview: () => void;
 }
@@ -83,6 +84,14 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       shortcut: ["Cmd", "Return"],
       isEnabled: (context) => context.canAddAnnotation(),
       run: (context) => context.openAddAnnotation(),
+    },
+    {
+      id: "annotations.reload",
+      title: "Reload annotations",
+      section: "Annotations",
+      keywords: ["reload", "refresh", "sync", "annotations"],
+      isEnabled: (context) => context.canAddAnnotation(),
+      run: (context) => context.reloadAnnotations(),
     },
     {
       id: "annotations.clear",

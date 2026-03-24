@@ -161,6 +161,7 @@ fn cmd_annotate(
         let id = reply.id.clone();
         sidecar.add_annotation(reply);
         sidecar.save_for_source(&project_root, &abs_path)?;
+        notify_app_refresh(&abs_path);
         println!("Created reply {} to {} on line {}", id, parent_id, start_line);
         return Ok(());
     }
@@ -200,9 +201,19 @@ fn cmd_annotate(
     let id = annotation.id.clone();
     sidecar.add_annotation(annotation);
     sidecar.save_for_source(&project_root, &abs_path)?;
+    notify_app_refresh(&abs_path);
 
     println!("Created annotation {} on line {}", id, start_line);
     Ok(())
+}
+
+/// Send a refresh deep link to the desktop app so it reloads annotations
+fn notify_app_refresh(file_path: &Path) {
+    let url = format!("redpen://refresh?file={}", urlencoding::encode(&file_path.to_string_lossy()));
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&url).spawn();
+    }
 }
 
 fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {

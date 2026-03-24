@@ -116,7 +116,17 @@
     async function handleDeepLinkUrl(rawUrl: string) {
       try {
         const url = new URL(rawUrl);
+        const action = url.hostname || "open";
         const filePath = url.searchParams.get("file");
+
+        if (action === "refresh" && filePath) {
+          // Reload annotations for the file (e.g., after CLI writes a reply)
+          if (editor.currentFilePath === filePath) {
+            await loadAnnotations(filePath);
+          }
+          return;
+        }
+
         const line = url.searchParams.get("line");
 
         if (filePath) {
@@ -216,6 +226,11 @@
     hasAnnotations: () => {
       const annotationsState = getAnnotationsState();
       return Boolean(editor.currentFilePath && annotationsState.sidecar && annotationsState.sidecar.annotations.length > 0);
+    },
+    reloadAnnotations: async () => {
+      if (editor.currentFilePath) {
+        await loadAnnotations(editor.currentFilePath);
+      }
     },
     clearAnnotations: async () => {
       if (editor.currentFilePath) {
