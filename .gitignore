@@ -6,3 +6,4 @@ dist/
 .redpen/
 .claude/settings.local.json
 .superpowers/
+.env*

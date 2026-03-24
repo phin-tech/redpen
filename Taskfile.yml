@@ -30,6 +30,46 @@ tasks:
         cargo install --path crates/redpen-cli
         echo "Installed redpen-cli to $(which redpen)"
 
+  sign:
+    desc: "Sign and notarize the already-built app bundle"
+    dotenv: [".env.signing"]
+    cmds:
+      - |
+        codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
+          "target/release/bundle/macos/Red Pen.app"
+        echo "Signed Red Pen.app"
+      - |
+        xcrun notarytool submit "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg" \
+          --apple-id "$APPLE_ID" \
+          --password "$APPLE_PASSWORD" \
+          --team-id "$APPLE_TEAM_ID" \
+          --wait
+        echo "Notarized"
+      - |
+        xcrun stapler staple "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg"
+        echo "Stapled"
+
+  build:signed:
+    desc: "Build and sign the app (sources .env.signing)"
+    dotenv: [".env.signing"]
+    cmds:
+      - bun run tauri build
+      - task: sign
+
+  release:upload:
+    desc: "Upload the signed DMG to the GitHub release, creating it if needed"
+    cmds:
+      - |
+        VERSION=$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')
+        DMG="target/release/bundle/dmg/Red Pen_${VERSION}_aarch64.dmg"
+        TAG="v${VERSION}"
+        if ! gh release view "$TAG" &>/dev/null; then
+          gh release create "$TAG" --title "$TAG" --notes ""
+          echo "Created release $TAG"
+        fi
+        gh release upload "$TAG" "$DMG" --clobber
+        echo "Uploaded $DMG to $TAG"
+
   release:
     desc: "Bump version, update all manifests, commit, tag, and push. Usage: task release BUMP=patch|minor|major"
     requires:
