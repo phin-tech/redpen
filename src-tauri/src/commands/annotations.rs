@@ -45,9 +45,15 @@ fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> Result<Side
 }
 
 fn save_sidecar(sidecar: &SidecarFile, project_root: &Path, source_path: &Path) -> Result<(), String> {
-    sidecar
-        .save_for_source(project_root, source_path)
-        .map_err(|e| e.to_string())
+    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
+    if sidecar.annotations.is_empty() {
+        if annotation_path.exists() {
+            fs::remove_file(&annotation_path).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    } else {
+        sidecar.save(&annotation_path).map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
