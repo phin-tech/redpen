@@ -153,7 +153,19 @@ pub fn run() {
                                 }
                             }
                             _ => {
-                                // Existing behavior for open, refresh, etc.
+                                // Fire DeepLink notification
+                                if let Some(file) = parsed.query_pairs().find(|(k, _)| k == "file").map(|(_, v)| v.to_string()) {
+                                    let file_name = file.rsplit('/').next().unwrap_or("unknown");
+                                    let line = parsed.query_pairs().find(|(k, _)| k == "line").map(|(_, v)| v.to_string());
+                                    let line_str = line.as_ref().map(|l| format!(":{}", l)).unwrap_or_default();
+                                    let settings = settings_for_links.lock().unwrap();
+                                    let _ = notification_service.send(
+                                        NotificationKind::DeepLink,
+                                        "Opening file",
+                                        &format!("{}{}", file_name, line_str),
+                                        &settings,
+                                    );
+                                }
                                 let _ = handle.emit("deep-link-open", url_str);
                             }
                         }
