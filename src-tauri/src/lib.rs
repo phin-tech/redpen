@@ -2,6 +2,7 @@ mod commands;
 mod settings;
 mod state;
 mod workspace_index;
+mod notification;
 
 use state::AppState;
 use tauri_plugin_deep_link::DeepLinkExt;
