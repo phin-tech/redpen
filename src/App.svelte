@@ -20,17 +20,20 @@
   } from "$lib/stores/workspace.svelte";
   import { createCommandRegistry, findCommand } from "$lib/commands";
   import type { AppCommandContext } from "$lib/commands";
+  import { getDiffState, enterDiff, exitDiff, setDiffMode, computeDiff } from "$lib/stores/diff.svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { listen } from "@tauri-apps/api/event";
   import { watch } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
 
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { debounce } from "$lib/utils/debounce";
   const editor = getEditor();
   const workspace = getWorkspace();
   const commands = createCommandRegistry();
+  const diff = getDiffState();
+  let savedLeftPanelWidth = $state(240);
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
   let editorRef: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined = $state(undefined);
@@ -55,6 +58,7 @@
 
   // File watcher cleanup
   let stopWatcher: (() => void) | null = null;
+  let lastDiffedFileKey: string | null = null;
 
   // Selection state for annotation creation
   let selection: {
@@ -264,7 +268,51 @@
     },
     isMarkdownFile,
     toggleMarkdownPreview: togglePreview,
+    enterDiffMode: (mode) => {
+      if (editor.currentFilePath && workspace.rootFolders.length > 0) {
+        setDiffMode(mode);
+        if (!diff.enabled) {
+          enterDiff(workspace.rootFolders[0], editor.currentFilePath);
+        }
+      }
+    },
+    exitDiffMode: () => exitDiff(),
+    hasDiffMode: () => diff.enabled,
+    hasOpenFile: () => Boolean(editor.currentFilePath),
   };
+
+  // Auto-collapse file tree in split mode
+  $effect(() => {
+    if (diff.enabled && diff.mode === "split") {
+      // Save current width without tracking it (avoids infinite loop)
+      const current = untrack(() => leftPanelWidth);
+      if (current > 0) savedLeftPanelWidth = current;
+      if (current !== 0) leftPanelWidth = 0;
+    } else {
+      const saved = untrack(() => savedLeftPanelWidth);
+      if (untrack(() => leftPanelWidth) === 0 && saved > 0) {
+        leftPanelWidth = saved;
+      }
+    }
+  });
+
+  // Re-diff when switching files while diff mode is active
+  $effect(() => {
+    const filePath = editor.currentFilePath;
+    const directory = workspace.rootFolders[0];
+    if (diff.enabled && filePath && directory) {
+      const key = `${directory}::${filePath}`;
+      if (key === lastDiffedFileKey) return;
+      lastDiffedFileKey = key;
+      // Keep this effect dependent on file/diff toggle only; computeDiff mutates
+      // diff store fields (loading/error/result) and must not become a feedback edge.
+      untrack(() => {
+        void computeDiff(directory, filePath);
+      });
+    } else {
+      lastDiffedFileKey = null;
+    }
+  });
 
   async function runCommand(id: string) {
     const command = findCommand(commands, id);

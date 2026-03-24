@@ -66,6 +66,7 @@ export interface AppSettings {
   author: string;
   defaultLabels: string[];
   ignoredFolderNames: string[];
+  diffAlgorithm: "patience" | "myers";
   notifications: NotificationSettings;
 }
 
@@ -90,4 +91,47 @@ export interface WorkspaceFileMatch {
 export interface WorkspaceFileQueryResponse {
   results: WorkspaceFileMatch[];
   statuses: WorkspaceIndexStatus[];
+}
+
+// Diff types
+export type DiffMode = "split" | "unified" | "highlights";
+export type ChangeKind = "equal" | "insert" | "delete";
+
+export interface DiffChange {
+  kind: ChangeKind;
+  oldLine: number | null;
+  newLine: number | null;
+  content: string;
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  changes: DiffChange[];
+}
+
+export interface DiffResult {
+  baseRef: string;
+  targetRef: string;
+  hunks: DiffHunk[];
+  oldContent: string;
+  newContent: string;
+}
+
+export interface BranchInfo {
+  name: string;
+  isCurrent: boolean;
+}
+
+export interface CommitInfo {
+  sha: string;
+  shortMessage: string;
+}
+
+export interface RefList {
+  branches: BranchInfo[];
+  tags: string[];
+  recentCommits: CommitInfo[];
 }

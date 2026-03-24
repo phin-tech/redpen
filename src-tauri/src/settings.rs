@@ -33,8 +33,14 @@ pub struct AppSettings {
     pub default_labels: Vec<String>,
     #[serde(default)]
     pub ignored_folder_names: Vec<String>,
+    #[serde(default = "default_diff_algorithm")]
+    pub diff_algorithm: String,
     #[serde(default)]
     pub notifications: NotificationSettings,
+}
+
+fn default_diff_algorithm() -> String {
+    "patience".to_string()
 }
 
 impl Default for AppSettings {
@@ -43,6 +49,7 @@ impl Default for AppSettings {
             author: whoami::username(),
             default_labels: Vec::new(),
             ignored_folder_names: Vec::new(),
+            diff_algorithm: default_diff_algorithm(),
             notifications: NotificationSettings::default(),
         }
     }
@@ -54,6 +61,7 @@ pub struct UpdateSettingsRequest {
     pub author: Option<String>,
     pub default_labels: Option<Vec<String>>,
     pub ignored_folder_names: Option<Vec<String>>,
+    pub diff_algorithm: Option<String>,
     pub notifications: Option<NotificationSettings>,
 }
 
@@ -67,6 +75,9 @@ impl UpdateSettingsRequest {
         }
         if let Some(ignored_folder_names) = self.ignored_folder_names {
             settings.ignored_folder_names = normalize_ignored_folder_names(ignored_folder_names);
+        }
+        if let Some(diff_algorithm) = self.diff_algorithm {
+            settings.diff_algorithm = diff_algorithm;
         }
         if let Some(notifications) = self.notifications {
             settings.notifications = notifications;
@@ -179,6 +190,7 @@ mod tests {
                 " .venv ".to_string(),
                 "".to_string(),
             ]),
+            diff_algorithm: None,
             notifications: None,
         }
         .apply(&mut settings);
@@ -212,6 +224,7 @@ mod tests {
                 new_annotation: true,
                 deep_link: false,
             },
+            ..AppSettings::default()
         };
 
         settings.save_to_path(&path).unwrap();

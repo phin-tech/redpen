@@ -45,6 +45,8 @@ pub fn run() {
             commands::annotations::send_notification,
             commands::git::get_git_root,
             commands::git::get_git_status,
+            commands::diff::compute_diff,
+            commands::diff::list_refs,
             commands::export::export_annotations,
             get_pending_deep_links,
         ])

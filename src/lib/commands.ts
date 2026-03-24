@@ -15,6 +15,10 @@ export interface AppCommandContext {
   reloadAnnotations: () => Promise<void>;
   isMarkdownFile: () => boolean;
   toggleMarkdownPreview: () => void;
+  enterDiffMode: (mode: "split" | "unified" | "highlights") => void;
+  exitDiffMode: () => void;
+  hasDiffMode: () => boolean;
+  hasOpenFile: () => boolean;
 }
 
 export interface AppCommandDefinition {
@@ -33,6 +37,7 @@ export const COMMAND_SECTIONS = [
   "Workspace",
   "Annotations",
   "View",
+  "Diff",
 ] as const;
 
 export function createCommandRegistry(): AppCommandDefinition[] {
@@ -117,6 +122,38 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       keywords: ["settings", "preferences"],
       shortcut: ["Cmd", ","],
       run: (context) => context.openSettings(),
+    },
+    {
+      id: "diff.split",
+      title: "Diff: Split view",
+      section: "Diff",
+      keywords: ["diff", "split", "side", "compare"],
+      isEnabled: (context) => context.hasOpenFile(),
+      run: (context) => context.enterDiffMode("split"),
+    },
+    {
+      id: "diff.unified",
+      title: "Diff: Unified view",
+      section: "Diff",
+      keywords: ["diff", "unified", "inline", "compare"],
+      isEnabled: (context) => context.hasOpenFile(),
+      run: (context) => context.enterDiffMode("unified"),
+    },
+    {
+      id: "diff.highlights",
+      title: "Diff: Highlights only",
+      section: "Diff",
+      keywords: ["diff", "highlights", "additions", "compare"],
+      isEnabled: (context) => context.hasOpenFile(),
+      run: (context) => context.enterDiffMode("highlights"),
+    },
+    {
+      id: "diff.exit",
+      title: "Diff: Exit diff view",
+      section: "Diff",
+      keywords: ["diff", "exit", "close", "normal"],
+      isEnabled: (context) => context.hasDiffMode(),
+      run: (context) => context.exitDiffMode(),
     },
   ];
 }
