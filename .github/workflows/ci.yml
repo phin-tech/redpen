@@ -10,88 +10,20 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  fmt:
-    name: Rustfmt
-    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+  rust:
+    name: Rust
+    uses: ./.github/workflows/rust.yml
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Cargo fmt
-        run: cargo fmt -- --check
-
-  clippy:
-    name: Clippy
-    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - uses: Swatinem/rust-cache@v2
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install frontend dependencies
-        run: bun install
-
-      - name: Cargo clippy
-        run: cargo clippy --workspace -- -D warnings
+  ts:
+    name: TypeScript
+    uses: ./.github/workflows/ts.yml
 
   plugin-parity:
     name: Tauri Plugin Parity
-    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Check Tauri plugin version parity
         run: ./script/check-tauri-versions
-
-  check:
-    name: Check
-    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install frontend dependencies
-        run: bun install
-
-      - name: Cargo check
-        run: cargo check --workspace
-
-      - name: Build frontend
-        run: bun run build
-
-  test:
-    name: Test
-    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Cargo test
-        run: cargo test --workspace
