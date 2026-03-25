@@ -1,3 +1,4 @@
+use crate::commands::error::CommandResult;
 use crate::state::AppState;
 use crate::workspace_index::{
     QueryWorkspaceFilesRequest, WorkspaceFileQueryResponse, WorkspaceIndexStatus,
@@ -19,20 +20,20 @@ pub struct FileEntry {
 }
 
 #[tauri::command]
-pub fn read_directory(path: String) -> Result<Vec<FileEntry>, String> {
+pub fn read_directory(path: String) -> CommandResult<Vec<FileEntry>> {
     let dir = PathBuf::from(&path);
     let project_root = match git2::Repository::discover(&dir) {
         Ok(repo) => repo.workdir().unwrap().to_path_buf(),
         Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
     };
     let mut entries = Vec::new();
-    let read_dir = fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    let read_dir = fs::read_dir(&dir)?;
     for entry in read_dir.flatten() {
         let file_name = entry.file_name().to_string_lossy().to_string();
         if file_name.starts_with('.') {
             continue;
         }
-        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let file_type = entry.file_type()?;
         let full_path = entry.path();
         let has_sidecar = if file_type.is_file() {
             let annotation_path =
@@ -84,6 +85,6 @@ pub fn query_workspace_files(
 }
 
 #[tauri::command]
-pub fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| e.to_string())
+pub fn read_file(path: String) -> CommandResult<String> {
+    Ok(fs::read_to_string(&path)?)
 }

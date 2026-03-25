@@ -1,3 +1,4 @@
+use crate::commands::error::{CommandError, CommandResult};
 use git2::Repository;
 use serde::Serialize;
 use similar::{Algorithm, ChangeTag, TextDiff};
@@ -69,43 +70,44 @@ pub struct CommitInfo {
     pub short_message: String,
 }
 
-fn get_file_at_ref(repo: &Repository, file_path: &str, git_ref: &str) -> Result<String, String> {
+fn get_file_at_ref(repo: &Repository, file_path: &str, git_ref: &str) -> CommandResult<String> {
     if git_ref == "working-tree" {
-        let workdir = repo
-            .workdir()
-            .ok_or("bare repository has no working directory")?;
+        let workdir = repo.workdir().ok_or(CommandError::NotFound(
+            "bare repository has no working directory".into(),
+        ))?;
         let full_path = workdir.join(file_path);
-        return std::fs::read_to_string(&full_path)
-            .map_err(|e| format!("failed to read working tree file: {}", e));
+        return Ok(std::fs::read_to_string(&full_path)?);
     }
 
     let commit = if git_ref == "HEAD" {
-        let head = repo.head().map_err(|e| e.to_string())?;
-        head.peel_to_commit().map_err(|e| e.to_string())?
+        let head = repo.head()?;
+        head.peel_to_commit()?
     } else {
         // Try local branch first
         if let Ok(branch) = repo.find_branch(git_ref, git2::BranchType::Local) {
-            branch.get().peel_to_commit().map_err(|e| e.to_string())?
+            branch.get().peel_to_commit()?
         } else if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", git_ref)) {
-            reference.peel_to_commit().map_err(|e| e.to_string())?
+            reference.peel_to_commit()?
         } else if let Ok(reference) = repo.find_reference(&format!("refs/heads/{}", git_ref)) {
-            reference.peel_to_commit().map_err(|e| e.to_string())?
+            reference.peel_to_commit()?
         } else {
             // Try as raw SHA
-            let oid = git2::Oid::from_str(git_ref).map_err(|e| e.to_string())?;
-            repo.find_commit(oid).map_err(|e| e.to_string())?
+            let oid = git2::Oid::from_str(git_ref)?;
+            repo.find_commit(oid)?
         }
     };
 
-    let tree = commit.tree().map_err(|e| e.to_string())?;
+    let tree = commit.tree()?;
     let entry = tree
         .get_path(Path::new(file_path))
-        .map_err(|e| format!("file not found at ref {}: {}", git_ref, e))?;
-    let object = entry.to_object(repo).map_err(|e| e.to_string())?;
-    let blob = object.as_blob().ok_or("not a blob")?;
+        .map_err(|e| CommandError::NotFound(format!("file not found at ref {}: {}", git_ref, e)))?;
+    let object = entry.to_object(repo)?;
+    let blob = object
+        .as_blob()
+        .ok_or(CommandError::NotFound("not a blob".into()))?;
     std::str::from_utf8(blob.content())
         .map(|s| s.to_string())
-        .map_err(|e| format!("file is not valid UTF-8: {}", e))
+        .map_err(|e| CommandError::InvalidArgument(format!("file is not valid UTF-8: {}", e)))
 }
 
 #[tauri::command]
@@ -115,18 +117,18 @@ pub fn compute_diff(
     base_ref: String,
     target_ref: String,
     algorithm: String,
-) -> Result<DiffResult, String> {
-    let repo = Repository::discover(&directory).map_err(|e| e.to_string())?;
+) -> CommandResult<DiffResult> {
+    let repo = Repository::discover(&directory)?;
 
     // Resolve file_path relative to repo root
-    let workdir = repo
-        .workdir()
-        .ok_or("bare repository has no working directory")?;
+    let workdir = repo.workdir().ok_or(CommandError::NotFound(
+        "bare repository has no working directory".into(),
+    ))?;
     let abs_file = Path::new(&directory).join(&file_path);
     let rel_file = if abs_file.starts_with(workdir) {
         abs_file
             .strip_prefix(workdir)
-            .map_err(|e| e.to_string())?
+            .map_err(|e| CommandError::InvalidArgument(e.to_string()))?
             .to_string_lossy()
             .to_string()
     } else {
@@ -224,13 +226,11 @@ pub fn compute_diff(
 }
 
 #[tauri::command]
-pub fn list_refs(directory: String) -> Result<RefList, String> {
-    let repo = Repository::discover(&directory).map_err(|e| e.to_string())?;
+pub fn list_refs(directory: String) -> CommandResult<RefList> {
+    let repo = Repository::discover(&directory)?;
 
     // Collect branches
-    let branch_iter = repo
-        .branches(Some(git2::BranchType::Local))
-        .map_err(|e| e.to_string())?;
+    let branch_iter = repo.branches(Some(git2::BranchType::Local))?;
 
     let mut branches: Vec<BranchInfo> = branch_iter
         .filter_map(|b| b.ok())
@@ -256,8 +256,7 @@ pub fn list_refs(directory: String) -> Result<RefList, String> {
             tags.push(tag_name.to_string());
         }
         true
-    })
-    .map_err(|e| e.to_string())?;
+    })?;
 
     // Collect recent commits from HEAD
     let mut recent_commits: Vec<CommitInfo> = Vec::new();
