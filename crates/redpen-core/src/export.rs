@@ -52,14 +52,30 @@ fn format_annotation_blockquote(a: &Annotation) -> String {
 }
 
 fn lang_hint(file_name: &str) -> &str {
-    let ext = Path::new(file_name).extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ext = Path::new(file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
     match ext {
-        "rs" => "rust", "swift" => "swift", "js" => "javascript", "ts" => "typescript",
-        "py" => "python", "rb" => "ruby", "go" => "go", "java" => "java",
-        "c" | "h" => "c", "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-        "css" => "css", "html" | "htm" => "html", "json" => "json", "md" => "markdown",
-        "sh" | "bash" | "zsh" => "bash", "yaml" | "yml" => "yaml", "toml" => "toml",
-        "sql" => "sql", "ex" | "exs" => "elixir",
+        "rs" => "rust",
+        "swift" => "swift",
+        "js" => "javascript",
+        "ts" => "typescript",
+        "py" => "python",
+        "rb" => "ruby",
+        "go" => "go",
+        "java" => "java",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
+        "css" => "css",
+        "html" | "htm" => "html",
+        "json" => "json",
+        "md" => "markdown",
+        "sh" | "bash" | "zsh" => "bash",
+        "yaml" | "yml" => "yaml",
+        "toml" => "toml",
+        "sql" => "sql",
+        "ex" | "exs" => "elixir",
         _ => ext,
     }
 }
@@ -71,12 +87,20 @@ mod tests {
 
     fn make_annotation(line: u32, body: &str, labels: Vec<&str>, orphaned: bool) -> Annotation {
         let mut a = Annotation::new(
-            AnnotationKind::Comment, body.to_string(),
-            labels.iter().map(|s| s.to_string()).collect(), "sam".to_string(),
+            AnnotationKind::Comment,
+            body.to_string(),
+            labels.iter().map(|s| s.to_string()).collect(),
+            "sam".to_string(),
             Anchor::TextContext {
-                line_content: "test".to_string(), surrounding_lines: vec![],
+                line_content: "test".to_string(),
+                surrounding_lines: vec![],
                 content_hash: "abc".to_string(),
-                range: Range { start_line: line, start_column: 0, end_line: line, end_column: 10 },
+                range: Range {
+                    start_line: line,
+                    start_column: 0,
+                    end_line: line,
+                    end_column: 10,
+                },
                 last_known_line: line,
             },
         );

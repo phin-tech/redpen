@@ -13,20 +13,28 @@ pub enum AnchorResult {
 
 pub fn resolve_anchor(anchor: &Anchor, source_lines: &[&str]) -> AnchorResult {
     let Anchor::TextContext {
-        line_content, surrounding_lines, content_hash, last_known_line, ..
+        line_content,
+        surrounding_lines,
+        content_hash,
+        last_known_line,
+        ..
     } = anchor;
 
     let last_idx = (*last_known_line as usize).saturating_sub(1);
     if last_idx < source_lines.len() {
         let current_line = source_lines[last_idx];
         if hash_string(current_line) == *content_hash {
-            return AnchorResult::Exact { line: *last_known_line };
+            return AnchorResult::Exact {
+                line: *last_known_line,
+            };
         }
     }
 
     for (idx, line) in source_lines.iter().enumerate() {
         if hash_string(line) == *content_hash {
-            return AnchorResult::Exact { line: (idx + 1) as u32 };
+            return AnchorResult::Exact {
+                line: (idx + 1) as u32,
+            };
         }
     }
 
@@ -48,14 +56,19 @@ pub fn resolve_anchor(anchor: &Anchor, source_lines: &[&str]) -> AnchorResult {
     }
 
     if best_score >= REANCHOR_THRESHOLD {
-        AnchorResult::Fuzzy { line: best_line, score: best_score }
+        AnchorResult::Fuzzy {
+            line: best_line,
+            score: best_score,
+        }
     } else {
         AnchorResult::Orphaned
     }
 }
 
 fn score_context(surrounding: &[String], source_lines: &[&str], center_idx: usize) -> f64 {
-    if surrounding.is_empty() { return 0.0; }
+    if surrounding.is_empty() {
+        return 0.0;
+    }
     let center_in_surrounding = surrounding.len() / 2;
     let mut total_score = 0.0;
     let mut count = 0;
@@ -63,11 +76,16 @@ fn score_context(surrounding: &[String], source_lines: &[&str], center_idx: usiz
         let offset = i as isize - center_in_surrounding as isize;
         let source_idx = center_idx as isize + offset;
         if source_idx >= 0 && (source_idx as usize) < source_lines.len() {
-            total_score += normalized_levenshtein(ctx_line.as_str(), source_lines[source_idx as usize]);
+            total_score +=
+                normalized_levenshtein(ctx_line.as_str(), source_lines[source_idx as usize]);
             count += 1;
         }
     }
-    if count > 0 { total_score / count as f64 } else { 0.0 }
+    if count > 0 {
+        total_score / count as f64
+    } else {
+        0.0
+    }
 }
 
 pub fn reanchor_annotations(annotations: &mut [Annotation], source_content: &str) {
@@ -77,7 +95,11 @@ pub fn reanchor_annotations(annotations: &mut [Annotation], source_content: &str
         match result {
             AnchorResult::Exact { line } | AnchorResult::Fuzzy { line, .. } => {
                 annotation.is_orphaned = false;
-                let Anchor::TextContext { ref mut last_known_line, ref mut range, .. } = annotation.anchor;
+                let Anchor::TextContext {
+                    ref mut last_known_line,
+                    ref mut range,
+                    ..
+                } = annotation.anchor;
                 let line_delta = line as i64 - range.start_line as i64;
                 range.start_line = line;
                 range.end_line = (range.end_line as i64 + line_delta) as u32;
@@ -100,7 +122,12 @@ mod tests {
             line_content: line_content.to_string(),
             surrounding_lines: surrounding.iter().map(|s| s.to_string()).collect(),
             content_hash: hash_string(line_content),
-            range: Range { start_line: line, start_column: 0, end_line: line, end_column: 10 },
+            range: Range {
+                start_line: line,
+                start_column: 0,
+                end_line: line,
+                end_column: 10,
+            },
             last_known_line: line,
         }
     }
@@ -109,20 +136,30 @@ mod tests {
     fn test_exact_match_at_same_position() {
         let anchor = make_anchor("fn main() {}", vec![], 1);
         let source = vec!["fn main() {}"];
-        assert_eq!(resolve_anchor(&anchor, &source), AnchorResult::Exact { line: 1 });
+        assert_eq!(
+            resolve_anchor(&anchor, &source),
+            AnchorResult::Exact { line: 1 }
+        );
     }
 
     #[test]
     fn test_exact_match_at_different_position() {
         let anchor = make_anchor("fn main() {}", vec![], 1);
         let source = vec!["use std;", "", "fn main() {}"];
-        assert_eq!(resolve_anchor(&anchor, &source), AnchorResult::Exact { line: 3 });
+        assert_eq!(
+            resolve_anchor(&anchor, &source),
+            AnchorResult::Exact { line: 3 }
+        );
     }
 
     #[test]
     fn test_fuzzy_match_after_rename() {
         let anchor = make_anchor("fn process_data(input: Vec<String>) {", vec![], 5);
-        let source = vec!["use std;", "", "fn process_data(input: Vec<String>) -> Result<(), Error> {"];
+        let source = vec![
+            "use std;",
+            "",
+            "fn process_data(input: Vec<String>) -> Result<(), Error> {",
+        ];
         let result = resolve_anchor(&anchor, &source);
         match result {
             AnchorResult::Fuzzy { line, score } => {
@@ -144,10 +181,22 @@ mod tests {
     fn test_context_improves_matching() {
         let anchor = make_anchor(
             "let x = 1;",
-            vec!["fn foo() {", "    // setup", "let x = 1;", "    let y = 2;", "}"],
+            vec![
+                "fn foo() {",
+                "    // setup",
+                "let x = 1;",
+                "    let y = 2;",
+                "}",
+            ],
             3,
         );
-        let source = vec!["fn foo() {", "    // setup", "let x = 1;", "    let y = 2;", "}"];
+        let source = vec![
+            "fn foo() {",
+            "    // setup",
+            "let x = 1;",
+            "    let y = 2;",
+            "}",
+        ];
         let result = resolve_anchor(&anchor, &source);
         match result {
             AnchorResult::Exact { line } => assert_eq!(line, 3),
@@ -159,7 +208,11 @@ mod tests {
     fn test_reanchor_annotations_updates_in_place() {
         let anchor = make_anchor("fn main() {}", vec![], 1);
         let mut annotations = vec![Annotation::new(
-            AnnotationKind::Comment, "test".to_string(), vec![], "sam".to_string(), anchor,
+            AnnotationKind::Comment,
+            "test".to_string(),
+            vec![],
+            "sam".to_string(),
+            anchor,
         )];
         let source = "use std;\n\nfn main() {}";
         reanchor_annotations(&mut annotations, source);
@@ -171,9 +224,16 @@ mod tests {
     fn test_reanchor_marks_orphaned() {
         let anchor = make_anchor("this line was deleted entirely xyz", vec![], 1);
         let mut annotations = vec![Annotation::new(
-            AnnotationKind::Comment, "test".to_string(), vec![], "sam".to_string(), anchor,
+            AnnotationKind::Comment,
+            "test".to_string(),
+            vec![],
+            "sam".to_string(),
+            anchor,
         )];
-        reanchor_annotations(&mut annotations, "completely different file\nnothing matches");
+        reanchor_annotations(
+            &mut annotations,
+            "completely different file\nnothing matches",
+        );
         assert!(annotations[0].is_orphaned);
     }
 }

@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
+use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
+use redpen_core::export::export_markdown;
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
-use redpen_core::export::export_markdown;
-use redpen_core::anchor::reanchor_annotations;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -74,17 +74,40 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
     let result = match cli.command {
-        Commands::Annotate { file, line, range, body, label, author, kind, reply_to } => {
-            cmd_annotate(&file, line, range.as_deref(), &body, &label, &author, &kind, reply_to.as_deref())
-        }
+        Commands::Annotate {
+            file,
+            line,
+            range,
+            body,
+            label,
+            author,
+            kind,
+            reply_to,
+        } => cmd_annotate(
+            &file,
+            line,
+            range.as_deref(),
+            &body,
+            &label,
+            &author,
+            &kind,
+            reply_to.as_deref(),
+        ),
         Commands::List { file } => cmd_list(&file),
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
         Commands::Status { file } => cmd_status(&file),
-        Commands::Open { paths, line, wait, timeout } => {
-            cmd_open(&paths, line).and_then(|_| {
-                if wait { cmd_wait(&paths, timeout) } else { Ok(()) }
-            })
-        }
+        Commands::Open {
+            paths,
+            line,
+            wait,
+            timeout,
+        } => cmd_open(&paths, line).and_then(|_| {
+            if wait {
+                cmd_wait(&paths, timeout)
+            } else {
+                Ok(())
+            }
+        }),
         Commands::Wait { paths, timeout } => cmd_wait(&paths, timeout),
     };
     if let Err(e) = result {
@@ -98,12 +121,23 @@ fn parse_range(range_str: &str) -> Result<Range, String> {
     if parts.len() != 2 {
         return Err("Range format: startLine:startCol-endLine:endCol".to_string());
     }
-    let start: Vec<u32> = parts[0].split(':').map(|s| s.parse().unwrap_or(0)).collect();
-    let end: Vec<u32> = parts[1].split(':').map(|s| s.parse().unwrap_or(0)).collect();
+    let start: Vec<u32> = parts[0]
+        .split(':')
+        .map(|s| s.parse().unwrap_or(0))
+        .collect();
+    let end: Vec<u32> = parts[1]
+        .split(':')
+        .map(|s| s.parse().unwrap_or(0))
+        .collect();
     if start.len() != 2 || end.len() != 2 {
         return Err("Range format: startLine:startCol-endLine:endCol".to_string());
     }
-    Ok(Range { start_line: start[0], start_column: start[1], end_line: end[0], end_column: end[1] })
+    Ok(Range {
+        start_line: start[0],
+        start_column: start[1],
+        end_line: end[0],
+        end_column: end[1],
+    })
 }
 
 fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
@@ -111,7 +145,10 @@ fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
         "comment" => Ok(AnnotationKind::Comment),
         "lineNote" | "line-note" | "linenote" => Ok(AnnotationKind::LineNote),
         "label" => Ok(AnnotationKind::Label),
-        other => Err(format!("Unknown kind: {}. Use comment, lineNote, or label.", other)),
+        other => Err(format!(
+            "Unknown kind: {}. Use comment, lineNote, or label.",
+            other
+        )),
     }
 }
 
@@ -122,7 +159,10 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
     }
 }
 
-fn load_or_create_sidecar(project_root: &Path, source_path: &Path) -> Result<SidecarFile, Box<dyn std::error::Error>> {
+fn load_or_create_sidecar(
+    project_root: &Path,
+    source_path: &Path,
+) -> Result<SidecarFile, Box<dyn std::error::Error>> {
     let annotation_path = SidecarFile::annotation_path(project_root, source_path);
     if annotation_path.exists() {
         let mut sidecar = SidecarFile::load(&annotation_path)?;
@@ -139,9 +179,15 @@ fn load_or_create_sidecar(project_root: &Path, source_path: &Path) -> Result<Sid
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_annotate(
-    file: &Path, line: Option<u32>, range_str: Option<&str>,
-    body: &str, labels: &[String], author: &str, kind: &str,
+    file: &Path,
+    line: Option<u32>,
+    range_str: Option<&str>,
+    body: &str,
+    labels: &[String],
+    author: &str,
+    kind: &str,
     reply_to: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
@@ -150,19 +196,26 @@ fn cmd_annotate(
     // If replying, clone parent's anchor instead of building a new one
     if let Some(parent_id) = reply_to {
         let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
-        let parent = sidecar.get_annotation(parent_id)
+        let parent = sidecar
+            .get_annotation(parent_id)
             .ok_or_else(|| format!("Annotation {} not found", parent_id))?;
         let parent_anchor = parent.anchor.clone();
         let start_line = parent.line();
 
         let reply = Annotation::new_reply(
-            body.to_string(), author.to_string(), parent_id.to_string(), parent_anchor,
+            body.to_string(),
+            author.to_string(),
+            parent_id.to_string(),
+            parent_anchor,
         );
         let id = reply.id.clone();
         sidecar.add_annotation(reply);
         sidecar.save_for_source(&project_root, &abs_path)?;
         notify_app("annotation_reply", &abs_path, Some(start_line));
-        println!("Created reply {} to {} on line {}", id, parent_id, start_line);
+        println!(
+            "Created reply {} to {} on line {}",
+            id, parent_id, start_line
+        );
         return Ok(());
     }
 
@@ -173,8 +226,16 @@ fn cmd_annotate(
         parse_range(r)?
     } else {
         let l = line.unwrap_or(1);
-        let line_len = source_lines.get((l - 1) as usize).map(|s| s.len() as u32).unwrap_or(0);
-        Range { start_line: l, start_column: 0, end_line: l, end_column: line_len }
+        let line_len = source_lines
+            .get((l - 1) as usize)
+            .map(|s| s.len() as u32)
+            .unwrap_or(0);
+        Range {
+            start_line: l,
+            start_column: 0,
+            end_line: l,
+            end_column: line_len,
+        }
     };
 
     let line_idx = (range.start_line as usize).saturating_sub(1);
@@ -182,7 +243,10 @@ fn cmd_annotate(
 
     let start = line_idx.saturating_sub(2);
     let end = (line_idx + 3).min(source_lines.len());
-    let surrounding_lines: Vec<String> = source_lines[start..end].iter().map(|s| s.to_string()).collect();
+    let surrounding_lines: Vec<String> = source_lines[start..end]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let start_line = range.start_line;
     let anchor = Anchor::TextContext {
@@ -194,7 +258,11 @@ fn cmd_annotate(
     };
 
     let annotation = Annotation::new(
-        parse_kind(kind)?, body.to_string(), labels.to_vec(), author.to_string(), anchor,
+        parse_kind(kind)?,
+        body.to_string(),
+        labels.to_vec(),
+        author.to_string(),
+        anchor,
     );
 
     let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
@@ -209,10 +277,13 @@ fn cmd_annotate(
 
 /// Send a refresh deep link to the desktop app so it reloads annotations
 fn notify_app_refresh(file_path: &Path) {
-    let url = format!("redpen://refresh?file={}", urlencoding::encode(&file_path.to_string_lossy()));
+    let _url = format!(
+        "redpen://refresh?file={}",
+        urlencoding::encode(&file_path.to_string_lossy())
+    );
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg(&url).spawn();
+        let _ = std::process::Command::new("open").arg(&_url).spawn();
     }
 }
 
@@ -271,7 +342,12 @@ fn cmd_status(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let total = sidecar.annotations.len();
     let orphaned = sidecar.annotations.iter().filter(|a| a.is_orphaned).count();
     if orphaned > 0 {
-        println!("{}: {} annotations ({} orphaned)", file.display(), total, orphaned);
+        println!(
+            "{}: {} annotations ({} orphaned)",
+            file.display(),
+            total,
+            orphaned
+        );
     } else {
         println!("{}: {} annotations", file.display(), total);
     }
@@ -302,7 +378,11 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
     let start = std::time::Instant::now();
     let timeout_duration = timeout.map(std::time::Duration::from_secs);
 
-    eprintln!("Waiting for review of {} file(s)... [session {}]", files.len(), &session_id[..8]);
+    eprintln!(
+        "Waiting for review of {} file(s)... [session {}]",
+        files.len(),
+        &session_id[..8]
+    );
 
     loop {
         if session_signal.exists() {
@@ -331,8 +411,14 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
                     if !sidecar.annotations.is_empty() {
                         let relative = file.strip_prefix(&project_root).unwrap_or(file);
                         let mut file_obj = serde_json::Map::new();
-                        file_obj.insert("file".to_string(), serde_json::Value::String(relative.to_string_lossy().to_string()));
-                        file_obj.insert("annotations".to_string(), serde_json::to_value(&sidecar.annotations)?);
+                        file_obj.insert(
+                            "file".to_string(),
+                            serde_json::Value::String(relative.to_string_lossy().to_string()),
+                        );
+                        file_obj.insert(
+                            "annotations".to_string(),
+                            serde_json::to_value(&sidecar.annotations)?,
+                        );
                         all_annotations.push(serde_json::Value::Object(file_obj));
                     }
                 }
@@ -340,8 +426,14 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
 
             // Build output with verdict
             let mut output = serde_json::Map::new();
-            output.insert("verdict".to_string(), serde_json::Value::String(verdict.trim().to_string()));
-            output.insert("files".to_string(), serde_json::Value::Array(all_annotations));
+            output.insert(
+                "verdict".to_string(),
+                serde_json::Value::String(verdict.trim().to_string()),
+            );
+            output.insert(
+                "files".to_string(),
+                serde_json::Value::Array(all_annotations),
+            );
 
             let json = serde_json::to_string_pretty(&serde_json::Value::Object(output))?;
             println!("{}", json);
@@ -440,7 +532,10 @@ fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::err
     ensure_app_running()?;
 
     for file in &files {
-        let mut url = format!("redpen://open?file={}", urlencoding::encode(&file.to_string_lossy()));
+        let mut url = format!(
+            "redpen://open?file={}",
+            urlencoding::encode(&file.to_string_lossy())
+        );
         if let Some(l) = line {
             url.push_str(&format!("&line={}", l));
         }

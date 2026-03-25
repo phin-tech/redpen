@@ -1,8 +1,9 @@
+use crate::commands::error::{CommandError, CommandResult};
 use crate::notification::{NotificationKind, NotificationService};
-use crate::state::AppState;
 use crate::settings::{AppSettings, UpdateSettingsRequest};
+use crate::state::AppState;
 use redpen_core::anchor::reanchor_annotations;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
+use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, FileAnnotations, Range};
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
 use std::fs;
@@ -29,53 +30,49 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
     }
 }
 
-fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> Result<SidecarFile, String> {
+fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> CommandResult<SidecarFile> {
     let annotation_path = SidecarFile::annotation_path(project_root, source_path);
     if annotation_path.exists() {
-        let mut sidecar = SidecarFile::load(&annotation_path).map_err(|e| e.to_string())?;
-        let current_hash = hash_file(source_path).map_err(|e| e.to_string())?;
+        let mut sidecar = SidecarFile::load(&annotation_path)?;
+        let current_hash = hash_file(source_path)?;
         if sidecar.source_file_hash != current_hash {
-            let content = fs::read_to_string(source_path).map_err(|e| e.to_string())?;
+            let content = fs::read_to_string(source_path)?;
             reanchor_annotations(&mut sidecar.annotations, &content);
             sidecar.source_file_hash = current_hash;
         }
         Ok(sidecar)
     } else {
-        let hash = hash_file(source_path).map_err(|e| e.to_string())?;
+        let hash = hash_file(source_path)?;
         Ok(SidecarFile::new(hash))
     }
 }
 
-fn save_sidecar(sidecar: &SidecarFile, project_root: &Path, source_path: &Path) -> Result<(), String> {
+fn save_sidecar(
+    sidecar: &SidecarFile,
+    project_root: &Path,
+    source_path: &Path,
+) -> CommandResult<()> {
     let annotation_path = SidecarFile::annotation_path(project_root, source_path);
     if sidecar.annotations.is_empty() {
         if annotation_path.exists() {
-            fs::remove_file(&annotation_path).map_err(|e| e.to_string())?;
+            fs::remove_file(&annotation_path)?;
         }
         Ok(())
     } else {
-        sidecar.save(&annotation_path).map_err(|e| e.to_string())
+        sidecar.save(&annotation_path)?;
+        Ok(())
     }
 }
 
 #[tauri::command]
-pub fn get_annotations(file_path: String) -> Result<SidecarFile, String> {
+pub fn get_annotations(file_path: String) -> CommandResult<SidecarFile> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
     load_sidecar_for_file(&project_root, source_path)
 }
 
-#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/lib/bindings/")]
-pub struct FileAnnotations {
-    pub file_path: String,
-    pub file_name: String,
-    pub annotations: Vec<Annotation>,
-}
-
 #[tauri::command]
-pub fn get_all_annotations(root_folder: String) -> Result<Vec<FileAnnotations>, String> {
+pub fn get_all_annotations(root_folder: String) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
     let project_root = resolve_project_root(root);
     let comments_dir = project_root.join(".redpen").join("comments");
@@ -94,14 +91,14 @@ fn collect_sidecar_files(
     dir: &Path,
     project_root: &Path,
     results: &mut Vec<FileAnnotations>,
-) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+) -> CommandResult<()> {
+    let entries = fs::read_dir(dir)?;
     for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
             collect_sidecar_files(&path, project_root, results)?;
-        } else if path.extension().map_or(false, |e| e == "json") {
+        } else if path.extension().is_some_and(|e| e == "json") {
             if let Ok(sidecar) = SidecarFile::load(&path) {
                 if !sidecar.annotations.is_empty() {
                     // Reconstruct source path from sidecar path
@@ -139,9 +136,9 @@ fn collect_sidecar_files(
 pub fn create_annotation(
     request: CreateAnnotationRequest,
     state: State<'_, AppState>,
-) -> Result<Annotation, String> {
+) -> CommandResult<Annotation> {
     let source_path = Path::new(&request.file_path);
-    let content = fs::read_to_string(source_path).map_err(|e| e.to_string())?;
+    let content = fs::read_to_string(source_path)?;
     let source_lines: Vec<&str> = content.lines().collect();
 
     let line_idx = (request.start_line as usize).saturating_sub(1);
@@ -191,13 +188,13 @@ pub fn update_annotation(
     annotation_id: String,
     body: Option<String>,
     labels: Option<Vec<String>>,
-) -> Result<Annotation, String> {
+) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
     let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
     let annotation = sidecar
         .get_annotation_mut(&annotation_id)
-        .ok_or("Annotation not found")?;
+        .ok_or(CommandError::NotFound("Annotation not found".into()))?;
     if let Some(b) = body {
         annotation.body = b;
     }
@@ -211,19 +208,19 @@ pub fn update_annotation(
 }
 
 #[tauri::command]
-pub fn delete_annotation(file_path: String, annotation_id: String) -> Result<(), String> {
+pub fn delete_annotation(file_path: String, annotation_id: String) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
     let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
     sidecar
         .remove_annotation(&annotation_id)
-        .ok_or("Annotation not found")?;
+        .ok_or(CommandError::NotFound("Annotation not found".into()))?;
     save_sidecar(&sidecar, &project_root, source_path)?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn clear_annotations(file_path: String) -> Result<(), String> {
+pub fn clear_annotations(file_path: String) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
     let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
@@ -262,7 +259,7 @@ pub fn signal_review_done(
     verdict: Option<String>,
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
 
@@ -274,9 +271,9 @@ pub fn signal_review_done(
 
     let signal_path = SidecarFile::session_signal_path(&project_root);
     if let Some(parent) = signal_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        fs::create_dir_all(parent)?;
     }
-    fs::write(&signal_path, signal_content).map_err(|e| e.to_string())?;
+    fs::write(&signal_path, signal_content)?;
 
     // Fire OS notification for review complete
     let settings = state.settings.lock().unwrap();
@@ -291,15 +288,18 @@ pub fn signal_review_done(
 
     // Also POST annotations to the redpen channel (if running)
     let sidecar = load_sidecar_for_file(&project_root, source_path)?;
-    let json = serde_json::to_string(&sidecar.annotations).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string(&sidecar.annotations)?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());
-    let encoded_path: String = file_path.bytes().map(|b| {
-        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-            format!("{}", b as char)
-        } else {
-            format!("%{:02X}", b)
-        }
-    }).collect();
+    let encoded_path: String = file_path
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                format!("{}", b as char)
+            } else {
+                format!("%{:02X}", b)
+            }
+        })
+        .collect();
     // Fire and forget — channel may not be running
     std::thread::spawn(move || {
         use std::io::Write;

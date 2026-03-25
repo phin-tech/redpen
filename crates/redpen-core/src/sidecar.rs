@@ -19,11 +19,18 @@ pub struct SidecarFile {
 
 impl SidecarFile {
     pub fn new(source_file_hash: String) -> Self {
-        Self { version: 1, source_file_hash, annotations: Vec::new(), metadata: HashMap::new() }
+        Self {
+            version: 1,
+            source_file_hash,
+            annotations: Vec::new(),
+            metadata: HashMap::new(),
+        }
     }
 
     pub fn annotation_path(project_root: &Path, source_path: &Path) -> PathBuf {
-        let relative = source_path.strip_prefix(project_root).unwrap_or(source_path);
+        let relative = source_path
+            .strip_prefix(project_root)
+            .unwrap_or(source_path);
         let file_name = relative.file_name().unwrap().to_string_lossy();
         project_root
             .join(".redpen")
@@ -32,7 +39,9 @@ impl SidecarFile {
     }
 
     pub fn signal_path(project_root: &Path, source_path: &Path) -> PathBuf {
-        let relative = source_path.strip_prefix(project_root).unwrap_or(source_path);
+        let relative = source_path
+            .strip_prefix(project_root)
+            .unwrap_or(source_path);
         let file_name = relative.file_name().unwrap().to_string_lossy();
         project_root
             .join(".redpen")
@@ -76,7 +85,11 @@ impl SidecarFile {
         Ok(())
     }
 
-    pub fn save_for_source(&self, project_root: &Path, source_path: &Path) -> Result<(), SidecarError> {
+    pub fn save_for_source(
+        &self,
+        project_root: &Path,
+        source_path: &Path,
+    ) -> Result<(), SidecarError> {
         let path = Self::annotation_path(project_root, source_path);
         self.save(&path)
     }
@@ -123,11 +136,20 @@ mod tests {
 
     fn make_test_annotation(line: u32, body: &str) -> Annotation {
         Annotation::new(
-            AnnotationKind::Comment, body.to_string(), vec![], "test".to_string(),
+            AnnotationKind::Comment,
+            body.to_string(),
+            vec![],
+            "test".to_string(),
             Anchor::TextContext {
-                line_content: "test line".to_string(), surrounding_lines: vec![],
+                line_content: "test line".to_string(),
+                surrounding_lines: vec![],
                 content_hash: "abc".to_string(),
-                range: Range { start_line: line, start_column: 0, end_line: line, end_column: 10 },
+                range: Range {
+                    start_line: line,
+                    start_column: 0,
+                    end_line: line,
+                    end_column: 10,
+                },
                 last_known_line: line,
             },
         )

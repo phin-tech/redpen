@@ -1,5 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ts_rs::TS;
 use uuid::Uuid;
 
@@ -14,11 +14,9 @@ where
     let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
     match value {
         None => Ok(None),
-        Some(serde_json::Value::String(s)) => {
-            DateTime::parse_from_rfc3339(&s)
-                .map(|dt| Some(dt.with_timezone(&Utc)))
-                .map_err(D::Error::custom)
-        }
+        Some(serde_json::Value::String(s)) => DateTime::parse_from_rfc3339(&s)
+            .map(|dt| Some(dt.with_timezone(&Utc)))
+            .map_err(D::Error::custom),
         Some(serde_json::Value::Number(n)) => {
             if let Some(ms) = n.as_i64() {
                 DateTime::from_timestamp_millis(ms)
@@ -28,12 +26,17 @@ where
                 Err(D::Error::custom("expected integer timestamp"))
             }
         }
-        _ => Err(D::Error::custom("expected string, number, or null for datetime")),
+        _ => Err(D::Error::custom(
+            "expected string, number, or null for datetime",
+        )),
     }
 }
 
 /// Serializes datetime as ISO 8601 string to match Swift version format.
-fn flexible_datetime_serialize<S>(value: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
+fn flexible_datetime_serialize<S>(
+    value: &Option<DateTime<Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -88,11 +91,31 @@ pub struct Annotation {
     pub is_orphaned: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<String>,
-    #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "flexible_datetime_deserialize",
+        serialize_with = "flexible_datetime_serialize",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub created_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "flexible_datetime_deserialize", serialize_with = "flexible_datetime_serialize", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "flexible_datetime_deserialize",
+        serialize_with = "flexible_datetime_serialize",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub updated_at: Option<DateTime<Utc>>,
     pub anchor: Anchor,
+}
+
+/// Summary of annotations for a single file, used for cross-file views.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub struct FileAnnotations {
+    pub file_path: String,
+    pub file_name: String,
+    pub annotations: Vec<Annotation>,
 }
 
 impl Annotation {
@@ -118,12 +141,7 @@ impl Annotation {
         }
     }
 
-    pub fn new_reply(
-        body: String,
-        author: String,
-        reply_to: String,
-        anchor: Anchor,
-    ) -> Self {
+    pub fn new_reply(body: String, author: String, reply_to: String, anchor: Anchor) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4().to_string().to_uppercase(),
@@ -154,14 +172,26 @@ mod tests {
     fn test_annotation_serializes_to_camel_case() {
         let anchor = Anchor::TextContext {
             line_content: "fn main() {}".to_string(),
-            surrounding_lines: vec!["use std;".to_string(), "".to_string(), "fn main() {}".to_string()],
+            surrounding_lines: vec![
+                "use std;".to_string(),
+                "".to_string(),
+                "fn main() {}".to_string(),
+            ],
             content_hash: "abc123".to_string(),
-            range: Range { start_line: 3, start_column: 0, end_line: 3, end_column: 12 },
+            range: Range {
+                start_line: 3,
+                start_column: 0,
+                end_line: 3,
+                end_column: 12,
+            },
             last_known_line: 3,
         };
         let annotation = Annotation::new(
-            AnnotationKind::Comment, "Test comment".to_string(),
-            vec!["todo".to_string()], "sam".to_string(), anchor,
+            AnnotationKind::Comment,
+            "Test comment".to_string(),
+            vec!["todo".to_string()],
+            "sam".to_string(),
+            anchor,
         );
         let json = serde_json::to_string(&annotation).unwrap();
         assert!(json.contains("\"kind\":\"comment\""));
@@ -170,7 +200,10 @@ mod tests {
         assert!(json.contains("\"type\":\"textContext\""));
         assert!(json.contains("\"lineContent\":\"fn main() {}\""));
         // Dates should be ISO 8601 strings matching Swift format
-        assert!(json.contains("\"createdAt\":\""), "createdAt should be a string");
+        assert!(
+            json.contains("\"createdAt\":\""),
+            "createdAt should be a string"
+        );
         assert!(json.contains("T"), "date should contain time separator");
         assert!(json.contains("Z\""), "date should end with Z");
         // ID should be uppercase UUID
@@ -267,10 +300,21 @@ mod tests {
             line_content: "let x = 1;".to_string(),
             surrounding_lines: vec![],
             content_hash: "abc".to_string(),
-            range: Range { start_line: 42, start_column: 0, end_line: 42, end_column: 10 },
+            range: Range {
+                start_line: 42,
+                start_column: 0,
+                end_line: 42,
+                end_column: 10,
+            },
             last_known_line: 42,
         };
-        let a = Annotation::new(AnnotationKind::LineNote, "note".into(), vec![], "sam".into(), anchor);
+        let a = Annotation::new(
+            AnnotationKind::LineNote,
+            "note".into(),
+            vec![],
+            "sam".into(),
+            anchor,
+        );
         assert_eq!(a.line(), 42);
     }
 
@@ -280,10 +324,21 @@ mod tests {
             line_content: "test".to_string(),
             surrounding_lines: vec![],
             content_hash: "abc".to_string(),
-            range: Range { start_line: 1, start_column: 0, end_line: 1, end_column: 4 },
+            range: Range {
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 4,
+            },
             last_known_line: 1,
         };
-        let a = Annotation::new(AnnotationKind::Comment, "note".into(), vec![], "sam".into(), anchor);
+        let a = Annotation::new(
+            AnnotationKind::Comment,
+            "note".into(),
+            vec![],
+            "sam".into(),
+            anchor,
+        );
         assert!(a.reply_to.is_none());
         // Should not appear in JSON when None
         let json = serde_json::to_string(&a).unwrap();
@@ -296,11 +351,21 @@ mod tests {
             line_content: "test".to_string(),
             surrounding_lines: vec![],
             content_hash: "abc".to_string(),
-            range: Range { start_line: 1, start_column: 0, end_line: 1, end_column: 4 },
+            range: Range {
+                start_line: 1,
+                start_column: 0,
+                end_line: 1,
+                end_column: 4,
+            },
             last_known_line: 1,
         };
         let parent_id = "PARENT-1234".to_string();
-        let reply = Annotation::new_reply("I fixed this".into(), "agent".into(), parent_id.clone(), anchor);
+        let reply = Annotation::new_reply(
+            "I fixed this".into(),
+            "agent".into(),
+            parent_id.clone(),
+            anchor,
+        );
         assert_eq!(reply.reply_to, Some(parent_id));
         assert_eq!(reply.kind, AnnotationKind::Comment);
         // Should appear in JSON
