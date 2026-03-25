@@ -108,6 +108,16 @@ pub struct Annotation {
     pub anchor: Anchor,
 }
 
+/// Summary of annotations for a single file, used for cross-file views.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub struct FileAnnotations {
+    pub file_path: String,
+    pub file_name: String,
+    pub annotations: Vec<Annotation>,
+}
+
 impl Annotation {
     pub fn new(
         kind: AnnotationKind,

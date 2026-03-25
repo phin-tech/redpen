@@ -27,8 +27,8 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Svelte sync & typecheck
-        run: bunx svelte-kit sync && bunx tsc --noEmit
+      - name: Typecheck
+        run: bunx tsc --noEmit
 
   build:
     name: Build Frontend

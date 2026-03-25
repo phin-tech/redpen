@@ -3,7 +3,7 @@ use crate::notification::{NotificationKind, NotificationService};
 use crate::settings::{AppSettings, UpdateSettingsRequest};
 use crate::state::AppState;
 use redpen_core::anchor::reanchor_annotations;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
+use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, FileAnnotations, Range};
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
 use std::fs;
@@ -71,15 +71,6 @@ pub fn get_annotations(file_path: String) -> CommandResult<SidecarFile> {
     load_sidecar_for_file(&project_root, source_path)
 }
 
-#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/lib/bindings/")]
-pub struct FileAnnotations {
-    pub file_path: String,
-    pub file_name: String,
-    pub annotations: Vec<Annotation>,
-}
-
 #[tauri::command]
 pub fn get_all_annotations(root_folder: String) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
@@ -107,7 +98,7 @@ fn collect_sidecar_files(
         let path = entry.path();
         if path.is_dir() {
             collect_sidecar_files(&path, project_root, results)?;
-        } else if path.extension().map_or(false, |e| e == "json") {
+        } else if path.extension().is_some_and(|e| e == "json") {
             if let Ok(sidecar) = SidecarFile::load(&path) {
                 if !sidecar.annotations.is_empty() {
                     // Reconstruct source path from sidecar path

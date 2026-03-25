@@ -262,13 +262,11 @@ pub fn list_refs(directory: String) -> CommandResult<RefList> {
     let mut recent_commits: Vec<CommitInfo> = Vec::new();
     if let Ok(mut revwalk) = repo.revwalk() {
         let _ = revwalk.push_head();
-        for oid_result in revwalk.take(10) {
-            if let Ok(oid) = oid_result {
-                if let Ok(commit) = repo.find_commit(oid) {
-                    let sha = oid.to_string()[..7].to_string();
-                    let short_message = commit.summary().unwrap_or("").to_string();
-                    recent_commits.push(CommitInfo { sha, short_message });
-                }
+        for oid in revwalk.take(10).flatten() {
+            if let Ok(commit) = repo.find_commit(oid) {
+                let sha = oid.to_string()[..7].to_string();
+                let short_message = commit.summary().unwrap_or("").to_string();
+                recent_commits.push(CommitInfo { sha, short_message });
             }
         }
     }

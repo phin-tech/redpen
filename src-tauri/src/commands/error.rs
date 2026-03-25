@@ -59,11 +59,10 @@ impl From<SidecarError> for CommandError {
     }
 }
 
-// Tauri requires the error type to implement `Into<tauri::InvokeError>`.
-// `InvokeError` implements `From<String>`, so providing `Into<String>` suffices.
-impl From<CommandError> for String {
+// Tauri v2 requires the error type to implement `Into<tauri::ipc::InvokeError>`.
+impl From<CommandError> for tauri::ipc::InvokeError {
     fn from(e: CommandError) -> Self {
-        e.to_string()
+        tauri::ipc::InvokeError::from(e.to_string())
     }
 }
 
@@ -96,9 +95,10 @@ mod tests {
     }
 
     #[test]
-    fn into_string_works() {
+    fn into_invoke_error_works() {
         let err = CommandError::NotFound("test".into());
-        let s: String = err.into();
-        assert_eq!(s, "test");
+        let invoke_err: tauri::ipc::InvokeError = err.into();
+        // InvokeError wraps the display string as a JSON value
+        assert_eq!(invoke_err.0, serde_json::Value::String("test".into()));
     }
 }
