@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Check that Tauri plugin names match between JS (package.json) and Rust (src-tauri/Cargo.toml).
+# Fails CI on mismatches or unexpected one-sided plugins.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PACKAGE_JSON="$REPO_ROOT/package.json"
+CARGO_TOML="$REPO_ROOT/src-tauri/Cargo.toml"
+
+# Plugins that are intentionally present on only one side.
+# Add entries like "plugin-name" (without prefix) to suppress false positives.
+ALLOW_JS_ONLY=()
+ALLOW_RUST_ONLY=()
+
+# --- Extract plugin names ---
+
+# JS: @tauri-apps/plugin-<name>  →  <name>
+js_plugins=$(grep -oP '"@tauri-apps/plugin-\K[^"]+' "$PACKAGE_JSON" | sed 's/": .*//' | sort)
+
+# Rust: tauri-plugin-<name>  →  <name>
+rust_plugins=$(grep -oP '^tauri-plugin-\K[a-z0-9-]+' "$CARGO_TOML" | sort)
+
+# --- Build allowlist lookup ---
+is_allowed_js_only() { printf '%s\n' "${ALLOW_JS_ONLY[@]}" 2>/dev/null | grep -qxF "$1"; }
+is_allowed_rust_only() { printf '%s\n' "${ALLOW_RUST_ONLY[@]}" 2>/dev/null | grep -qxF "$1"; }
+
+# --- Compare ---
+exit_code=0
+
+# Plugins in JS but not Rust
+while IFS= read -r plugin; do
+    [[ -z "$plugin" ]] && continue
+    if ! echo "$rust_plugins" | grep -qxF "$plugin"; then
+        if is_allowed_js_only "$plugin"; then
+            echo "  [allowed] JS-only plugin: $plugin"
+        else
+            echo "  MISMATCH: plugin '$plugin' found in package.json but missing from Cargo.toml"
+            exit_code=1
+        fi
+    fi
+done <<< "$js_plugins"
+
+# Plugins in Rust but not JS
+while IFS= read -r plugin; do
+    [[ -z "$plugin" ]] && continue
+    if ! echo "$js_plugins" | grep -qxF "$plugin"; then
+        if is_allowed_rust_only "$plugin"; then
+            echo "  [allowed] Rust-only plugin: $plugin"
+        else
+            echo "  MISMATCH: plugin '$plugin' found in Cargo.toml but missing from package.json"
+            exit_code=1
+        fi
+    fi
+done <<< "$rust_plugins"
+
+# --- Summary ---
+js_count=$(echo "$js_plugins" | wc -l | tr -d ' ')
+rust_count=$(echo "$rust_plugins" | wc -l | tr -d ' ')
+
+echo ""
+echo "Tauri plugin parity check"
+echo "  JS plugins:   $js_count  (package.json)"
+echo "  Rust plugins: $rust_count  (Cargo.toml)"
+
+if [[ $exit_code -eq 0 ]]; then
+    echo "  Status: OK — all plugins match"
+else
+    echo "  Status: FAILED — mismatches found (see above)"
+fi
+
+exit $exit_code

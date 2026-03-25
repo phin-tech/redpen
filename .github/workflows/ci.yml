@@ -50,6 +50,16 @@ jobs:
       - name: Cargo clippy
         run: cargo clippy --workspace -- -D warnings
 
+  plugin-parity:
+    name: Tauri Plugin Parity
+    if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Tauri plugin version parity
+        run: ./script/check-tauri-versions
+
   check:
     name: Check
     if: "github.event_name == 'workflow_call' || !startsWith(github.event.head_commit.message, 'release: v')"
