@@ -1,5 +1,6 @@
 mod bridge;
 mod commands;
+mod event_bus;
 mod notification;
 mod settings;
 mod state;
@@ -54,6 +55,10 @@ pub fn run() {
             get_pending_deep_links,
         ])
         .setup(|app| {
+            let event_bus = crate::event_bus::TauriEventBus::new(app.handle().clone());
+            let annotation_service = redpen_runtime::annotations::AnnotationService::new(event_bus);
+            app.manage(annotation_service);
+
             // Build native menu bar
             let settings_item = MenuItemBuilder::with_id("settings", "Settings...")
                 .accelerator("Cmd+,")

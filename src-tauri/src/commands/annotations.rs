@@ -1,11 +1,12 @@
 use crate::commands::error::{CommandError, CommandResult};
+use crate::event_bus::TauriEventBus;
 use crate::notification::{NotificationKind, NotificationService};
 use crate::settings::{AppSettings, UpdateSettingsRequest};
 use crate::state::AppState;
-use redpen_core::anchor::reanchor_annotations;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, FileAnnotations, Range};
-use redpen_core::hash::{hash_file, hash_string};
+use redpen_core::annotation::{Anchor, Annotation, FileAnnotations, Range};
+use redpen_core::hash::hash_string;
 use redpen_core::sidecar::SidecarFile;
+use redpen_runtime::annotations::AnnotationService;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::State;
@@ -40,112 +41,33 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
     }
 }
 
-fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> CommandResult<SidecarFile> {
-    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
-    if annotation_path.exists() {
-        let mut sidecar = SidecarFile::load(&annotation_path)?;
-        let current_hash = hash_file(source_path)?;
-        if sidecar.source_file_hash != current_hash {
-            let content = fs::read_to_string(source_path)?;
-            reanchor_annotations(&mut sidecar.annotations, &content);
-            sidecar.source_file_hash = current_hash;
-        }
-        Ok(sidecar)
-    } else {
-        let hash = hash_file(source_path)?;
-        Ok(SidecarFile::new(hash))
-    }
-}
-
-fn save_sidecar(
-    sidecar: &SidecarFile,
-    project_root: &Path,
-    source_path: &Path,
-) -> CommandResult<()> {
-    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
-    if sidecar.annotations.is_empty() {
-        if annotation_path.exists() {
-            fs::remove_file(&annotation_path)?;
-        }
-        Ok(())
-    } else {
-        sidecar.save(&annotation_path)?;
-        Ok(())
-    }
-}
-
 #[tauri::command]
-pub fn get_annotations(file_path: String) -> CommandResult<SidecarFile> {
+pub fn get_annotations(
+    file_path: String,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
+) -> CommandResult<SidecarFile> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-    load_sidecar_for_file(&project_root, source_path)
+    svc.get_annotations(source_path, &project_root)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn get_all_annotations(root_folder: String) -> CommandResult<Vec<FileAnnotations>> {
+pub fn get_all_annotations(
+    root_folder: String,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
+) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
     let project_root = resolve_project_root(root);
-    let comments_dir = project_root.join(".redpen").join("comments");
-
-    if !comments_dir.exists() {
-        return Ok(vec![]);
-    }
-
-    let mut results = Vec::new();
-    collect_sidecar_files(&comments_dir, &project_root, &mut results)?;
-    results.sort_by(|a, b| a.file_path.cmp(&b.file_path));
-    Ok(results)
-}
-
-fn collect_sidecar_files(
-    dir: &Path,
-    project_root: &Path,
-    results: &mut Vec<FileAnnotations>,
-) -> CommandResult<()> {
-    let entries = fs::read_dir(dir)?;
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_sidecar_files(&path, project_root, results)?;
-        } else if path.extension().is_some_and(|e| e == "json") {
-            if let Ok(sidecar) = SidecarFile::load(&path) {
-                if !sidecar.annotations.is_empty() {
-                    // Reconstruct source path from sidecar path
-                    let relative = path
-                        .strip_prefix(project_root.join(".redpen").join("comments"))
-                        .unwrap_or(&path);
-                    // The sidecar file is named "filename.ext.json", so strip the trailing .json
-                    let source_relative = relative.with_file_name(
-                        relative
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .trim_end_matches(".json"),
-                    );
-                    let source_path = project_root.join(&source_relative);
-                    let file_name = source_relative
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string();
-
-                    results.push(FileAnnotations {
-                        file_path: source_path.to_string_lossy().to_string(),
-                        file_name,
-                        annotations: sidecar.annotations,
-                    });
-                }
-            }
-        }
-    }
-    Ok(())
+    svc.get_all_annotations(root, &project_root)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
 pub fn create_annotation(
     request: CreateAnnotationRequest,
     state: State<'_, AppState>,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&request.file_path);
     let content = fs::read_to_string(source_path)?;
@@ -182,13 +104,9 @@ pub fn create_annotation(
         .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
-    let annotation = Annotation::new(request.kind, request.body, request.labels, author, anchor);
-
     let project_root = resolve_project_root(source_path);
-    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
-    sidecar.add_annotation(annotation.clone());
-    save_sidecar(&sidecar, &project_root, source_path)?;
-    Ok(annotation)
+    svc.create_annotation(&project_root, source_path, &request.body, request.labels, &author, anchor)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -197,45 +115,35 @@ pub fn update_annotation(
     annotation_id: String,
     body: Option<String>,
     labels: Option<Vec<String>>,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
-    let annotation = sidecar
-        .get_annotation_mut(&annotation_id)
-        .ok_or(CommandError::NotFound("Annotation not found".into()))?;
-    if let Some(b) = body {
-        annotation.body = b;
-    }
-    if let Some(l) = labels {
-        annotation.labels = l;
-    }
-    annotation.updated_at = Some(chrono::Utc::now());
-    let result = annotation.clone();
-    save_sidecar(&sidecar, &project_root, source_path)?;
-    Ok(result)
+    svc.update_annotation(&project_root, source_path, &annotation_id, body.as_deref(), labels)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn delete_annotation(file_path: String, annotation_id: String) -> CommandResult<()> {
+pub fn delete_annotation(
+    file_path: String,
+    annotation_id: String,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
+) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
-    sidecar
-        .remove_annotation(&annotation_id)
-        .ok_or(CommandError::NotFound("Annotation not found".into()))?;
-    save_sidecar(&sidecar, &project_root, source_path)?;
-    Ok(())
+    svc.delete_annotation(&project_root, source_path, &annotation_id)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
-pub fn clear_annotations(file_path: String) -> CommandResult<()> {
+pub fn clear_annotations(
+    file_path: String,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
+) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-    let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
-    sidecar.annotations.clear();
-    save_sidecar(&sidecar, &project_root, source_path)?;
-    Ok(())
+    svc.clear_annotations(&project_root, source_path)
+        .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -273,6 +181,7 @@ pub fn signal_review_done(
     file_path: String,
     verdict: Option<String>,
     state: State<'_, AppState>,
+    svc: State<'_, AnnotationService<TauriEventBus>>,
     app_handle: tauri::AppHandle,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
@@ -302,7 +211,8 @@ pub fn signal_review_done(
     drop(settings);
 
     // Also POST annotations to the redpen channel (if running)
-    let sidecar = load_sidecar_for_file(&project_root, source_path)?;
+    let sidecar = svc.get_annotations(source_path, &project_root)
+        .map_err(CommandError::from)?;
     let json = serde_json::to_string(&sidecar.annotations)?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());
     let encoded_path: String = file_path

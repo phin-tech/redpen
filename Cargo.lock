@@ -3570,6 +3570,7 @@ dependencies = [
  "git2",
  "notify",
  "redpen-core",
+ "redpen-runtime",
  "redpen-server",
  "serde",
  "serde_json",
@@ -3659,6 +3660,18 @@ dependencies = [
  "thiserror 2.0.18",
  "ts-rs",
  "uuid",
+]
+
+[[package]]
+name = "redpen-runtime"
+version = "0.1.6"
+dependencies = [
+ "chrono",
+ "redpen-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -1,4 +1,5 @@
 use redpen_core::sidecar::SidecarError;
+use redpen_runtime::error::RuntimeError;
 use std::fmt;
 
 /// Typed error enum for Tauri command handlers.
@@ -56,6 +57,16 @@ impl From<serde_json::Error> for CommandError {
 impl From<SidecarError> for CommandError {
     fn from(e: SidecarError) -> Self {
         CommandError::Sidecar(e)
+    }
+}
+
+impl From<RuntimeError> for CommandError {
+    fn from(e: RuntimeError) -> Self {
+        match e {
+            RuntimeError::Io(io_err) => CommandError::Io(io_err),
+            RuntimeError::Json(json_err) => CommandError::Json(json_err),
+            RuntimeError::NotFound(msg) => CommandError::NotFound(msg),
+        }
     }
 }
 
