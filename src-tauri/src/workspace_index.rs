@@ -132,7 +132,7 @@ impl WorkspaceIndexService {
         }
 
         {
-            let mut roots = self.inner.roots.lock().unwrap();
+            let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
             if roots.contains_key(&normalized_root) {
                 return Ok(());
             }
@@ -165,7 +165,7 @@ impl WorkspaceIndexService {
     pub fn unregister_root(&self, root: &str) {
         let normalized_root = normalize_root(root);
         let watcher = {
-            let mut roots = self.inner.roots.lock().unwrap();
+            let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
             roots
                 .remove(&normalized_root)
                 .and_then(|mut entry| entry.watcher.take())
@@ -179,7 +179,7 @@ impl WorkspaceIndexService {
 
     pub fn get_statuses(&self, roots: Option<&[String]>) -> Vec<WorkspaceIndexStatus> {
         let requested_roots = roots.map(normalize_roots).unwrap_or_default();
-        let roots = self.inner.roots.lock().unwrap();
+        let roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
         let mut statuses = roots
             .values()
             .filter(|entry| {
@@ -203,7 +203,7 @@ impl WorkspaceIndexService {
             .clamp(1, DEFAULT_QUERY_LIMIT);
         let query = request.query.trim().to_lowercase();
 
-        let roots = self.inner.roots.lock().unwrap();
+        let roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
         let statuses = roots
             .values()
             .filter(|entry| {
@@ -260,7 +260,7 @@ impl WorkspaceIndexService {
             .inner
             .roots
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .keys()
             .cloned()
             .collect::<Vec<_>>();
@@ -328,14 +328,14 @@ impl WorkspaceIndexService {
             }
         });
 
-        let mut roots = self.inner.roots.lock().unwrap();
+        let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = roots.get_mut(&root) {
             entry.watcher = Some(WatcherHandle { stop, join });
         }
     }
 
     fn event_is_relevant(&self, root: &str, paths: &[PathBuf]) -> bool {
-        let settings = self.inner.settings.lock().unwrap().clone();
+        let settings = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let ignored_names = ignored_folder_names(&settings);
         let root_path = canonicalize_path(Path::new(root));
         let repo = git2::Repository::discover(&root_path).ok();
@@ -360,7 +360,7 @@ impl WorkspaceIndexService {
     }
 
     fn set_error(&self, root: &str, error: String) {
-        let mut roots = self.inner.roots.lock().unwrap();
+        let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = roots.get_mut(root) {
             entry.status.state = WorkspaceIndexState::Error;
             entry.status.error = Some(error);
@@ -369,7 +369,7 @@ impl WorkspaceIndexService {
 
     fn request_refresh(&self, root: &str, mark_stale: bool) {
         let should_spawn = {
-            let mut roots = self.inner.roots.lock().unwrap();
+            let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
             let Some(entry) = roots.get_mut(root) else {
                 return;
             };
@@ -400,7 +400,7 @@ impl WorkspaceIndexService {
     fn refresh_until_idle(&self, root: String) {
         loop {
             {
-                let mut roots = self.inner.roots.lock().unwrap();
+                let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
                 let Some(entry) = roots.get_mut(&root) else {
                     return;
                 };
@@ -411,11 +411,11 @@ impl WorkspaceIndexService {
                 entry.status.error = None;
             }
 
-            let settings = self.inner.settings.lock().unwrap().clone();
+            let settings = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let snapshot = build_index_snapshot(Path::new(&root), &settings, None);
 
             let should_continue = {
-                let mut roots = self.inner.roots.lock().unwrap();
+                let mut roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
                 let Some(entry) = roots.get_mut(&root) else {
                     return;
                 };

@@ -14,7 +14,9 @@ use url::Url;
 
 #[tauri::command]
 fn get_pending_deep_links(state: tauri::State<AppState>) -> Vec<String> {
-    let mut pending = state.pending_deep_links.lock().unwrap();
+    let Ok(mut pending) = state.pending_deep_links.lock() else {
+        return Vec::new();
+    };
     pending.drain(..).collect()
 }
 
@@ -198,10 +200,11 @@ pub fn run() {
             // Store in state so the frontend can fetch on mount
             if let Ok(Some(urls)) = app.deep_link().get_current() {
                 let state = app.state::<AppState>();
-                let mut pending = state.pending_deep_links.lock().unwrap();
-                for url in urls {
-                    pending.push(url.to_string());
-                }
+                if let Ok(mut pending) = state.pending_deep_links.lock() {
+                    for url in urls {
+                        pending.push(url.to_string());
+                    }
+                }; // semicolon ensures MutexGuard drops before state
             }
 
             // Start optional local HTTP server for CLI/agent communication

@@ -157,9 +157,13 @@ fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
 }
 
 fn resolve_project_root(source_path: &Path) -> PathBuf {
+    let fallback = || dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     match git2::Repository::discover(source_path) {
-        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
-        Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        Ok(repo) => repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(fallback),
+        Err(_) => fallback(),
     }
 }
 
@@ -329,7 +333,11 @@ fn cmd_export(file: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::err
     let project_root = resolve_project_root(&abs_path);
     let sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let content = fs::read_to_string(&abs_path)?;
-    let file_name = abs_path.file_name().unwrap().to_string_lossy().to_string();
+    let file_name = abs_path
+        .file_name()
+        .ok_or("path has no file name")?
+        .to_string_lossy()
+        .to_string();
     let markdown = export_markdown(&sidecar, &content, &file_name);
     if let Some(out_path) = output {
         fs::write(out_path, &markdown)?;

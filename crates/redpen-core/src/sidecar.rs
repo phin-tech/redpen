@@ -31,7 +31,7 @@ impl SidecarFile {
         let relative = source_path
             .strip_prefix(project_root)
             .unwrap_or(source_path);
-        let file_name = relative.file_name().unwrap().to_string_lossy();
+        let file_name = relative.file_name().unwrap_or_default().to_string_lossy();
         project_root
             .join(".redpen")
             .join("comments")
@@ -42,7 +42,7 @@ impl SidecarFile {
         let relative = source_path
             .strip_prefix(project_root)
             .unwrap_or(source_path);
-        let file_name = relative.file_name().unwrap().to_string_lossy();
+        let file_name = relative.file_name().unwrap_or_default().to_string_lossy();
         project_root
             .join(".redpen")
             .join("signals")

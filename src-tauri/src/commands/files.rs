@@ -22,9 +22,13 @@ pub struct FileEntry {
 #[tauri::command]
 pub fn read_directory(path: String) -> CommandResult<Vec<FileEntry>> {
     let dir = PathBuf::from(&path);
+    let fallback = || dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let project_root = match git2::Repository::discover(&dir) {
-        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
-        Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        Ok(repo) => repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(fallback),
+        Err(_) => fallback(),
     };
     let mut entries = Vec::new();
     let read_dir = fs::read_dir(&dir)?;

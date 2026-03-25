@@ -30,9 +30,13 @@ fn default_kind() -> AnnotationKind {
 }
 
 fn resolve_project_root(source_path: &Path) -> PathBuf {
+    let fallback = || dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     match git2::Repository::discover(source_path) {
-        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
-        Err(_) => dirs::home_dir().unwrap_or_else(|| PathBuf::from("/")),
+        Ok(repo) => repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(fallback),
+        Err(_) => fallback(),
     }
 }
 
@@ -115,7 +119,7 @@ fn collect_sidecar_files(
                     let source_relative = relative.with_file_name(
                         relative
                             .file_name()
-                            .unwrap()
+                            .unwrap_or_default()
                             .to_string_lossy()
                             .trim_end_matches(".json"),
                     );
@@ -172,7 +176,12 @@ pub fn create_annotation(
         last_known_line: request.start_line,
     };
 
-    let author = state.settings.lock().unwrap().author.clone();
+    let author = state
+        .settings
+        .lock()
+        .map_err(|e| format!("settings lock poisoned: {e}"))?
+        .author
+        .clone();
     let annotation = Annotation::new(request.kind, request.body, request.labels, author, anchor);
 
     let project_root = resolve_project_root(source_path);
@@ -235,7 +244,10 @@ pub fn update_settings(
     state: State<'_, AppState>,
 ) -> Result<AppSettings, String> {
     let updated_settings = {
-        let settings = state.settings.lock().unwrap();
+        let settings = state
+            .settings
+            .lock()
+            .map_err(|e| format!("settings lock poisoned: {e}"))?;
         let mut next_settings = settings.clone();
         request.apply(&mut next_settings);
         next_settings
@@ -244,7 +256,10 @@ pub fn update_settings(
     updated_settings.save_to_path(&state.settings_path)?;
 
     {
-        let mut settings = state.settings.lock().unwrap();
+        let mut settings = state
+            .settings
+            .lock()
+            .map_err(|e| format!("settings lock poisoned: {e}"))?;
         *settings = updated_settings.clone();
     }
 
@@ -341,5 +356,9 @@ pub fn send_notification(
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
-    Ok(state.settings.lock().unwrap().clone())
+    Ok(state
+        .settings
+        .lock()
+        .map_err(|e| format!("settings lock poisoned: {e}"))?
+        .clone())
 }
