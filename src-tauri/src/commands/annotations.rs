@@ -1,6 +1,6 @@
 use crate::notification::{NotificationKind, NotificationService};
-use crate::state::AppState;
 use crate::settings::{AppSettings, UpdateSettingsRequest};
+use crate::state::AppState;
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
 use redpen_core::hash::{hash_file, hash_string};
@@ -46,7 +46,11 @@ fn load_sidecar_for_file(project_root: &Path, source_path: &Path) -> Result<Side
     }
 }
 
-fn save_sidecar(sidecar: &SidecarFile, project_root: &Path, source_path: &Path) -> Result<(), String> {
+fn save_sidecar(
+    sidecar: &SidecarFile,
+    project_root: &Path,
+    source_path: &Path,
+) -> Result<(), String> {
     let annotation_path = SidecarFile::annotation_path(project_root, source_path);
     if sidecar.annotations.is_empty() {
         if annotation_path.exists() {
@@ -293,13 +297,16 @@ pub fn signal_review_done(
     let sidecar = load_sidecar_for_file(&project_root, source_path)?;
     let json = serde_json::to_string(&sidecar.annotations).map_err(|e| e.to_string())?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());
-    let encoded_path: String = file_path.bytes().map(|b| {
-        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-            format!("{}", b as char)
-        } else {
-            format!("%{:02X}", b)
-        }
-    }).collect();
+    let encoded_path: String = file_path
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                format!("{}", b as char)
+            } else {
+                format!("%{:02X}", b)
+            }
+        })
+        .collect();
     // Fire and forget — channel may not be running
     std::thread::spawn(move || {
         use std::io::Write;

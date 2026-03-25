@@ -1,14 +1,14 @@
 mod commands;
+mod notification;
 mod settings;
 mod state;
 mod workspace_index;
-mod notification;
 
 use notification::{NotificationKind, NotificationService};
 use state::AppState;
-use tauri_plugin_deep_link::DeepLinkExt;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
-use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
 #[tauri::command]
@@ -57,7 +57,11 @@ pub fn run() {
                 .build(app)?;
 
             let app_submenu = SubmenuBuilder::new(app, "Red Pen")
-                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
+                .item(&PredefinedMenuItem::about(
+                    app,
+                    Some("About Red Pen"),
+                    None,
+                )?)
                 .separator()
                 .item(&settings_item)
                 .separator()
@@ -80,9 +84,7 @@ pub fn run() {
                 .select_all()
                 .build()?;
 
-            let view_submenu = SubmenuBuilder::new(app, "View")
-                .fullscreen()
-                .build()?;
+            let view_submenu = SubmenuBuilder::new(app, "View").fullscreen().build()?;
 
             let window_submenu = SubmenuBuilder::new(app, "Window")
                 .minimize()
@@ -118,8 +120,10 @@ pub fn run() {
                     if let Ok(parsed) = Url::parse(&url_str) {
                         match parsed.host_str() {
                             Some("notify") => {
-                                let params: std::collections::HashMap<String, String> =
-                                    parsed.query_pairs().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+                                let params: std::collections::HashMap<String, String> = parsed
+                                    .query_pairs()
+                                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                                    .collect();
                                 let kind_str = params.get("kind").map(|s| s.as_str()).unwrap_or("");
                                 let file = params.get("file");
                                 let line = params.get("line");
@@ -139,8 +143,10 @@ pub fn run() {
                                         .and_then(|f| f.rsplit('/').next().map(|s| s.to_string()))
                                         .unwrap_or_else(|| "unknown".to_string());
                                     let line_num = line.and_then(|l| l.parse::<u32>().ok());
-                                    let (title, body) = kind.default_title_body(&file_name, line_num);
-                                    let _ = notification_service.send(kind, &title, &body, &settings);
+                                    let (title, body) =
+                                        kind.default_title_body(&file_name, line_num);
+                                    let _ =
+                                        notification_service.send(kind, &title, &body, &settings);
                                 }
 
                                 // Emit refresh first so annotations reload, then navigate
@@ -156,10 +162,20 @@ pub fn run() {
                             }
                             _ => {
                                 // Fire DeepLink notification
-                                if let Some(file) = parsed.query_pairs().find(|(k, _)| k == "file").map(|(_, v)| v.to_string()) {
+                                if let Some(file) = parsed
+                                    .query_pairs()
+                                    .find(|(k, _)| k == "file")
+                                    .map(|(_, v)| v.to_string())
+                                {
                                     let file_name = file.rsplit('/').next().unwrap_or("unknown");
-                                    let line = parsed.query_pairs().find(|(k, _)| k == "line").map(|(_, v)| v.to_string());
-                                    let line_str = line.as_ref().map(|l| format!(":{}", l)).unwrap_or_default();
+                                    let line = parsed
+                                        .query_pairs()
+                                        .find(|(k, _)| k == "line")
+                                        .map(|(_, v)| v.to_string());
+                                    let line_str = line
+                                        .as_ref()
+                                        .map(|l| format!(":{}", l))
+                                        .unwrap_or_default();
                                     let settings = settings_for_links.lock().unwrap();
                                     let _ = notification_service.send(
                                         NotificationKind::DeepLink,

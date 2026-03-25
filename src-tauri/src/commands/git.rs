@@ -15,7 +15,9 @@ pub fn get_git_root(path: String) -> Result<Option<String>, String> {
     match git2::Repository::discover(p) {
         Ok(repo) => {
             let workdir = repo.workdir().ok_or("bare repository")?;
-            Ok(Some(workdir.to_string_lossy().trim_end_matches('/').to_string()))
+            Ok(Some(
+                workdir.to_string_lossy().trim_end_matches('/').to_string(),
+            ))
         }
         Err(_) => Ok(None),
     }
@@ -39,25 +41,24 @@ pub fn get_git_status(directory: String) -> Result<Vec<GitFileStatus>, String> {
     for entry in statuses.iter() {
         let path = entry.path().unwrap_or("").to_string();
         let status = entry.status();
-        let letter = if status.contains(git2::Status::WT_NEW)
-            || status.contains(git2::Status::INDEX_NEW)
-        {
-            "?"
-        } else if status.contains(git2::Status::WT_MODIFIED)
-            || status.contains(git2::Status::INDEX_MODIFIED)
-        {
-            "M"
-        } else if status.contains(git2::Status::WT_DELETED)
-            || status.contains(git2::Status::INDEX_DELETED)
-        {
-            "D"
-        } else if status.contains(git2::Status::WT_RENAMED)
-            || status.contains(git2::Status::INDEX_RENAMED)
-        {
-            "R"
-        } else {
-            continue;
-        };
+        let letter =
+            if status.contains(git2::Status::WT_NEW) || status.contains(git2::Status::INDEX_NEW) {
+                "?"
+            } else if status.contains(git2::Status::WT_MODIFIED)
+                || status.contains(git2::Status::INDEX_MODIFIED)
+            {
+                "M"
+            } else if status.contains(git2::Status::WT_DELETED)
+                || status.contains(git2::Status::INDEX_DELETED)
+            {
+                "D"
+            } else if status.contains(git2::Status::WT_RENAMED)
+                || status.contains(git2::Status::INDEX_RENAMED)
+            {
+                "R"
+            } else {
+                continue;
+            };
         statuses_result.push(GitFileStatus {
             path,
             status: letter.to_string(),

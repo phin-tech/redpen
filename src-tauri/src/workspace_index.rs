@@ -166,7 +166,9 @@ impl WorkspaceIndexService {
         let normalized_root = normalize_root(root);
         let watcher = {
             let mut roots = self.inner.roots.lock().unwrap();
-            roots.remove(&normalized_root).and_then(|mut entry| entry.watcher.take())
+            roots
+                .remove(&normalized_root)
+                .and_then(|mut entry| entry.watcher.take())
         };
 
         if let Some(watcher) = watcher {
@@ -180,7 +182,9 @@ impl WorkspaceIndexService {
         let roots = self.inner.roots.lock().unwrap();
         let mut statuses = roots
             .values()
-            .filter(|entry| requested_roots.is_empty() || requested_roots.contains(&entry.status.root))
+            .filter(|entry| {
+                requested_roots.is_empty() || requested_roots.contains(&entry.status.root)
+            })
             .map(|entry| entry.status.clone())
             .collect::<Vec<_>>();
         statuses.sort_by(|a, b| a.root.cmp(&b.root));
@@ -188,7 +192,11 @@ impl WorkspaceIndexService {
     }
 
     pub fn query(&self, request: QueryWorkspaceFilesRequest) -> WorkspaceFileQueryResponse {
-        let requested_roots = request.roots.as_deref().map(normalize_roots).unwrap_or_default();
+        let requested_roots = request
+            .roots
+            .as_deref()
+            .map(normalize_roots)
+            .unwrap_or_default();
         let limit = request
             .limit
             .unwrap_or(DEFAULT_QUERY_LIMIT)
@@ -198,13 +206,17 @@ impl WorkspaceIndexService {
         let roots = self.inner.roots.lock().unwrap();
         let statuses = roots
             .values()
-            .filter(|entry| requested_roots.is_empty() || requested_roots.contains(&entry.status.root))
+            .filter(|entry| {
+                requested_roots.is_empty() || requested_roots.contains(&entry.status.root)
+            })
             .map(|entry| entry.status.clone())
             .collect::<Vec<_>>();
 
         let mut all_files = roots
             .values()
-            .filter(|entry| requested_roots.is_empty() || requested_roots.contains(&entry.status.root))
+            .filter(|entry| {
+                requested_roots.is_empty() || requested_roots.contains(&entry.status.root)
+            })
             .flat_map(|entry| entry.files.iter().cloned())
             .collect::<Vec<_>>();
 
@@ -281,8 +293,7 @@ impl WorkspaceIndexService {
                 }
             };
 
-            if let Err(error) =
-                watcher.watch(Path::new(&root_for_thread), RecursiveMode::Recursive)
+            if let Err(error) = watcher.watch(Path::new(&root_for_thread), RecursiveMode::Recursive)
             {
                 service.set_error(&root_for_thread, error.to_string());
                 return;
@@ -519,17 +530,15 @@ fn build_index_snapshot(
     let mut files = Vec::new();
     let mut truncated = false;
 
-    let walker = WalkDir::new(&walk_root)
-        .into_iter()
-        .filter_entry(|entry| {
-            should_visit_entry(
-                entry,
-                &walk_root,
-                project_root.as_deref(),
-                &git_ignore_matcher,
-                &ignored_names,
-            )
-        });
+    let walker = WalkDir::new(&walk_root).into_iter().filter_entry(|entry| {
+        should_visit_entry(
+            entry,
+            &walk_root,
+            project_root.as_deref(),
+            &git_ignore_matcher,
+            &ignored_names,
+        )
+    });
 
     for entry in walker {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -732,8 +741,16 @@ mod tests {
         fs::create_dir_all(directory.path().join("node_modules")).unwrap();
         fs::create_dir_all(directory.path().join("generated")).unwrap();
         fs::write(directory.path().join("src").join("main.ts"), "ok").unwrap();
-        fs::write(directory.path().join("node_modules").join("lib.js"), "ignored").unwrap();
-        fs::write(directory.path().join("generated").join("code.ts"), "ignored").unwrap();
+        fs::write(
+            directory.path().join("node_modules").join("lib.js"),
+            "ignored",
+        )
+        .unwrap();
+        fs::write(
+            directory.path().join("generated").join("code.ts"),
+            "ignored",
+        )
+        .unwrap();
 
         let snapshot = build_index_snapshot(
             directory.path(),
@@ -767,7 +784,8 @@ mod tests {
         fs::write(directory.path().join("ignored").join("skip.ts"), "ignored").unwrap();
         fs::write(directory.path().join(".hidden.ts"), "hidden").unwrap();
 
-        let snapshot = build_index_snapshot(directory.path(), &AppSettings::default(), None).unwrap();
+        let snapshot =
+            build_index_snapshot(directory.path(), &AppSettings::default(), None).unwrap();
         let indexed_paths = snapshot
             .files
             .into_iter()

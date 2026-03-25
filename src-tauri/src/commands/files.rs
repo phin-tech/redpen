@@ -35,7 +35,8 @@ pub fn read_directory(path: String) -> Result<Vec<FileEntry>, String> {
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
         let full_path = entry.path();
         let has_sidecar = if file_type.is_file() {
-            let annotation_path = redpen_core::sidecar::SidecarFile::annotation_path(&project_root, &full_path);
+            let annotation_path =
+                redpen_core::sidecar::SidecarFile::annotation_path(&project_root, &full_path);
             annotation_path.exists()
         } else {
             false

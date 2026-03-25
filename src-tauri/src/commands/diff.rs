@@ -71,7 +71,9 @@ pub struct CommitInfo {
 
 fn get_file_at_ref(repo: &Repository, file_path: &str, git_ref: &str) -> Result<String, String> {
     if git_ref == "working-tree" {
-        let workdir = repo.workdir().ok_or("bare repository has no working directory")?;
+        let workdir = repo
+            .workdir()
+            .ok_or("bare repository has no working directory")?;
         let full_path = workdir.join(file_path);
         return std::fs::read_to_string(&full_path)
             .map_err(|e| format!("failed to read working tree file: {}", e));
@@ -83,10 +85,7 @@ fn get_file_at_ref(repo: &Repository, file_path: &str, git_ref: &str) -> Result<
     } else {
         // Try local branch first
         if let Ok(branch) = repo.find_branch(git_ref, git2::BranchType::Local) {
-            branch
-                .get()
-                .peel_to_commit()
-                .map_err(|e| e.to_string())?
+            branch.get().peel_to_commit().map_err(|e| e.to_string())?
         } else if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", git_ref)) {
             reference.peel_to_commit().map_err(|e| e.to_string())?
         } else if let Ok(reference) = repo.find_reference(&format!("refs/heads/{}", git_ref)) {
@@ -120,7 +119,9 @@ pub fn compute_diff(
     let repo = Repository::discover(&directory).map_err(|e| e.to_string())?;
 
     // Resolve file_path relative to repo root
-    let workdir = repo.workdir().ok_or("bare repository has no working directory")?;
+    let workdir = repo
+        .workdir()
+        .ok_or("bare repository has no working directory")?;
     let abs_file = Path::new(&directory).join(&file_path);
     let rel_file = if abs_file.starts_with(workdir) {
         abs_file
@@ -161,12 +162,20 @@ pub fn compute_diff(
                 let new_idx = change.new_index().map(|i| i as u32 + 1);
 
                 if let Some(ol) = old_idx {
-                    if ol < old_start { old_start = ol; }
-                    if ol > old_end { old_end = ol; }
+                    if ol < old_start {
+                        old_start = ol;
+                    }
+                    if ol > old_end {
+                        old_end = ol;
+                    }
                 }
                 if let Some(nl) = new_idx {
-                    if nl < new_start { new_start = nl; }
-                    if nl > new_end { new_end = nl; }
+                    if nl < new_start {
+                        new_start = nl;
+                    }
+                    if nl > new_end {
+                        new_end = nl;
+                    }
                 }
 
                 let kind = match tag {
@@ -185,8 +194,16 @@ pub fn compute_diff(
 
         let old_start_final = if old_start == u32::MAX { 1 } else { old_start };
         let new_start_final = if new_start == u32::MAX { 1 } else { new_start };
-        let old_count = if old_end >= old_start_final { old_end - old_start_final + 1 } else { 0 };
-        let new_count = if new_end >= new_start_final { new_end - new_start_final + 1 } else { 0 };
+        let old_count = if old_end >= old_start_final {
+            old_end - old_start_final + 1
+        } else {
+            0
+        };
+        let new_count = if new_end >= new_start_final {
+            new_end - new_start_final + 1
+        } else {
+            0
+        };
 
         hunks.push(DiffHunk {
             old_start: old_start_final,
@@ -250,10 +267,7 @@ pub fn list_refs(directory: String) -> Result<RefList, String> {
             if let Ok(oid) = oid_result {
                 if let Ok(commit) = repo.find_commit(oid) {
                     let sha = oid.to_string()[..7].to_string();
-                    let short_message = commit
-                        .summary()
-                        .unwrap_or("")
-                        .to_string();
+                    let short_message = commit.summary().unwrap_or("").to_string();
                     recent_commits.push(CommitInfo { sha, short_message });
                 }
             }

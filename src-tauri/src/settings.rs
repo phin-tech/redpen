@@ -147,7 +147,9 @@ pub fn normalize_ignored_folder_names(names: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{settings_path, AppSettings, NotificationSettings, UpdateSettingsRequest, CONFIG_DIRECTORY};
+    use super::{
+        settings_path, AppSettings, NotificationSettings, UpdateSettingsRequest, CONFIG_DIRECTORY,
+    };
     use std::path::PathBuf;
     use tempfile::tempdir;
 
