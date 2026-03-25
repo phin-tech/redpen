@@ -1,3 +1,4 @@
+mod bridge;
 mod commands;
 mod notification;
 mod settings;
@@ -202,6 +203,14 @@ pub fn run() {
                     pending.push(url.to_string());
                 }
             }
+
+            // Start optional local HTTP server for CLI/agent communication
+            let bridge = bridge::TauriBridge::new(app.handle().clone());
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = redpen_server::start_server(bridge).await {
+                    eprintln!("Red Pen server failed to start: {}", e);
+                }
+            });
 
             Ok(())
         })
