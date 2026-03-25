@@ -29,8 +29,9 @@ const BUILT_IN_IGNORED_FOLDER_NAMES: &[&str] = &[
     "coverage",
 ];
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub enum WorkspaceIndexState {
     Indexing,
     Ready,
@@ -38,8 +39,9 @@ pub enum WorkspaceIndexState {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct WorkspaceIndexStatus {
     pub root: String,
     pub state: WorkspaceIndexState,
@@ -49,8 +51,9 @@ pub struct WorkspaceIndexStatus {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct WorkspaceFileMatch {
     pub root: String,
     pub path: String,
@@ -58,8 +61,9 @@ pub struct WorkspaceFileMatch {
     pub relative_path: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct WorkspaceFileQueryResponse {
     pub results: Vec<WorkspaceFileMatch>,
     pub statuses: Vec<WorkspaceIndexStatus>,

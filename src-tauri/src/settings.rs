@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use ts_rs::TS;
 
 pub const CONFIG_DIRECTORY: &str = ".config/redpen";
 pub const SETTINGS_FILE_NAME: &str = "settings.json";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct NotificationSettings {
     pub annotation_reply: bool,
     pub review_complete: bool,
@@ -25,8 +27,9 @@ impl Default for NotificationSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct AppSettings {
     pub author: String,
     #[serde(default)]
@@ -55,8 +58,9 @@ impl Default for AppSettings {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct UpdateSettingsRequest {
     pub author: Option<String>,
     pub default_labels: Option<Vec<String>>,

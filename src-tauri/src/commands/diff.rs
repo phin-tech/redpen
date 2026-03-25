@@ -3,8 +3,9 @@ use serde::Serialize;
 use similar::{Algorithm, ChangeTag, TextDiff};
 use std::path::Path;
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct DiffResult {
     pub base_ref: String,
     pub target_ref: String,
@@ -13,8 +14,9 @@ pub struct DiffResult {
     pub new_content: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct DiffHunk {
     pub old_start: u32,
     pub old_count: u32,
@@ -23,8 +25,9 @@ pub struct DiffHunk {
     pub changes: Vec<DiffChange>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct DiffChange {
     pub kind: ChangeKind,
     pub old_line: Option<u32>,
@@ -32,31 +35,35 @@ pub struct DiffChange {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub enum ChangeKind {
     Equal,
     Insert,
     Delete,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct RefList {
     pub branches: Vec<BranchInfo>,
     pub tags: Vec<String>,
     pub recent_commits: Vec<CommitInfo>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct BranchInfo {
     pub name: String,
     pub is_current: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct CommitInfo {
     pub sha: String,
     pub short_message: String,

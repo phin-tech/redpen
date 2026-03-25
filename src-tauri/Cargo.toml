@@ -23,6 +23,8 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 notify = "8"
 walkdir = "2"
+similar = "2"
+ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }
 
 [dev-dependencies]
 tempfile = "3"

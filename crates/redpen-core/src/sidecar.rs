@@ -3,14 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct SidecarFile {
     pub version: u32,
     pub source_file_hash: String,
     pub annotations: Vec<Annotation>,
     #[serde(default)]
+    #[ts(type = "Record<string, unknown>")]
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
