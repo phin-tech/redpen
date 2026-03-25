@@ -25,6 +25,7 @@ notify = "8"
 walkdir = "2"
 similar = "2"
 ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }
+redpen-server = { path = "../crates/redpen-server" }
 
 [dev-dependencies]
 tempfile = "3"
