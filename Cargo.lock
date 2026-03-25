@@ -3584,6 +3584,7 @@ dependencies = [
  "tempfile",
  "ts-rs",
  "url",
+ "urlencoding",
  "walkdir",
  "whoami",
 ]

@@ -285,10 +285,7 @@ fn notify_app_refresh(file_path: &Path) {
         return;
     }
     // Fallback: deep link
-    let _url = format!(
-        "redpen://refresh?file={}",
-        urlencoding::encode(&path_str)
-    );
+    let _url = format!("redpen://refresh?file={}", urlencoding::encode(&path_str));
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&_url).spawn();
@@ -480,7 +477,10 @@ fn cmd_wait_via_signals(
                 serde_json::Value::Array(all_annotations),
             );
 
-            println!("{}", serde_json::to_string_pretty(&serde_json::Value::Object(output))?);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::Value::Object(output))?
+            );
             return Ok(());
         }
 
@@ -588,7 +588,10 @@ fn cmd_open_and_wait(
     }
 
     // Fallback: open via deep link, then wait via signal files
-    cmd_open(&files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>(), line)?;
+    cmd_open(
+        &files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>(),
+        line,
+    )?;
     cmd_wait_via_signals(&files, timeout)
 }
 

@@ -98,12 +98,14 @@ pub fn review(file: &str, line: Option<u32>, timeout: Option<u64>) -> Option<Rev
 }
 
 /// Start a review session (non-blocking). Returns session_id.
+#[allow(dead_code)]
 pub fn review_start(file: &str, line: Option<u32>) -> Option<String> {
     let body = json!({"file": file, "line": line});
     rpc_post::<ReviewStartResponse>("review.start", &body).map(|r| r.session_id)
 }
 
 /// Wait for a review session to complete. Blocks.
+#[allow(dead_code)]
 pub fn review_wait(session_id: &str, timeout: Option<u64>) -> Option<ReviewWaitResponse> {
     let timeout_secs = timeout.unwrap_or(86400);
     let body = json!({

@@ -5,11 +5,8 @@
 //! with reliable, bidirectional HTTP communication.
 
 use axum::{
-    extract::State as AxumState,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
+    extract::State as AxumState, http::StatusCode, response::IntoResponse, routing::post, Json,
+    Router,
 };
 use redpen_core::annotation::Annotation;
 use serde::{Deserialize, Serialize};
@@ -107,12 +104,18 @@ pub struct ReviewSessions {
     receivers: Mutex<HashMap<String, oneshot::Receiver<String>>>,
 }
 
-impl ReviewSessions {
-    pub fn new() -> Self {
+impl Default for ReviewSessions {
+    fn default() -> Self {
         Self {
             senders: Mutex::new(HashMap::new()),
             receivers: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl ReviewSessions {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub async fn create(&self, file: String) -> String {
@@ -392,10 +395,7 @@ mod tests {
         }
 
         fn refresh_file(&self, file: &str) -> Result<(), String> {
-            self.refreshed_files
-                .lock()
-                .unwrap()
-                .push(file.to_string());
+            self.refreshed_files.lock().unwrap().push(file.to_string());
             Ok(())
         }
 
