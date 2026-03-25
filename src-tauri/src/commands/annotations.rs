@@ -179,7 +179,7 @@ pub fn create_annotation(
     let author = state
         .settings
         .lock()
-        .map_err(|e| format!("settings lock poisoned: {e}"))?
+        .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
     let annotation = Annotation::new(request.kind, request.body, request.labels, author, anchor);
