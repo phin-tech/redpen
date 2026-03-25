@@ -1,3 +1,5 @@
+mod server_client;
+
 use clap::{Parser, Subcommand};
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
@@ -101,13 +103,14 @@ fn main() {
             line,
             wait,
             timeout,
-        } => cmd_open(&paths, line).and_then(|_| {
+        } => {
             if wait {
-                cmd_wait(&paths, timeout)
+                // Combined open + wait — server handles both in one call
+                cmd_open_and_wait(&paths, line, timeout)
             } else {
-                Ok(())
+                cmd_open(&paths, line)
             }
-        }),
+        }
         Commands::Wait { paths, timeout } => cmd_wait(&paths, timeout),
     };
     if let Err(e) = result {
@@ -275,26 +278,32 @@ fn cmd_annotate(
     Ok(())
 }
 
-/// Send a refresh deep link to the desktop app so it reloads annotations
+/// Send a refresh to the desktop app — tries HTTP server first, falls back to deep link.
 fn notify_app_refresh(file_path: &Path) {
-    let _url = format!(
-        "redpen://refresh?file={}",
-        urlencoding::encode(&file_path.to_string_lossy())
-    );
+    let path_str = file_path.to_string_lossy();
+    if server_client::refresh_file(&path_str) {
+        return;
+    }
+    // Fallback: deep link
+    let _url = format!("redpen://refresh?file={}", urlencoding::encode(&path_str));
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&_url).spawn();
     }
 }
 
-/// Send a notification deep link to the desktop app.
-/// The app's notify handler will fire the OS notification, refresh annotations,
-/// and navigate to the file — so this replaces the need for a separate refresh call.
+/// Notify the desktop app — tries HTTP server first (open + refresh), falls back to deep link.
 fn notify_app(kind: &str, file_path: &Path, line: Option<u32>) {
+    let path_str = file_path.to_string_lossy();
+    // The server's open endpoint handles both opening and refreshing
+    if server_client::open_file(&path_str, line) {
+        return;
+    }
+    // Fallback: deep link
     let mut url = format!(
         "redpen://notify?kind={}&file={}",
         kind,
-        urlencoding::encode(&file_path.to_string_lossy())
+        urlencoding::encode(&path_str)
     );
     if let Some(l) = line {
         url.push_str(&format!("&line={}", l));
@@ -361,18 +370,56 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
         return Ok(());
     }
 
+    // Try the HTTP server first — no signal files, no polling
+    if server_client::is_available() {
+        return cmd_wait_via_server(&files, timeout);
+    }
+
+    // Fallback: signal file polling
+    cmd_wait_via_signals(&files, timeout)
+}
+
+fn cmd_wait_via_server(
+    files: &[PathBuf],
+    timeout: Option<u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file_str = files[0].to_string_lossy();
+    eprintln!(
+        "Waiting for review of {} file(s) via server...",
+        files.len()
+    );
+
+    match server_client::review(&file_str, None, timeout) {
+        Some(resp) => {
+            let output = serde_json::json!({
+                "verdict": resp.verdict,
+                "session_id": resp.session_id,
+                "annotations": resp.annotations,
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+            Ok(())
+        }
+        None => {
+            eprintln!("Server review failed, falling back to signal files...");
+            cmd_wait_via_signals(files, timeout)
+        }
+    }
+}
+
+fn cmd_wait_via_signals(
+    files: &[PathBuf],
+    timeout: Option<u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let project_root = resolve_project_root(&files[0]);
     let session_signal = SidecarFile::session_signal_path(&project_root);
     let session_file = SidecarFile::session_file_path(&project_root);
 
-    // Generate session ID and write it so the GUI knows which session to signal
     let session_id = uuid::Uuid::new_v4().to_string();
     if let Some(parent) = session_file.parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(&session_file, &session_id)?;
 
-    // Clean up any stale signal from a previous session
     let _ = fs::remove_file(&session_signal);
 
     let start = std::time::Instant::now();
@@ -386,25 +433,21 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
 
     loop {
         if session_signal.exists() {
-            // Signal format: "{session_id}\n{verdict}"
             let content = fs::read_to_string(&session_signal).unwrap_or_default();
             let mut lines = content.lines();
             let signal_session = lines.next().unwrap_or("");
             let verdict = lines.next().unwrap_or("approved");
 
             if signal_session != session_id {
-                // Stale signal from a different session — ignore it
                 let _ = fs::remove_file(&session_signal);
                 continue;
             }
 
-            // Clean up signal and session files
             let _ = fs::remove_file(&session_signal);
             let _ = fs::remove_file(&session_file);
 
-            // Collect annotations from all files that have them
             let mut all_annotations: Vec<serde_json::Value> = Vec::new();
-            for file in &files {
+            for file in files {
                 let annotation_path = SidecarFile::annotation_path(&project_root, file);
                 if annotation_path.exists() {
                     let sidecar = load_or_create_sidecar(&project_root, file)?;
@@ -424,7 +467,6 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
                 }
             }
 
-            // Build output with verdict
             let mut output = serde_json::Map::new();
             output.insert(
                 "verdict".to_string(),
@@ -435,14 +477,15 @@ fn cmd_wait(paths: &[PathBuf], timeout: Option<u64>) -> Result<(), Box<dyn std::
                 serde_json::Value::Array(all_annotations),
             );
 
-            let json = serde_json::to_string_pretty(&serde_json::Value::Object(output))?;
-            println!("{}", json);
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::Value::Object(output))?
+            );
             return Ok(());
         }
 
         if let Some(dur) = timeout_duration {
             if start.elapsed() > dur {
-                // Clean up session file on timeout
                 let _ = fs::remove_file(&session_file);
                 eprintln!("Timed out waiting for review");
                 process::exit(2);
@@ -521,6 +564,37 @@ fn expand_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+fn cmd_open_and_wait(
+    paths: &[PathBuf],
+    line: Option<u32>,
+    timeout: Option<u64>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let files = expand_paths(paths)?;
+    if files.is_empty() {
+        eprintln!("No files found");
+        return Ok(());
+    }
+
+    // Try the server's combined review endpoint (opens + blocks in one call)
+    let file_str = files[0].to_string_lossy();
+    if let Some(resp) = server_client::review(&file_str, line, timeout) {
+        let output = serde_json::json!({
+            "verdict": resp.verdict,
+            "session_id": resp.session_id,
+            "annotations": resp.annotations,
+        });
+        println!("{}", serde_json::to_string_pretty(&output)?);
+        return Ok(());
+    }
+
+    // Fallback: open via deep link, then wait via signal files
+    cmd_open(
+        &files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>(),
+        line,
+    )?;
+    cmd_wait_via_signals(&files, timeout)
+}
+
 fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     let files = expand_paths(paths)?;
     if files.is_empty() {
@@ -528,6 +602,20 @@ fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
+    // Try the HTTP server first
+    if server_client::is_available() {
+        for file in &files {
+            let path_str = file.to_string_lossy();
+            if server_client::open_file(&path_str, line) {
+                eprintln!("Opened {}", file.display());
+            } else {
+                eprintln!("Server failed to open {}", file.display());
+            }
+        }
+        return Ok(());
+    }
+
+    // Fallback: deep links
     #[cfg(target_os = "macos")]
     ensure_app_running()?;
 
@@ -543,7 +631,7 @@ fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::err
         {
             std::process::Command::new("open").arg(&url).spawn()?;
         }
-        println!("Opening {}", url);
+        eprintln!("Opening {}", file.display());
     }
     Ok(())
 }
