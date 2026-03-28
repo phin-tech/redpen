@@ -173,13 +173,7 @@ pub fn create_annotation(
     };
 
     let author = state.settings.lock().unwrap().author.clone();
-    let annotation = Annotation::new(
-        request.kind,
-        request.body,
-        request.labels,
-        author,
-        anchor,
-    );
+    let annotation = Annotation::new(request.kind, request.body, request.labels, author, anchor);
 
     let project_root = resolve_project_root(source_path);
     let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;
