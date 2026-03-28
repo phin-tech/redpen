@@ -4,18 +4,23 @@
   import DiffEditor from "./DiffEditor.svelte";
   import DiffModeToggle from "./DiffModeToggle.svelte";
   import DiffRefPicker from "./DiffRefPicker.svelte";
+  import ReviewPage from "./ReviewPage.svelte";
   import { getEditor, getFileExtension, isMarkdownFile, getShowPreview, togglePreview } from "$lib/stores/editor.svelte";
   import { getDiffState, enterDiff, exitDiff, setDiffMode } from "$lib/stores/diff.svelte";
+  import { isReviewPageOpen } from "$lib/stores/reviewPage.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
   import { sortedAnnotations, getBubblesEnabled, toggleBubbles } from "$lib/stores/annotations.svelte";
+  import BubbleKindFilter from "./BubbleKindFilter.svelte";
   import { highlightsModeExtensions, buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
   import { onDestroy } from "svelte";
 
   let {
     onSelectionChange,
+    onJumpToFile,
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
+    onJumpToFile?: (filePath: string, line: number) => void;
     ref?: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined;
   } = $props();
 
@@ -105,6 +110,9 @@
         </svg>
         Inline
       </button>
+      {#if getBubblesEnabled()}
+        <BubbleKindFilter />
+      {/if}
       {#if isMarkdownFile() && !diff.enabled}
         <div class="separator"></div>
         <button
@@ -127,7 +135,9 @@
 
   <!-- Content area -->
   <div class="pane-content">
-    {#if diff.enabled && diff.loading}
+    {#if isReviewPageOpen()}
+      <ReviewPage onJumpToFile={(path, line) => onJumpToFile?.(path, line)} />
+    {:else if diff.enabled && diff.loading}
       <div class="diff-status">Computing diff...</div>
     {:else if diff.enabled && diff.error}
       <div class="diff-status">
