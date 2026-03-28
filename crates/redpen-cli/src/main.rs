@@ -148,8 +148,9 @@ fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
         "comment" => Ok(AnnotationKind::Comment),
         "lineNote" | "line-note" | "linenote" => Ok(AnnotationKind::LineNote),
         "label" => Ok(AnnotationKind::Label),
+        "explanation" => Ok(AnnotationKind::Explanation),
         other => Err(format!(
-            "Unknown kind: {}. Use comment, lineNote, or label.",
+            "Unknown kind: {}. Use comment, lineNote, label, or explanation.",
             other
         )),
     }

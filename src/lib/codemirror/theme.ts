@@ -35,14 +35,27 @@ export const redPenTheme = EditorView.theme({
   ".cm-selectionBackground, ::selection": {
     backgroundColor: "var(--surface-selection) !important",
   },
-  // Annotation highlight
+  // Annotation highlight (default / comment)
   ".rp-annotation": {
-    backgroundColor: "var(--accent-subtle)",
-    borderBottom: "2px solid var(--accent-annotation-border)",
+    backgroundColor: "var(--kind-comment-subtle)",
+    borderBottom: "2px solid var(--kind-comment-border)",
   },
   ".rp-annotation-orphaned": {
     backgroundColor: "rgba(217, 107, 95, 0.12)",
     borderBottom: "2px solid rgba(217, 107, 95, 0.5)",
+  },
+  // Kind-specific annotation highlights
+  ".rp-annotation-explanation": {
+    backgroundColor: "var(--kind-explanation-subtle)",
+    borderBottom: "2px solid var(--kind-explanation-border)",
+  },
+  ".rp-annotation-linenote": {
+    backgroundColor: "var(--kind-linenote-subtle)",
+    borderBottom: "2px solid var(--kind-linenote-border)",
+  },
+  ".rp-annotation-label": {
+    backgroundColor: "var(--kind-label-subtle)",
+    borderBottom: "2px solid var(--kind-label-border)",
   },
   // Gutter markers
   ".rp-annotation-gutter": {
@@ -52,16 +65,34 @@ export const redPenTheme = EditorView.theme({
     width: "3px",
     height: "100%",
     display: "block",
-    backgroundColor: "var(--accent-annotation-border)",
+    backgroundColor: "var(--kind-comment-border)",
     borderRadius: "1px",
     marginLeft: "5px",
     transition: "background-color 150ms",
   },
   ".rp-gutter-marker:hover": {
-    backgroundColor: "var(--accent)",
+    backgroundColor: "var(--kind-comment)",
   },
   ".rp-gutter-marker-orphaned": {
     backgroundColor: "rgba(217, 107, 95, 0.5)",
+  },
+  ".rp-gutter-marker-explanation": {
+    backgroundColor: "var(--kind-explanation-border)",
+  },
+  ".rp-gutter-marker-explanation:hover": {
+    backgroundColor: "var(--kind-explanation)",
+  },
+  ".rp-gutter-marker-linenote": {
+    backgroundColor: "var(--kind-linenote-border)",
+  },
+  ".rp-gutter-marker-linenote:hover": {
+    backgroundColor: "var(--kind-linenote)",
+  },
+  ".rp-gutter-marker-label": {
+    backgroundColor: "var(--kind-label-border)",
+  },
+  ".rp-gutter-marker-label:hover": {
+    backgroundColor: "var(--kind-label)",
   },
   // Search highlights
   ".rp-search-match": {
@@ -99,6 +130,15 @@ export const redPenTheme = EditorView.theme({
   ".rp-bubble-orphaned": {
     borderLeftColor: "var(--color-danger, #D96B5F)",
     opacity: "0.7",
+  },
+  ".rp-bubble-kind-explanation": {
+    borderLeftColor: "var(--kind-explanation-border)",
+  },
+  ".rp-bubble-kind-linenote": {
+    borderLeftColor: "var(--kind-linenote-border)",
+  },
+  ".rp-bubble-kind-label": {
+    borderLeftColor: "var(--kind-label-border)",
   },
   ".rp-bubble-notch": {
     position: "absolute",

@@ -20,6 +20,20 @@
   const replyCount = $derived(replies.length);
   const hasOrphaned = $derived(annotations.some((a) => a.isOrphaned));
 
+  const kindCssClass = $derived(
+    root.kind === "explanation" ? "rp-bubble-kind-explanation"
+    : root.kind === "lineNote" ? "rp-bubble-kind-linenote"
+    : root.kind === "label" ? "rp-bubble-kind-label"
+    : ""
+  );
+
+  const kindLabel = $derived(
+    root.kind === "explanation" ? "explanation"
+    : root.kind === "lineNote" ? "note"
+    : root.kind === "label" ? "label"
+    : null
+  );
+
   function truncate(text: string, max: number) {
     if (text.length <= max) return text;
     return text.slice(0, max).trimEnd() + "…";
@@ -29,7 +43,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="rp-bubble-container"
+  class="rp-bubble-container {kindCssClass}"
   class:rp-bubble-collapsed={!expanded}
   class:rp-bubble-orphaned={hasOrphaned}
   onclick={(e) => { e.stopPropagation(); onToggle(); }}
@@ -45,6 +59,9 @@
       >
         <div class="rp-bubble-header">
           <span class="rp-bubble-author">{root.author}</span>
+          {#if kindLabel}
+            <span class="rp-bubble-orphan-badge" style:color="inherit">{kindLabel}</span>
+          {/if}
           {#if root.isOrphaned}
             <span class="rp-bubble-orphan-badge">orphaned</span>
           {/if}
@@ -89,6 +106,9 @@
     <!-- Collapsed: single line summary -->
     <div class="rp-bubble-summary" onclick={(e) => { e.stopPropagation(); onSelect(root.id); }}>
       <span class="rp-bubble-author">{root.author}</span>
+      {#if kindLabel}
+        <span class="rp-bubble-orphan-badge" style:color="inherit">{kindLabel}</span>
+      {/if}
       {#if root.isOrphaned}
         <span class="rp-bubble-orphan-badge">orphaned</span>
       {/if}

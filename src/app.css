@@ -26,6 +26,20 @@
   --accent-subtle: rgba(244, 122, 99, 0.12);
   --accent-annotation-border: rgba(244, 122, 99, 0.45);
 
+  /* Annotation kind colors */
+  --kind-comment: #F47A63;
+  --kind-comment-subtle: rgba(244, 122, 99, 0.12);
+  --kind-comment-border: rgba(244, 122, 99, 0.45);
+  --kind-explanation: #5B9BD5;
+  --kind-explanation-subtle: rgba(91, 155, 213, 0.12);
+  --kind-explanation-border: rgba(91, 155, 213, 0.45);
+  --kind-linenote: #74B97A;
+  --kind-linenote-subtle: rgba(116, 185, 122, 0.12);
+  --kind-linenote-border: rgba(116, 185, 122, 0.45);
+  --kind-label: #B07ACC;
+  --kind-label-subtle: rgba(176, 122, 204, 0.12);
+  --kind-label-border: rgba(176, 122, 204, 0.45);
+
   /* Status */
   --color-success: #74B97A;
   --color-warning: #E3B341;
