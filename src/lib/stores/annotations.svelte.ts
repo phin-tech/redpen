@@ -11,6 +11,7 @@ interface AnnotationsState {
   sidebarView: SidebarView;
   projectAnnotations: FileAnnotations[];
   projectAnnotationsLoading: boolean;
+  bubblesEnabled: boolean;
 }
 
 let state = $state<AnnotationsState>({
@@ -20,6 +21,7 @@ let state = $state<AnnotationsState>({
   sidebarView: "file",
   projectAnnotations: [],
   projectAnnotationsLoading: false,
+  bubblesEnabled: true,
 });
 
 export function getAnnotationsState() {
@@ -121,6 +123,14 @@ export async function removeAnnotation(filePath: string, annotationId: string) {
   if (state.sidecar) {
     state.sidecar.annotations = state.sidecar.annotations.filter((a) => a.id !== annotationId);
   }
+}
+
+export function getBubblesEnabled() {
+  return state.bubblesEnabled;
+}
+
+export function toggleBubbles() {
+  state.bubblesEnabled = !state.bubblesEnabled;
 }
 
 export async function clearAllAnnotations(filePath: string) {

@@ -4,11 +4,12 @@
   import { Compartment, StateEffect } from "@codemirror/state";
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
+  import { setBubblesEnabledEffect } from "$lib/codemirror/bubbles";
   import { setSearchEffect } from "$lib/codemirror/search";
   import { getEditor, getFileExtension } from "$lib/stores/editor.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { highlightsModeExtensions } from "$lib/codemirror/diff";
-  import { sortedAnnotations } from "$lib/stores/annotations.svelte";
+  import { sortedAnnotations, getBubblesEnabled, selectAnnotation, removeAnnotation } from "$lib/stores/annotations.svelte";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
   let {
@@ -135,6 +136,13 @@
             onSelectionChange!(fromLine, fromCol, toLine, toCol);
           }
         : undefined,
+      bubbleCallbacks: {
+        onSelect: (id: string) => selectAnnotation(id),
+        onDelete: (id: string) => {
+          const filePath = editor.currentFilePath;
+          if (filePath) removeAnnotation(filePath, id);
+        },
+      },
     });
     // Add diff compartment to the editor state (initially empty)
     view.dispatch({
@@ -161,6 +169,16 @@
     if (view) {
       view.dispatch({
         effects: setAnnotationsEffect.of(annotations),
+      });
+    }
+  });
+
+  // Update inline bubbles enabled state
+  $effect(() => {
+    const enabled = getBubblesEnabled();
+    if (view) {
+      view.dispatch({
+        effects: setBubblesEnabledEffect.of(enabled),
       });
     }
   });
