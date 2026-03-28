@@ -11,6 +11,7 @@
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
   import { addReviewFile } from "$lib/stores/review.svelte";
+  import { openReviewPage, closeReviewPage, isReviewPageOpen } from "$lib/stores/reviewPage.svelte";
   import {
     addRootFolder,
     getWorkspace,
@@ -279,6 +280,9 @@
     exitDiffMode: () => exitDiff(),
     hasDiffMode: () => diff.enabled,
     hasOpenFile: () => Boolean(editor.currentFilePath),
+    openReviewChanges: () => openReviewPage("changes"),
+    openAgentFeedback: () => openReviewPage("feedback"),
+    isReviewPageOpen: () => isReviewPageOpen(),
   };
 
   // Auto-collapse file tree in split mode
@@ -322,10 +326,17 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape" && showCommandPalette) {
-      e.preventDefault();
-      showCommandPalette = false;
-      return;
+    if (e.key === "Escape") {
+      if (showCommandPalette) {
+        e.preventDefault();
+        showCommandPalette = false;
+        return;
+      }
+      if (isReviewPageOpen()) {
+        e.preventDefault();
+        closeReviewPage();
+        return;
+      }
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
@@ -334,6 +345,15 @@
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault();
       openCommandPalette("default");
+    }
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      if (isReviewPageOpen()) {
+        closeReviewPage();
+      } else {
+        void runCommand("review.changes");
+      }
+      return;
     }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "m") {
       e.preventDefault();
@@ -403,6 +423,10 @@
       <EditorPane
         bind:ref={editorRef}
         onSelectionChange={handleSelectionChange}
+        onJumpToFile={async (path, line) => {
+          await handleFileSelect(path);
+          setTimeout(() => editorRef?.scrollToLine(line), 100);
+        }}
       />
     </div>
 

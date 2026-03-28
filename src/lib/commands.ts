@@ -19,6 +19,9 @@ export interface AppCommandContext {
   exitDiffMode: () => void;
   hasDiffMode: () => boolean;
   hasOpenFile: () => boolean;
+  openReviewChanges: () => void;
+  openAgentFeedback: () => void;
+  isReviewPageOpen: () => boolean;
 }
 
 export interface AppCommandDefinition {
@@ -38,6 +41,7 @@ export const COMMAND_SECTIONS = [
   "Annotations",
   "View",
   "Diff",
+  "Review",
 ] as const;
 
 export function createCommandRegistry(): AppCommandDefinition[] {
@@ -154,6 +158,23 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       keywords: ["diff", "exit", "close", "normal"],
       isEnabled: (context) => context.hasDiffMode(),
       run: (context) => context.exitDiffMode(),
+    },
+    {
+      id: "review.changes",
+      title: "Review Changes",
+      section: "Review",
+      keywords: ["review", "changes", "diff", "feed"],
+      shortcut: ["Cmd", "Shift", "R"],
+      isEnabled: (context) => context.hasRoots() && !context.isReviewPageOpen(),
+      run: (context) => context.openReviewChanges(),
+    },
+    {
+      id: "review.feedback",
+      title: "Agent Feedback",
+      section: "Review",
+      keywords: ["review", "agent", "feedback", "questions"],
+      isEnabled: (context) => context.hasRoots() && !context.isReviewPageOpen(),
+      run: (context) => context.openAgentFeedback(),
     },
   ];
 }

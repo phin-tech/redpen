@@ -78,6 +78,9 @@ function createCommandContext(overrides: Partial<AppCommandContext> = {}): AppCo
     exitDiffMode: vi.fn(),
     hasDiffMode: () => false,
     hasOpenFile: () => true,
+    openReviewChanges: vi.fn(),
+    openAgentFeedback: vi.fn(),
+    isReviewPageOpen: () => false,
     ...overrides,
   };
 }
