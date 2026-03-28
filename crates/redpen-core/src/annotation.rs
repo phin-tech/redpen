@@ -98,6 +98,7 @@ pub struct Annotation {
         serialize_with = "flexible_datetime_serialize",
         skip_serializing_if = "Option::is_none"
     )]
+    #[ts(type = "string | null")]
     pub created_at: Option<DateTime<Utc>>,
     #[serde(
         default,
@@ -105,6 +106,7 @@ pub struct Annotation {
         serialize_with = "flexible_datetime_serialize",
         skip_serializing_if = "Option::is_none"
     )]
+    #[ts(type = "string | null")]
     pub updated_at: Option<DateTime<Utc>>,
     pub anchor: Anchor,
 }
