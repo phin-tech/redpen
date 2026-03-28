@@ -1,8 +1,12 @@
 import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, clearAnnotations as clearAnnotationsApi, getAllAnnotations } from "$lib/tauri";
+import type { Choice } from "$lib/types";
 import type { Annotation, FileAnnotations, SidecarFile } from "$lib/types";
 
 type AnnotationFilter = "all" | "comment" | "lineNote" | "label" | "explanation";
 type SidebarView = "file" | "project";
+
+type AnnotationKind = "comment" | "lineNote" | "label" | "explanation";
+const ALL_KINDS: AnnotationKind[] = ["comment", "lineNote", "label", "explanation"];
 
 interface AnnotationsState {
   sidecar: SidecarFile | null;
@@ -12,6 +16,7 @@ interface AnnotationsState {
   projectAnnotations: FileAnnotations[];
   projectAnnotationsLoading: boolean;
   bubblesEnabled: boolean;
+  bubbleKindFilter: Set<AnnotationKind>;
 }
 
 let state = $state<AnnotationsState>({
@@ -22,6 +27,7 @@ let state = $state<AnnotationsState>({
   projectAnnotations: [],
   projectAnnotationsLoading: false,
   bubblesEnabled: true,
+  bubbleKindFilter: new Set<AnnotationKind>(ALL_KINDS),
 });
 
 export function getAnnotationsState() {
@@ -119,6 +125,24 @@ export async function editAnnotation(
   }
 }
 
+export async function updateChoices(filePath: string, annotationId: string, choices: Choice[]) {
+  const updated = await updateAnnotation(filePath, annotationId, undefined, undefined, choices);
+  if (state.sidecar) {
+    state.sidecar.annotations = state.sidecar.annotations.map((a) =>
+      a.id === annotationId ? updated : a
+    );
+  }
+}
+
+export async function resolveAnnotation(filePath: string, annotationId: string, resolved: boolean) {
+  const updated = await updateAnnotation(filePath, annotationId, undefined, undefined, undefined, resolved);
+  if (state.sidecar) {
+    state.sidecar.annotations = state.sidecar.annotations.map((a) =>
+      a.id === annotationId ? updated : a
+    );
+  }
+}
+
 export async function removeAnnotation(filePath: string, annotationId: string) {
   await deleteAnnotation(filePath, annotationId);
   if (state.sidecar) {
@@ -133,6 +157,23 @@ export function getBubblesEnabled() {
 export function toggleBubbles() {
   state.bubblesEnabled = !state.bubblesEnabled;
 }
+
+export function getBubbleKindFilter(): Set<AnnotationKind> {
+  return state.bubbleKindFilter;
+}
+
+export function toggleBubbleKind(kind: AnnotationKind) {
+  const next = new Set(state.bubbleKindFilter);
+  if (next.has(kind)) {
+    // Don't allow disabling all kinds
+    if (next.size > 1) next.delete(kind);
+  } else {
+    next.add(kind);
+  }
+  state.bubbleKindFilter = next;
+}
+
+export { ALL_KINDS, type AnnotationKind as BubbleAnnotationKind };
 
 export async function clearAllAnnotations(filePath: string) {
   await clearAnnotationsApi(filePath);

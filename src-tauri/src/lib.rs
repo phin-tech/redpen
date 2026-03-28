@@ -41,6 +41,7 @@ pub fn run() {
             commands::annotations::get_all_annotations,
             commands::annotations::create_annotation,
             commands::annotations::update_annotation,
+            commands::annotations::read_file_lines,
             commands::annotations::delete_annotation,
             commands::annotations::clear_annotations,
             commands::annotations::update_settings,

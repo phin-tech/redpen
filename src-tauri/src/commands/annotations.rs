@@ -3,7 +3,7 @@ use crate::event_bus::TauriEventBus;
 use crate::notification::{NotificationKind, NotificationService};
 use crate::settings::{AppSettings, UpdateSettingsRequest};
 use crate::state::AppState;
-use redpen_core::annotation::{Anchor, Annotation, FileAnnotations, Range};
+use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, FileAnnotations, Range};
 use redpen_core::hash::hash_string;
 use redpen_core::sidecar::SidecarFile;
 use redpen_runtime::annotations::AnnotationService;
@@ -109,17 +109,58 @@ pub fn create_annotation(
         .map_err(CommandError::from)
 }
 
+#[derive(Debug, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+pub struct FileSnippet {
+    pub lines: Vec<String>,
+    pub start_line: u32,
+    pub total_lines: u32,
+}
+
+#[tauri::command]
+pub fn read_file_lines(
+    file_path: String,
+    center_line: u32,
+    context: u32,
+) -> Result<FileSnippet, String> {
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let all_lines: Vec<&str> = content.lines().collect();
+    let total_lines = all_lines.len() as u32;
+
+    let start = if center_line <= context + 1 {
+        0u32
+    } else {
+        center_line - context - 1
+    };
+    let end = ((center_line + context) as usize).min(all_lines.len());
+
+    let lines: Vec<String> = all_lines[start as usize..end]
+        .iter()
+        .map(|l| l.to_string())
+        .collect();
+
+    Ok(FileSnippet {
+        lines,
+        start_line: start + 1,
+        total_lines,
+    })
+}
+
 #[tauri::command]
 pub fn update_annotation(
     file_path: String,
     annotation_id: String,
     body: Option<String>,
     labels: Option<Vec<String>>,
+    choices: Option<Vec<Choice>>,
+    resolved: Option<bool>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-    svc.update_annotation(&project_root, source_path, &annotation_id, body.as_deref(), labels)
+    svc.update_annotation_full(&project_root, source_path, &annotation_id, body.as_deref(), labels, choices, resolved)
         .map_err(CommandError::from)
 }
 

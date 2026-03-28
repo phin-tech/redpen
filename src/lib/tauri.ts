@@ -3,6 +3,7 @@ import type {
   Annotation,
   AnnotationKind,
   AppSettings,
+  Choice,
   FileAnnotations,
   FileEntry,
   GitFileStatus,
@@ -61,9 +62,23 @@ export async function createAnnotation(request: CreateAnnotationParams): Promise
 }
 
 export async function updateAnnotation(
-  filePath: string, annotationId: string, body?: string, labels?: string[]
+  filePath: string, annotationId: string, body?: string, labels?: string[], choices?: Choice[], resolved?: boolean
 ): Promise<Annotation> {
-  return invoke("update_annotation", { filePath, annotationId, body, labels });
+  return invoke("update_annotation", { filePath, annotationId, body, labels, choices, resolved });
+}
+
+export interface FileSnippet {
+  lines: string[];
+  startLine: number;
+  totalLines: number;
+}
+
+export async function readFileLines(
+  filePath: string,
+  centerLine: number,
+  context: number,
+): Promise<FileSnippet> {
+  return invoke("read_file_lines", { filePath, centerLine, context });
 }
 
 export async function deleteAnnotation(filePath: string, annotationId: string): Promise<void> {

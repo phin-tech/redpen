@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use redpen_core::anchor::reanchor_annotations;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, FileAnnotations};
+use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, FileAnnotations};
 use redpen_core::hash::hash_file;
 use redpen_core::sidecar::SidecarFile;
 
@@ -73,6 +73,19 @@ impl<E: EventBus> AnnotationService<E> {
         body: Option<&str>,
         labels: Option<Vec<String>>,
     ) -> Result<Annotation, RuntimeError> {
+        self.update_annotation_full(project_root, source_path, id, body, labels, None, None)
+    }
+
+    pub fn update_annotation_full(
+        &self,
+        project_root: &Path,
+        source_path: &Path,
+        id: &str,
+        body: Option<&str>,
+        labels: Option<Vec<String>>,
+        choices: Option<Vec<Choice>>,
+        resolved: Option<bool>,
+    ) -> Result<Annotation, RuntimeError> {
         let mut sidecar = load_sidecar_for_file(project_root, source_path)?;
         let annotation = sidecar
             .get_annotation_mut(id)
@@ -82,6 +95,12 @@ impl<E: EventBus> AnnotationService<E> {
         }
         if let Some(labels) = labels {
             annotation.labels = labels;
+        }
+        if let Some(choices) = choices {
+            annotation.choices = Some(choices);
+        }
+        if let Some(r) = resolved {
+            annotation.resolved = r;
         }
         annotation.updated_at = Some(chrono::Utc::now());
         let result = annotation.clone();
