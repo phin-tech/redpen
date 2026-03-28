@@ -5,12 +5,14 @@
     selectAnnotation,
     removeAnnotation,
     editAnnotation,
+    updateChoices,
     setSidebarView,
     loadProjectAnnotations,
   } from "$lib/stores/annotations.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
   import { clearReviewSession } from "$lib/stores/review.svelte";
+  import { openReviewPage } from "$lib/stores/reviewPage.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
   import { invoke } from "@tauri-apps/api/core";
@@ -145,6 +147,16 @@
             onClick={() => handleClick(annotation.id, annotation.anchor.range.startLine)}
             onDoubleClick={() => handleDoubleClick(annotation.id, annotation.body)}
             onDelete={() => handleDelete(annotation.id)}
+            onChoiceToggle={(choiceIndex) => {
+              if (!editor.currentFilePath || !annotation.choices) return;
+              const newChoices = annotation.choices.map((c, i) => {
+                if (annotation.selectionMode === "single") {
+                  return { ...c, selected: i === choiceIndex };
+                }
+                return i === choiceIndex ? { ...c, selected: !c.selected } : c;
+              });
+              updateChoices(editor.currentFilePath, annotation.id, newChoices);
+            }}
           />
         {/if}
       {/each}
@@ -224,6 +236,11 @@
   <!-- Bottom action bar -->
   {#if annotationsState.sidebarView === 'file' && editor.currentFilePath}
     <div class="px-2.5 py-2 border-t border-border-default/60" style="box-shadow: var(--shadow-xs)">
+      <div class="flex gap-2 mb-2">
+        <Button variant="secondary" onclick={() => openReviewPage("changes")} class="flex-1 text-xs">
+          Review
+        </Button>
+      </div>
       {#if reviewDone}
         <Button variant="secondary" disabled class="w-full {reviewDone === 'approved' ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
           {reviewDone === 'approved' ? 'Approved!' : 'Changes requested!'}
