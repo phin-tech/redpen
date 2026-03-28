@@ -56,6 +56,23 @@ pub enum AnnotationKind {
     Explanation,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub enum SelectionMode {
+    Single,
+    Multi,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub struct Choice {
+    pub id: String,
+    pub label: String,
+    pub selected: bool,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../../src/lib/bindings/")]
@@ -109,6 +126,12 @@ pub struct Annotation {
     #[ts(type = "string | null")]
     pub updated_at: Option<DateTime<Utc>>,
     pub anchor: Anchor,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub choices: Option<Vec<Choice>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_mode: Option<SelectionMode>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resolved: bool,
 }
 
 /// Summary of annotations for a single file, used for cross-file views.
@@ -141,7 +164,16 @@ impl Annotation {
             created_at: Some(now),
             updated_at: Some(now),
             anchor,
+            choices: None,
+            selection_mode: None,
+            resolved: false,
         }
+    }
+
+    pub fn with_choices(mut self, choices: Vec<Choice>, mode: SelectionMode) -> Self {
+        self.choices = Some(choices);
+        self.selection_mode = Some(mode);
+        self
     }
 
     pub fn new_reply(body: String, author: String, reply_to: String, anchor: Anchor) -> Self {
@@ -157,6 +189,9 @@ impl Annotation {
             created_at: Some(now),
             updated_at: Some(now),
             anchor,
+            choices: None,
+            selection_mode: None,
+            resolved: false,
         }
     }
 
