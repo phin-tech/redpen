@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   Annotation,
+  AnnotationKind,
   AppSettings,
   FileAnnotations,
   FileEntry,
@@ -48,6 +49,7 @@ export interface CreateAnnotationParams {
   filePath: string;
   body: string;
   labels: string[];
+  kind?: AnnotationKind;
   startLine: number;
   startColumn: number;
   endLine: number;

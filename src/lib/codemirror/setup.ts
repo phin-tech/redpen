@@ -13,6 +13,7 @@ import {
 } from "@codemirror/language";
 import { redPenTheme } from "./theme";
 import { annotationExtensions } from "./annotations";
+import { bubbleExtensions, bubbleCallbacksFacet } from "./bubbles";
 import { searchExtension } from "./search";
 import { getLanguageForExtension } from "./languages";
 
@@ -28,6 +29,10 @@ export interface EditorConfig {
     toLine: number,
     toCol: number
   ) => void;
+  bubbleCallbacks?: {
+    onSelect: (id: string) => void;
+    onDelete: (id: string) => void;
+  };
 }
 
 export function createEditor(config: EditorConfig): EditorView {
@@ -41,8 +46,15 @@ export function createEditor(config: EditorConfig): EditorView {
     oneDark,
     redPenTheme,
     ...annotationExtensions(),
+    ...bubbleExtensions(),
     ...searchExtension(),
   ];
+
+  if (config.bubbleCallbacks) {
+    extensions.push(
+      bubbleCallbacksFacet.of(config.bubbleCallbacks),
+    );
+  }
 
   // Add language support if available
   const lang = getLanguageForExtension(config.extension);

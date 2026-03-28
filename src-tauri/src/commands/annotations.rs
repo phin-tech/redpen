@@ -17,10 +17,16 @@ pub struct CreateAnnotationRequest {
     pub file_path: String,
     pub body: String,
     pub labels: Vec<String>,
+    #[serde(default = "default_kind")]
+    pub kind: AnnotationKind,
     pub start_line: u32,
     pub start_column: u32,
     pub end_line: u32,
     pub end_column: u32,
+}
+
+fn default_kind() -> AnnotationKind {
+    AnnotationKind::Comment
 }
 
 fn resolve_project_root(source_path: &Path) -> PathBuf {
@@ -167,13 +173,7 @@ pub fn create_annotation(
     };
 
     let author = state.settings.lock().unwrap().author.clone();
-    let annotation = Annotation::new(
-        AnnotationKind::Comment,
-        request.body,
-        request.labels,
-        author,
-        anchor,
-    );
+    let annotation = Annotation::new(request.kind, request.body, request.labels, author, anchor);
 
     let project_root = resolve_project_root(source_path);
     let mut sidecar = load_sidecar_for_file(&project_root, source_path)?;

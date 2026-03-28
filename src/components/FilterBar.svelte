@@ -2,7 +2,7 @@
   import { getAnnotationsState, setFilter } from "$lib/stores/annotations.svelte";
   import Button from "./ui/Button.svelte";
 
-  type AnnotationFilter = "all" | "comment" | "lineNote" | "label";
+  type AnnotationFilter = "all" | "comment" | "lineNote" | "label" | "explanation";
 
   const annotationsState = getAnnotationsState();
   let allAnnotations = $derived(annotationsState.sidecar?.annotations ?? []);
@@ -15,6 +15,7 @@
   const filters: { value: AnnotationFilter; label: string }[] = [
     { value: "all", label: "All" },
     { value: "comment", label: "Comments" },
+    { value: "explanation", label: "Explanations" },
     { value: "lineNote", label: "Notes" },
     { value: "label", label: "Labels" },
   ];

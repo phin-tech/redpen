@@ -7,7 +7,7 @@
   import { getEditor, getFileExtension, isMarkdownFile, getShowPreview, togglePreview } from "$lib/stores/editor.svelte";
   import { getDiffState, enterDiff, exitDiff, setDiffMode } from "$lib/stores/diff.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
-  import { sortedAnnotations } from "$lib/stores/annotations.svelte";
+  import { sortedAnnotations, getBubblesEnabled, toggleBubbles } from "$lib/stores/annotations.svelte";
   import { highlightsModeExtensions, buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
   import { onDestroy } from "svelte";
 
@@ -93,6 +93,18 @@
       {#if diff.enabled}
         <DiffRefPicker {directory} filePath={editor.currentFilePath ?? ""} />
       {/if}
+      <div class="separator"></div>
+      <button
+        class="toggle-btn"
+        class:active={getBubblesEnabled()}
+        onclick={() => toggleBubbles()}
+        title="Toggle inline annotations"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Inline
+      </button>
       {#if isMarkdownFile() && !diff.enabled}
         <div class="separator"></div>
         <button

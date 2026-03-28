@@ -1,7 +1,7 @@
 import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, clearAnnotations as clearAnnotationsApi, getAllAnnotations } from "$lib/tauri";
 import type { Annotation, FileAnnotations, SidecarFile } from "$lib/types";
 
-type AnnotationFilter = "all" | "comment" | "lineNote" | "label";
+type AnnotationFilter = "all" | "comment" | "lineNote" | "label" | "explanation";
 type SidebarView = "file" | "project";
 
 interface AnnotationsState {
@@ -11,6 +11,7 @@ interface AnnotationsState {
   sidebarView: SidebarView;
   projectAnnotations: FileAnnotations[];
   projectAnnotationsLoading: boolean;
+  bubblesEnabled: boolean;
 }
 
 let state = $state<AnnotationsState>({
@@ -20,6 +21,7 @@ let state = $state<AnnotationsState>({
   sidebarView: "file",
   projectAnnotations: [],
   projectAnnotationsLoading: false,
+  bubblesEnabled: true,
 });
 
 export function getAnnotationsState() {
@@ -94,10 +96,11 @@ export function selectAnnotation(id: string | null) {
 
 export async function addAnnotation(
   filePath: string, body: string, labels: string[],
-  startLine: number, startColumn: number, endLine: number, endColumn: number
+  startLine: number, startColumn: number, endLine: number, endColumn: number,
+  kind?: import("$lib/types").AnnotationKind,
 ) {
   const annotation = await createAnnotation({
-    filePath, body, labels, startLine, startColumn, endLine, endColumn,
+    filePath, body, labels, kind, startLine, startColumn, endLine, endColumn,
   });
   if (state.sidecar) {
     state.sidecar.annotations = [...state.sidecar.annotations, annotation];
@@ -121,6 +124,14 @@ export async function removeAnnotation(filePath: string, annotationId: string) {
   if (state.sidecar) {
     state.sidecar.annotations = state.sidecar.annotations.filter((a) => a.id !== annotationId);
   }
+}
+
+export function getBubblesEnabled() {
+  return state.bubblesEnabled;
+}
+
+export function toggleBubbles() {
+  state.bubblesEnabled = !state.bubblesEnabled;
 }
 
 export async function clearAllAnnotations(filePath: string) {

@@ -53,6 +53,7 @@ pub enum AnnotationKind {
     Comment,
     LineNote,
     Label,
+    Explanation,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, TS)]

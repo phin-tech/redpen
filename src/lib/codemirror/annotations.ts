@@ -5,7 +5,7 @@ import {
   GutterMarker,
 } from "@codemirror/view";
 import { StateField, StateEffect, RangeSetBuilder } from "@codemirror/state";
-import type { Annotation } from "$lib/types";
+import type { Annotation, AnnotationKind } from "$lib/types";
 
 // State effect to set annotations
 export const setAnnotationsEffect = StateEffect.define<Annotation[]>();
@@ -24,6 +24,25 @@ export const annotationsField = StateField.define<Annotation[]>({
     return value;
   },
 });
+
+/** Map annotation kind to a CSS class suffix */
+function kindClass(kind: AnnotationKind): string {
+  switch (kind) {
+    case "explanation": return "rp-annotation-explanation";
+    case "lineNote": return "rp-annotation-linenote";
+    case "label": return "rp-annotation-label";
+    default: return "rp-annotation";
+  }
+}
+
+function gutterKindClass(kind: AnnotationKind): string {
+  switch (kind) {
+    case "explanation": return "rp-gutter-marker rp-gutter-marker-explanation";
+    case "lineNote": return "rp-gutter-marker rp-gutter-marker-linenote";
+    case "label": return "rp-gutter-marker rp-gutter-marker-label";
+    default: return "rp-gutter-marker";
+  }
+}
 
 // Mark decorations for annotation ranges
 const annotationDecorations = EditorView.decorations.compute(
@@ -62,7 +81,7 @@ const annotationDecorations = EditorView.decorations.compute(
 
       const cssClass = ann.isOrphaned
         ? "rp-annotation-orphaned"
-        : "rp-annotation";
+        : kindClass(ann.kind);
 
       if (from === to) {
         // Zero-width — mark the whole line instead
@@ -79,7 +98,7 @@ const annotationDecorations = EditorView.decorations.compute(
 
 // Gutter marker for annotated lines — vertical bar indicator
 class AnnotationGutterMarker extends GutterMarker {
-  constructor(private orphaned: boolean) {
+  constructor(private orphaned: boolean, private kind: AnnotationKind) {
     super();
   }
 
@@ -87,7 +106,7 @@ class AnnotationGutterMarker extends GutterMarker {
     const bar = document.createElement("span");
     bar.className = this.orphaned
       ? "rp-gutter-marker rp-gutter-marker-orphaned"
-      : "rp-gutter-marker";
+      : gutterKindClass(this.kind);
     return bar;
   }
 }
@@ -98,27 +117,27 @@ const annotationGutter = gutter({
     const annotations = view.state.field(annotationsField);
     const builder = new RangeSetBuilder<GutterMarker>();
 
-    // Group by line — orphaned takes priority
-    const lineMap = new Map<number, boolean>(); // line -> isOrphaned
+    // Group by line — orphaned takes priority, track dominant kind
+    const lineMap = new Map<number, { orphaned: boolean; kind: AnnotationKind }>();
     for (const ann of annotations) {
       const line = ann.anchor.range.startLine;
       if (line < 1 || line > view.state.doc.lines) continue;
       const existing = lineMap.get(line);
-      if (existing === undefined) {
-        lineMap.set(line, ann.isOrphaned);
-      } else if (ann.isOrphaned && !existing) {
-        lineMap.set(line, true);
+      if (!existing) {
+        lineMap.set(line, { orphaned: ann.isOrphaned, kind: ann.kind });
+      } else {
+        if (ann.isOrphaned) existing.orphaned = true;
       }
     }
 
     // Must add in order
     const sortedLines = [...lineMap.entries()].sort((a, b) => a[0] - b[0]);
-    for (const [lineNum, orphaned] of sortedLines) {
+    for (const [lineNum, { orphaned, kind }] of sortedLines) {
       const lineObj = view.state.doc.line(lineNum);
       builder.add(
         lineObj.from,
         lineObj.from,
-        new AnnotationGutterMarker(orphaned)
+        new AnnotationGutterMarker(orphaned, kind)
       );
     }
 
