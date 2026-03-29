@@ -143,11 +143,10 @@ pub fn run() {
                 .build()?;
 
             // ── Annotations menu ──────────────────────────────────────────────
-            let add_annotation =
-                IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
-                    .accelerator("Cmd+Return")
-                    .native_icon(NativeIcon::Add)
-                    .build(app)?;
+            let add_annotation = IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
+                .accelerator("Cmd+Enter")
+                .native_icon(NativeIcon::Add)
+                .build(app)?;
 
             let reload_annotations =
                 IconMenuItemBuilder::with_id("annotations.reload", "Reload Annotations")
