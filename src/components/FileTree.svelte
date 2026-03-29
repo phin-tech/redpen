@@ -1,5 +1,7 @@
 <script lang="ts">
   import { getWorkspace, removeRootFolder, getChangedFilePaths } from "$lib/stores/workspace.svelte";
+  import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
+  import { getReviewSession } from "$lib/stores/review.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
   import ReviewSession from "./ReviewSession.svelte";
   import IconButton from "./ui/IconButton.svelte";
@@ -23,8 +25,11 @@
   import { SvelteSet } from "svelte/reactivity";
 
   const workspace = getWorkspace();
+  const githubReview = getGitHubReviewState();
+  const reviewSession = getReviewSession();
   let collapsedRoots = new SvelteSet<string>();
   let changedPaths = $derived(workspace.showChangedOnly ? getChangedFilePaths() : null);
+  let showReviewSession = $derived(reviewSession.active && !githubReview.activeSession);
 
   function toggleRoot(folder: string) {
     if (collapsedRoots.has(folder)) {
@@ -73,16 +78,19 @@
     }
     closeContextMenu();
   }
+
 </script>
 
 <svelte:window onclick={() => showContextMenu && closeContextMenu()} />
 
 <div class="h-full overflow-y-auto overflow-x-hidden" role="tree">
-  <ReviewSession {onFileSelect} {selectedPath} />
+  {#if showReviewSession}
+    <ReviewSession {onFileSelect} {selectedPath} />
+  {/if}
 
   {#if workspace.rootFolders.length > 0}
     <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
-      <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Folders</span>
+      <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Files</span>
       <div class="flex items-center gap-1.5">
         <IconButton label="Expand all" onclick={onExpandAll}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

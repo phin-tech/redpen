@@ -32,6 +32,36 @@
   const kindBorderColor = $derived(
     annotation.isOrphaned ? undefined : kindColorMap[annotation.kind]
   );
+
+  function syncBadge(syncState: string | null | undefined): { label: string; className: string } | null {
+    switch (syncState) {
+      case "pendingPublish":
+        return { label: "pending", className: "annotation-sync-pending" };
+      case "published":
+      case "imported":
+        return { label: "submitted", className: "annotation-sync-submitted" };
+      case "localOnly":
+        return { label: "local only", className: "annotation-sync-local" };
+      case "conflict":
+        return { label: "conflict", className: "annotation-sync-conflict" };
+      default:
+        return null;
+    }
+  }
+
+  const githubSyncBadge = $derived(syncBadge(annotation.github?.syncState));
+
+  function formatTimestamp(dateStr: string | null | undefined): string {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
 </script>
 
 <div
@@ -61,6 +91,9 @@
     {/if}
     {#if annotation.isOrphaned}
       <span class="text-xs text-danger font-semibold uppercase tracking-wide">orphaned</span>
+    {/if}
+    {#if githubSyncBadge}
+      <span class={`annotation-sync-badge ${githubSyncBadge.className}`}>{githubSyncBadge.label}</span>
     {/if}
     <button
       class="ml-auto text-base text-text-secondary opacity-0 group-hover:opacity-100 transition-opacity hover:text-danger leading-none"
@@ -104,11 +137,15 @@
     </div>
   {/if}
 
-  <div class="text-xs text-text-secondary flex items-center gap-1">
+  <div class="text-xs text-text-secondary flex items-center gap-1 flex-wrap">
     {#if AGENT_AUTHORS.has(annotation.author.toLowerCase())}
       <Bot size={12} class="text-accent-blue" />
     {/if}
     {annotation.author}
+    {#if formatTimestamp(annotation.createdAt)}
+      <span class="annotation-card-meta-sep">·</span>
+      <span>{formatTimestamp(annotation.createdAt)}</span>
+    {/if}
   </div>
 </div>
 
@@ -130,6 +167,37 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .annotation-sync-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+  }
+  .annotation-sync-pending {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border-default));
+  }
+  .annotation-sync-submitted {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-success) 30%, var(--border-default));
+  }
+  .annotation-sync-local {
+    color: var(--text-secondary);
+    background: var(--surface-raised);
+  }
+  .annotation-sync-conflict {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger) 30%, var(--border-default));
+  }
+  .annotation-card-meta-sep {
+    color: var(--text-muted);
   }
   .choice-option {
     background: var(--surface-panel);

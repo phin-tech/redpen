@@ -6,6 +6,8 @@ interface DiffState {
     mode: DiffMode;
     baseRef: string;
     targetRef: string;
+    baseLabel: string;
+    targetLabel: string;
     diffResult: DiffResult | null;
     algorithm: "patience" | "myers";
     loading: boolean;
@@ -17,6 +19,8 @@ let state = $state<DiffState>({
     mode: "highlights",
     baseRef: "HEAD",
     targetRef: "working-tree",
+    baseLabel: "HEAD",
+    targetLabel: "working-tree",
     diffResult: null,
     algorithm: "patience",
     loading: false,
@@ -51,17 +55,45 @@ export function setDiffMode(mode: DiffMode) {
     state.mode = mode;
 }
 
-export async function setDiffRefs(directory: string, filePath: string, base: string, target: string) {
+export async function setDiffRefs(
+    directory: string,
+    filePath: string,
+    base: string,
+    target: string,
+    baseLabel?: string,
+    targetLabel?: string,
+) {
     state.baseRef = base;
     state.targetRef = target;
+    state.baseLabel = baseLabel ?? base;
+    state.targetLabel = targetLabel ?? target;
     await computeDiff(directory, filePath);
 }
 
 export async function swapRefs(directory: string, filePath: string) {
     const temp = state.baseRef;
+    const tempLabel = state.baseLabel;
     state.baseRef = state.targetRef;
     state.targetRef = temp;
+    state.baseLabel = state.targetLabel;
+    state.targetLabel = tempLabel;
     await computeDiff(directory, filePath);
+}
+
+export function setDiffDefaults(
+    base: string,
+    target: string,
+    baseLabel?: string,
+    targetLabel?: string,
+) {
+    state.baseRef = base;
+    state.targetRef = target;
+    state.baseLabel = baseLabel ?? base;
+    state.targetLabel = targetLabel ?? target;
+}
+
+export function resetDiffDefaults() {
+    setDiffDefaults("HEAD", "working-tree");
 }
 
 export async function computeDiff(directory: string, filePath: string) {

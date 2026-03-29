@@ -25,6 +25,8 @@ pub trait AppBridge: Send + Sync + 'static {
     fn refresh_file(&self, file: &str) -> Result<(), String>;
     /// Load annotations for a file from the sidecar store.
     fn get_annotations(&self, file: &str) -> Result<Vec<Annotation>, String>;
+    /// Open a GitHub PR review and return the managed worktree path.
+    fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>) -> Result<String, String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,7 @@ pub struct GetAnnotationsRequest {
 pub struct ReviewStartRequest {
     pub file: String,
     pub line: Option<u32>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +74,13 @@ pub struct ReviewRequest {
     pub file: String,
     pub line: Option<u32>,
     pub timeout: Option<u64>,
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewPrRequest {
+    pub pr_ref: String,
+    pub local_path_hint: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -93,6 +103,11 @@ pub struct ReviewResponse {
     pub session_id: String,
     pub verdict: String,
     pub annotations: Vec<Annotation>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReviewPrResponse {
+    pub worktree_path: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +134,11 @@ impl ReviewSessions {
     }
 
     pub async fn create(&self, file: String) -> String {
-        let session_id = uuid::Uuid::new_v4().to_string();
+        self.create_with_id(None, file).await
+    }
+
+    pub async fn create_with_id(&self, id: Option<String>, file: String) -> String {
+        let session_id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let (tx, rx) = oneshot::channel();
         self.senders
             .lock()
@@ -203,7 +222,7 @@ async fn rpc_review_start(
     Json(req): Json<ReviewStartRequest>,
 ) -> impl IntoResponse {
     let _ = state.bridge.open_file(&req.file, req.line);
-    let session_id = state.sessions.create(req.file).await;
+    let session_id = state.sessions.create_with_id(req.session_id, req.file).await;
     (StatusCode::OK, Json(ReviewStartResponse { session_id }))
 }
 
@@ -262,7 +281,7 @@ async fn rpc_review(
     let _ = state.bridge.open_file(&req.file, req.line);
 
     let file = req.file.clone();
-    let session_id = state.sessions.create(req.file).await;
+    let session_id = state.sessions.create_with_id(req.session_id, req.file).await;
     let rx = state
         .sessions
         .take_receiver(&session_id)
@@ -298,6 +317,27 @@ async fn rpc_review(
     }
 }
 
+async fn rpc_review_pr(
+    AxumState(state): AxumState<ServerState>,
+    Json(req): Json<ReviewPrRequest>,
+) -> impl IntoResponse {
+    match state
+        .bridge
+        .open_pr_review(&req.pr_ref, req.local_path_hint.as_deref())
+    {
+        Ok(worktree_path) => (
+            StatusCode::OK,
+            Json(serde_json::json!(ReviewPrResponse { worktree_path })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -313,6 +353,7 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/review.done", post(rpc_review_done))
         .route("/rpc/review.wait", post(rpc_review_wait))
         .route("/rpc/review", post(rpc_review))
+        .route("/rpc/review.pr", post(rpc_review_pr))
         .with_state(state)
 }
 
@@ -323,7 +364,8 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
 pub fn discovery_path() -> std::path::PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join(".redpen")
+        .join(".config")
+        .join("redpen")
         .join("server.json")
 }
 
@@ -402,6 +444,14 @@ mod tests {
         fn get_annotations(&self, file: &str) -> Result<Vec<Annotation>, String> {
             let anns = self.annotations.lock().unwrap();
             Ok(anns.get(file).cloned().unwrap_or_default())
+        }
+
+        fn open_pr_review(
+            &self,
+            pr_ref: &str,
+            _local_path_hint: Option<&str>,
+        ) -> Result<String, String> {
+            Ok(format!("/tmp/{}", pr_ref.replace('/', "-")))
         }
     }
 
@@ -853,7 +903,7 @@ mod tests {
     #[test]
     fn test_discovery_path_is_under_home() {
         let path = discovery_path();
-        assert!(path.to_string_lossy().contains(".redpen"));
+        assert!(path.to_string_lossy().contains(".config/redpen"));
         assert!(path.to_string_lossy().ends_with("server.json"));
     }
 }

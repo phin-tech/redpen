@@ -5,6 +5,7 @@ import { getDiffState } from "$lib/stores/diff.svelte";
 import { getWorkspace } from "$lib/stores/workspace.svelte";
 import { getEditor } from "$lib/stores/editor.svelte";
 import { getReviewSession } from "$lib/stores/review.svelte";
+import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
 import type { Annotation, DiffResult, FileAnnotations } from "$lib/types";
 import type { FileSnippet } from "$lib/tauri";
 
@@ -101,13 +102,21 @@ async function loadReviewChanges() {
   }
 
   const session = getReviewSession();
+  const githubReview = getGitHubReviewState();
   const editor = getEditor();
   console.log("[ReviewPage] session.active:", session.active, "session.files:", session.files);
   console.log("[ReviewPage] editor.currentFilePath:", editor.currentFilePath);
 
   // Determine file list based on scope
   let filePaths: string[] = [];
-  if (state.scope === "all-changes") {
+  if (
+    githubReview.activeSession &&
+    githubReview.activeSession.worktreePath === directory
+  ) {
+    filePaths = githubReview.activeSession.changedFiles.map(
+      (relativePath) => `${directory}/${relativePath}`
+    );
+  } else if (state.scope === "all-changes") {
     try {
       const statuses = await getGitStatus(directory);
       filePaths = statuses.map((s) => s.path.startsWith("/") ? s.path : `${directory}/${s.path}`);
@@ -128,8 +137,14 @@ async function loadReviewChanges() {
   }
 
   const diffState = getDiffState();
-  const baseRef = diffState.baseRef || "HEAD";
-  const targetRef = diffState.targetRef || "working-tree";
+  const baseRef =
+    githubReview.activeSession && githubReview.activeSession.worktreePath === directory
+      ? githubReview.activeSession.baseSha
+      : diffState.baseRef || "HEAD";
+  const targetRef =
+    githubReview.activeSession && githubReview.activeSession.worktreePath === directory
+      ? githubReview.activeSession.headSha
+      : diffState.targetRef || "working-tree";
   console.log("[ReviewPage] filePaths:", filePaths, "baseRef:", baseRef, "targetRef:", targetRef);
 
   const results: ReviewFileData[] = [];

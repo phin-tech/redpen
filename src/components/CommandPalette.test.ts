@@ -81,6 +81,9 @@ function createCommandContext(overrides: Partial<AppCommandContext> = {}): AppCo
     openReviewChanges: vi.fn(),
     openAgentFeedback: vi.fn(),
     isReviewPageOpen: () => false,
+    canSubmitReviewVerdict: () => false,
+    approveReview: vi.fn(async () => {}),
+    requestReviewChanges: vi.fn(async () => {}),
     ...overrides,
   };
 }

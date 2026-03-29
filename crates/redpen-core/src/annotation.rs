@@ -83,6 +83,31 @@ pub struct Range {
     pub end_column: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub enum GitHubSyncState {
+    Imported,
+    PendingPublish,
+    Published,
+    Conflict,
+    LocalOnly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../../src/lib/bindings/")]
+pub struct GitHubAnnotationMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_state: Option<GitHubSyncState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_comment_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publishable_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[ts(export, export_to = "../../../src/lib/bindings/")]
@@ -132,6 +157,8 @@ pub struct Annotation {
     pub selection_mode: Option<SelectionMode>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resolved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<GitHubAnnotationMetadata>,
 }
 
 /// Summary of annotations for a single file, used for cross-file views.
@@ -167,6 +194,7 @@ impl Annotation {
             choices: None,
             selection_mode: None,
             resolved: false,
+            github: None,
         }
     }
 
@@ -192,6 +220,7 @@ impl Annotation {
             choices: None,
             selection_mode: None,
             resolved: false,
+            github: None,
         }
     }
 

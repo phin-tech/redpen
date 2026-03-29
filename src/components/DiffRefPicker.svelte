@@ -48,7 +48,7 @@
     <div class="ref-picker">
         <div class="ref-dropdown">
             <button class="ref-btn base" onclick={(e) => { e.stopPropagation(); showBaseDropdown = !showBaseDropdown; showTargetDropdown = false; }}>
-                {diff.baseRef}
+                {diff.baseLabel}
             </button>
             {#if showBaseDropdown && refList}
                 <div class="dropdown-menu">
@@ -75,7 +75,7 @@
 
         <div class="ref-dropdown">
             <button class="ref-btn target" onclick={(e) => { e.stopPropagation(); showTargetDropdown = !showTargetDropdown; showBaseDropdown = false; }}>
-                {diff.targetRef}
+                {diff.targetLabel}
             </button>
             {#if showTargetDropdown && refList}
                 <div class="dropdown-menu">

@@ -6,6 +6,7 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
+  import ReviewWorkspaceHeader from "./components/ReviewWorkspaceHeader.svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { readDirectory, sendNotification, getSettings } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
@@ -28,6 +29,11 @@
   import { watch } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
   import { submitReviewVerdict } from "$lib/review";
+  import {
+    activateGitHubReviewSession,
+    openGitHubPullRequest,
+  } from "$lib/stores/githubReview.svelte";
+  import type { GitHubPrSession } from "$lib/types";
   import { isShortcutInputTarget, matchesShortcut } from "$lib/shortcuts";
 
   import { onMount, onDestroy, untrack } from "svelte";
@@ -43,6 +49,7 @@
   let showSettings = $state(false);
   let showCommandPalette = $state(false);
   let commandPaletteMode = $state<"default" | "file">("default");
+  let showReviewShortcutHelp = $state(false);
 
   // Resizable panel widths
   let leftPanelWidth = $state(240);
@@ -114,6 +121,7 @@
   let unlistenDeepLink: (() => void) | undefined;
   let unlistenDeepLinkEvent: (() => void) | undefined;
   let unlistenSettings: (() => void) | undefined;
+  let unlistenGitHubReviewSession: (() => void) | undefined;
 
   onMount(async () => {
     // Listen for settings menu event from native menu bar
@@ -147,6 +155,13 @@
         const url = new URL(rawUrl);
         const action = url.hostname || "open";
         const filePath = url.searchParams.get("file");
+        const prRef = url.searchParams.get("pr");
+        const localPath = url.searchParams.get("localPath");
+
+        if (action === "review-pr" && prRef) {
+          await openGitHubPullRequest(prRef, localPath ?? undefined);
+          return;
+        }
 
         if (action === "refresh" && filePath) {
           // Reload annotations for the file (e.g., after CLI writes a reply)
@@ -185,6 +200,13 @@
       await handleDeepLinkUrl(event.payload);
     });
 
+    unlistenGitHubReviewSession = await listen<GitHubPrSession>("open-github-review-session", async (event) => {
+      await activateGitHubReviewSession(event.payload, {
+        refreshQueue: true,
+        replaceRoots: true,
+      });
+    });
+
     // Check for cold-start deep links stored in Rust state
     const pendingUrls = await invoke<string[]>("get_pending_deep_links");
     for (const rawUrl of pendingUrls) {
@@ -196,6 +218,7 @@
     unlistenDeepLink?.();
     unlistenDeepLinkEvent?.();
     unlistenSettings?.();
+    unlistenGitHubReviewSession?.();
     stopWatcher?.();
   });
 
@@ -440,6 +463,7 @@
 <svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="app-root">
+  <ReviewWorkspaceHeader onOpenHelp={() => (showReviewShortcutHelp = true)} />
   <div class="flex flex-1 overflow-hidden">
     <div class="shrink-0 border-r border-border-default/50 overflow-hidden" style="width: {leftPanelWidth}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: inset -1px 0 0 var(--border-subtle)">
       <FileTree
@@ -457,7 +481,9 @@
     <div class="flex-1 min-w-[200px] overflow-hidden" style="box-shadow: var(--shadow-xs)">
       <EditorPane
         bind:ref={editorRef}
+        bind:showShortcutHelp={showReviewShortcutHelp}
         onSelectionChange={handleSelectionChange}
+        onOpenFolder={openFolderPicker}
         onJumpToFile={async (path, line) => {
           await handleFileSelect(path);
           setTimeout(() => editorRef?.scrollToLine(line), 100);

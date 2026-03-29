@@ -104,9 +104,10 @@ export async function addAnnotation(
   filePath: string, body: string, labels: string[],
   startLine: number, startColumn: number, endLine: number, endColumn: number,
   kind?: import("$lib/types").AnnotationKind,
+  replyTo?: string,
 ) {
   const annotation = await createAnnotation({
-    filePath, body, labels, kind, startLine, startColumn, endLine, endColumn,
+    filePath, body, labels, kind, startLine, startColumn, endLine, endColumn, replyTo,
   });
   if (state.sidecar) {
     state.sidecar.annotations = [...state.sidecar.annotations, annotation];

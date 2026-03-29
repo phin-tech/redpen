@@ -2,7 +2,10 @@ export type Shortcut = string[];
 
 function getPlatform() {
   if (typeof navigator === "undefined") return "unknown";
-  return navigator.userAgentData?.platform ?? navigator.platform ?? "unknown";
+  const navigatorWithUAData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  return navigatorWithUAData.userAgentData?.platform ?? navigator.platform ?? "unknown";
 }
 
 export function isMacPlatform(): boolean {

@@ -50,6 +50,34 @@
   const kindColor = $derived(KIND_COLORS[annotation.kind]);
   const isAgent = $derived(AGENT_AUTHORS.has(annotation.author.toLowerCase()));
 
+  function syncBadge(syncState: string | null | undefined): { label: string; className: string } | null {
+    switch (syncState) {
+      case "pendingPublish":
+        return { label: "pending", className: "review-card-sync-pending" };
+      case "published":
+      case "imported":
+        return { label: "submitted", className: "review-card-sync-submitted" };
+      case "localOnly":
+        return { label: "local only", className: "review-card-sync-local" };
+      case "conflict":
+        return { label: "conflict", className: "review-card-sync-conflict" };
+      default:
+        return null;
+    }
+  }
+
+  function formatTimestamp(dateStr: string | null | undefined): string {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date);
+  }
+
   function submitReply() {
     if (!replyText.trim()) return;
     onReply(annotation.id, replyText.trim());
@@ -72,7 +100,6 @@
   export function focusReply() {
     replyInputRef?.focus();
   }
-
 
   function relativeTime(dateStr: string | null | undefined): string {
     if (!dateStr) return "";
@@ -114,7 +141,16 @@
       <span class="review-card-badge" style:background="color-mix(in srgb, {kindColor} 15%, transparent)" style:color={kindColor}>
         {KIND_LABELS[annotation.kind]}
       </span>
-      <span class="review-card-time">{relativeTime(annotation.createdAt)}</span>
+      {#if syncBadge(annotation.github?.syncState)}
+        {@const badge = syncBadge(annotation.github?.syncState)}
+        <span class={`review-card-sync-badge ${badge?.className}`}>{badge?.label}</span>
+      {/if}
+      <span class="review-card-time">
+        {relativeTime(annotation.createdAt)}
+        {#if formatTimestamp(annotation.createdAt)}
+          <span class="review-card-time-absolute">· {formatTimestamp(annotation.createdAt)}</span>
+        {/if}
+      </span>
     </div>
 
     <div class="review-card-text">{annotation.body}</div>
@@ -156,6 +192,18 @@
         {#if AGENT_AUTHORS.has(reply.author.toLowerCase())}<Bot size={12} class="review-card-agent-icon" />{/if}
         {reply.author}
       </span>
+      {#if syncBadge(reply.github?.syncState)}
+        {@const badge = syncBadge(reply.github?.syncState)}
+        <span class={`review-card-sync-badge ${badge?.className}`}>{badge?.label}</span>
+      {/if}
+      {#if reply.createdAt}
+        <span class="review-card-reply-time">
+          {relativeTime(reply.createdAt)}
+          {#if formatTimestamp(reply.createdAt)}
+            <span class="review-card-time-absolute">· {formatTimestamp(reply.createdAt)}</span>
+          {/if}
+        </span>
+      {/if}
       <span class="review-card-reply-text">{reply.body}</span>
     </div>
   {/each}
@@ -240,6 +288,10 @@
     font-size: 11px;
     color: var(--text-muted);
     margin-left: auto;
+    white-space: nowrap;
+  }
+  .review-card-time-absolute {
+    color: var(--text-secondary);
   }
   .review-card-text {
     color: var(--text-primary);
@@ -298,6 +350,34 @@
     padding: 2px 8px;
     border-radius: 4px;
   }
+  .review-card-sync-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+  }
+  .review-card-sync-pending {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 30%, var(--border-default));
+  }
+  .review-card-sync-submitted {
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-success) 30%, var(--border-default));
+  }
+  .review-card-sync-local {
+    color: var(--text-secondary);
+    background: var(--surface-raised);
+  }
+  .review-card-sync-conflict {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-danger) 30%, var(--border-default));
+  }
   .review-card-reply {
     padding: 8px 16px 10px;
     border-top: 1px solid var(--border-default);
@@ -307,9 +387,15 @@
     display: flex;
     align-items: baseline;
     gap: 4px;
+    flex-wrap: wrap;
   }
   .review-card-reply-indicator {
     color: var(--text-muted);
+  }
+  .review-card-reply-time {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
   }
   .review-card-reply-text {
     flex: 1;

@@ -54,6 +54,16 @@ export async function removeRootFolder(path: string) {
   state.indexStatuses.delete(path);
 }
 
+export async function replaceRootFolders(paths: string[]) {
+  const existing = [...state.rootFolders];
+  for (const root of existing) {
+    await removeRootFolder(root);
+  }
+  for (const root of paths) {
+    await addRootFolder(root);
+  }
+}
+
 export async function loadDirectory(path: string) {
   const entries = await readDirectory(path);
   state.fileTree.set(path, entries);

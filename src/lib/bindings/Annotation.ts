@@ -2,6 +2,7 @@
 import type { Anchor } from "./Anchor";
 import type { AnnotationKind } from "./AnnotationKind";
 import type { Choice } from "./Choice";
+import type { GitHubAnnotationMetadata } from "./GitHubAnnotationMetadata";
 import type { SelectionMode } from "./SelectionMode";
 
-export type Annotation = { id: string, kind: AnnotationKind, body: string, labels: Array<string>, author: string, isOrphaned: boolean, replyTo?: string | null, createdAt?: string | null, updatedAt?: string | null, anchor: Anchor, choices?: Array<Choice> | null, selectionMode?: SelectionMode | null, resolved?: boolean, };
+export type Annotation = { id: string, kind: AnnotationKind, body: string, labels: Array<string>, author: string, isOrphaned: boolean, replyTo?: string | null, createdAt?: string | null, updatedAt?: string | null, anchor: Anchor, choices?: Array<Choice> | null, selectionMode?: SelectionMode | null, resolved?: boolean, github?: GitHubAnnotationMetadata | null, };

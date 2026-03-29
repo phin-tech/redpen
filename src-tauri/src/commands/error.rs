@@ -21,6 +21,8 @@ pub enum CommandError {
     NotFound(String),
     /// An invalid argument was provided by the caller.
     InvalidArgument(String),
+    /// External command execution failed.
+    Process(String),
 }
 
 impl fmt::Display for CommandError {
@@ -32,6 +34,7 @@ impl fmt::Display for CommandError {
             CommandError::Sidecar(e) => write!(f, "{}", e),
             CommandError::NotFound(msg) => write!(f, "{}", msg),
             CommandError::InvalidArgument(msg) => write!(f, "{}", msg),
+            CommandError::Process(msg) => write!(f, "{}", msg),
         }
     }
 }

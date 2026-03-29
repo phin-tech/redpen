@@ -10,6 +10,10 @@ import type {
   SidecarFile,
   WorkspaceFileQueryResponse,
   WorkspaceIndexStatus,
+  GitHubPrSession,
+  GitHubReviewEvent,
+  GitHubReviewQueueItem,
+  SubmitGitHubReviewResult,
 } from "./types";
 
 export async function readDirectory(path: string): Promise<FileEntry[]> {
@@ -55,6 +59,7 @@ export interface CreateAnnotationParams {
   startColumn: number;
   endLine: number;
   endColumn: number;
+  replyTo?: string;
 }
 
 export async function createAnnotation(request: CreateAnnotationParams): Promise<Annotation> {
@@ -109,6 +114,35 @@ export async function updateSettings(
 
 export async function getSettings(): Promise<AppSettings> {
   return invoke("get_settings");
+}
+
+export async function listGithubReviewQueue(): Promise<GitHubReviewQueueItem[]> {
+  return invoke("list_github_review_queue");
+}
+
+export async function openGithubPrReview(
+  prRef: string,
+  localPathHint?: string,
+): Promise<GitHubPrSession> {
+  return invoke("open_github_pr_review", { prRef, localPathHint });
+}
+
+export async function resyncGithubPrReview(sessionId: string): Promise<GitHubPrSession> {
+  return invoke("resync_github_pr_review", { sessionId });
+}
+
+export async function submitGithubPrReview(
+  sessionId: string,
+  event: GitHubReviewEvent,
+  summary?: string,
+): Promise<SubmitGitHubReviewResult> {
+  return invoke("submit_github_pr_review", { sessionId, event, summary });
+}
+
+export async function discardPendingGithubReviewChanges(
+  sessionId: string,
+): Promise<GitHubPrSession> {
+  return invoke("discard_pending_github_review_changes", { sessionId });
 }
 
 export async function sendNotification(

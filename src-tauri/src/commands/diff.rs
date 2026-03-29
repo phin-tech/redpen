@@ -13,6 +13,8 @@ pub struct DiffResult {
     pub hunks: Vec<DiffHunk>,
     pub old_content: String,
     pub new_content: String,
+    pub inserted_lines: Vec<u32>,
+    pub deleted_lines: Vec<u32>,
 }
 
 #[derive(Debug, Serialize, Clone, ts_rs::TS)]
@@ -216,12 +218,39 @@ pub fn compute_diff(
         });
     }
 
+    // Pre-compute sorted line number arrays for the frontend
+    let mut inserted_lines: Vec<u32> = Vec::new();
+    let mut deleted_lines: Vec<u32> = Vec::new();
+    for hunk in &hunks {
+        for change in &hunk.changes {
+            match change.kind {
+                ChangeKind::Insert => {
+                    if let Some(nl) = change.new_line {
+                        inserted_lines.push(nl);
+                    }
+                }
+                ChangeKind::Delete => {
+                    if let Some(ol) = change.old_line {
+                        deleted_lines.push(ol);
+                    }
+                }
+                ChangeKind::Equal => {}
+            }
+        }
+    }
+    inserted_lines.sort_unstable();
+    inserted_lines.dedup();
+    deleted_lines.sort_unstable();
+    deleted_lines.dedup();
+
     Ok(DiffResult {
         base_ref,
         target_ref,
         hunks,
         old_content,
         new_content,
+        inserted_lines,
+        deleted_lines,
     })
 }
 

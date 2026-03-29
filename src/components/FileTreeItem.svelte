@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FileEntry } from "$lib/types";
   import { toggleFolder, getWorkspace, getGitStatusForFile } from "$lib/stores/workspace.svelte";
+  import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
   import FileTreeItem from "./FileTreeItem.svelte";
 
   let {
@@ -18,11 +19,35 @@
   } = $props();
 
   const workspace = getWorkspace();
+  const githubReview = getGitHubReviewState();
 
   let isExpanded = $derived(workspace.expandedFolders.has(entry.path));
   let allChildren = $derived(workspace.fileTree.get(entry.path) ?? []);
   let children = $derived(changedPaths ? allChildren.filter(c => changedPaths.has(c.path)) : allChildren);
   let gitStatus = $derived(getGitStatusForFile(entry.path));
+  let prStatus = $derived.by(() => {
+    const session = githubReview.activeSession;
+    if (!session || !entry.path.startsWith(session.worktreePath)) {
+      return null;
+    }
+
+    const relativePath = entry.path
+      .slice(session.worktreePath.length)
+      .replace(/^\/+/, "");
+
+    if (!relativePath) {
+      return null;
+    }
+
+    if (entry.isDir) {
+      return session.changedFiles.some((filePath) => filePath.startsWith(`${relativePath}/`))
+        ? "M"
+        : null;
+    }
+
+    return session.changedFiles.includes(relativePath) ? "M" : null;
+  });
+  let displayStatus = $derived(gitStatus?.status ?? prStatus);
   let isSelected = $derived(selectedPath === entry.path);
 
   function handleClick() {
@@ -72,8 +97,8 @@
         </svg>
       </span>
     {/if}
-    {#if gitStatus}
-      <span class="text-xs font-semibold font-mono {gitStatusClass(gitStatus.status)}">{gitStatus.status}</span>
+    {#if displayStatus}
+      <span class="text-xs font-semibold font-mono {gitStatusClass(displayStatus)}">{displayStatus}</span>
     {/if}
   </div>
 </div>

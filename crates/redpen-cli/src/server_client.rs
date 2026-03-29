@@ -3,11 +3,13 @@
 //! All functions return `Option` — `None` means the server isn't running
 //! and the caller should fall back to deep links / signal files.
 
-use redpen_server::{OkResponse, ReviewResponse, ReviewStartResponse, ReviewWaitResponse};
+use redpen_server::{
+    OkResponse, ReviewPrResponse, ReviewResponse, ReviewStartResponse, ReviewWaitResponse,
+};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 
-/// Read the server port from ~/.redpen/server.json.
+/// Read the server port from ~/.config/redpen/server.json.
 /// Returns None if the file doesn't exist or the server process is dead.
 fn server_url() -> Option<String> {
     let path = redpen_server::discovery_path();
@@ -87,12 +89,18 @@ pub fn refresh_file(file: &str) -> bool {
 }
 
 /// Combined open + wait via the server. Blocks until review is done.
-pub fn review(file: &str, line: Option<u32>, timeout: Option<u64>) -> Option<ReviewResponse> {
+pub fn review(
+    file: &str,
+    line: Option<u32>,
+    timeout: Option<u64>,
+    session_id: Option<&str>,
+) -> Option<ReviewResponse> {
     let timeout_secs = timeout.unwrap_or(86400);
     let body = json!({
         "file": file,
         "line": line,
         "timeout": timeout_secs,
+        "session_id": session_id,
     });
     rpc_post_with_timeout("review", &body, timeout_secs)
 }
@@ -113,6 +121,14 @@ pub fn review_wait(session_id: &str, timeout: Option<u64>) -> Option<ReviewWaitR
         "timeout": timeout_secs,
     });
     rpc_post_with_timeout("review.wait", &body, timeout_secs)
+}
+
+pub fn review_pr(pr_ref: &str, local_path_hint: Option<&str>) -> Option<ReviewPrResponse> {
+    let body = json!({
+        "pr_ref": pr_ref,
+        "local_path_hint": local_path_hint,
+    });
+    rpc_post::<ReviewPrResponse>("review.pr", &body)
 }
 
 /// Check if the server is available.

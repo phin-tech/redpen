@@ -1,19 +1,25 @@
 use crate::commands::error::{CommandError, CommandResult};
+use crate::commands::github_review::{
+    collect_session_annotations, load_session_sidecar_for_file, resolve_github_session_for_file,
+    save_session_sidecar_for_file,
+};
 use crate::event_bus::TauriEventBus;
 use crate::notification::{NotificationKind, NotificationService};
 use crate::settings::{AppSettings, UpdateSettingsRequest};
 use crate::state::AppState;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, FileAnnotations, Range};
-use redpen_core::hash::hash_string;
+use redpen_core::annotation::{
+    Anchor, Annotation, AnnotationKind, Choice, FileAnnotations, GitHubAnnotationMetadata,
+    GitHubSyncState, Range,
+};
+use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
 use redpen_runtime::annotations::AnnotationService;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
-#[derive(Debug, serde::Deserialize, ts_rs::TS)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct CreateAnnotationRequest {
     pub file_path: String,
     pub body: String,
@@ -24,6 +30,8 @@ pub struct CreateAnnotationRequest {
     pub start_column: u32,
     pub end_line: u32,
     pub end_column: u32,
+    #[serde(default)]
+    pub reply_to: Option<String>,
 }
 
 fn default_kind() -> AnnotationKind {
@@ -47,8 +55,11 @@ pub fn get_annotations(
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<SidecarFile> {
     let source_path = Path::new(&file_path);
+    if let Some(session) = resolve_github_session_for_file(source_path)? {
+        return load_session_sidecar_for_file(&session, source_path);
+    }
     let project_root = resolve_project_root(source_path);
-    svc.get_annotations(source_path, &project_root)
+    svc.get_annotations_from_session(source_path, &project_root)
         .map_err(CommandError::from)
 }
 
@@ -58,8 +69,11 @@ pub fn get_all_annotations(
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
+    if let Some(session) = resolve_github_session_for_file(root)? {
+        return collect_session_annotations(&session);
+    }
     let project_root = resolve_project_root(root);
-    svc.get_all_annotations(root, &project_root)
+    svc.get_all_annotations_from_session(&project_root)
         .map_err(CommandError::from)
 }
 
@@ -97,6 +111,8 @@ pub fn create_annotation(
         range,
         last_known_line: request.start_line,
     };
+    let kind = request.kind.clone();
+    let reply_to = request.reply_to.clone();
 
     let author = state
         .settings
@@ -104,9 +120,41 @@ pub fn create_annotation(
         .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
+    if let Some(session) = resolve_github_session_for_file(source_path)? {
+        let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
+        let mut annotation = if let Some(reply_to) = reply_to.clone() {
+            Annotation::new_reply(request.body.clone(), author, reply_to, anchor)
+        } else {
+            Annotation::new(
+                kind.clone(),
+                request.body.clone(),
+                request.labels.clone(),
+                author,
+                anchor,
+            )
+        };
+        annotation.github = Some(GitHubAnnotationMetadata {
+            sync_state: Some(GitHubSyncState::PendingPublish),
+            external_comment_id: None,
+            external_thread_id: None,
+            publishable_reason: None,
+        });
+        sidecar.add_annotation(annotation.clone());
+        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        return Ok(annotation);
+    }
     let project_root = resolve_project_root(source_path);
-    svc.create_annotation(&project_root, source_path, &request.body, request.labels, &author, anchor)
-        .map_err(CommandError::from)
+    svc.create_annotation_in_session(
+        &project_root,
+        source_path,
+        kind,
+        &request.body,
+        request.labels,
+        &author,
+        anchor,
+        reply_to,
+    )
+    .map_err(CommandError::from)
 }
 
 #[derive(Debug, serde::Serialize, ts_rs::TS)]
@@ -159,8 +207,35 @@ pub fn update_annotation(
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
+    if let Some(session) = resolve_github_session_for_file(source_path)? {
+        let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
+        let annotation = sidecar
+            .get_annotation_mut(&annotation_id)
+            .ok_or_else(|| CommandError::NotFound(format!("annotation {}", annotation_id)))?;
+        if let Some(body) = body {
+            annotation.body = body;
+        }
+        if let Some(labels) = labels {
+            annotation.labels = labels;
+        }
+        if let Some(choices) = choices {
+            annotation.choices = Some(choices);
+        }
+        if let Some(resolved) = resolved {
+            annotation.resolved = resolved;
+        }
+        if let Some(metadata) = &mut annotation.github {
+            if metadata.sync_state.is_none() {
+                metadata.sync_state = Some(GitHubSyncState::PendingPublish);
+            }
+        }
+        annotation.updated_at = Some(chrono::Utc::now());
+        let updated = annotation.clone();
+        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        return Ok(updated);
+    }
     let project_root = resolve_project_root(source_path);
-    svc.update_annotation_full(&project_root, source_path, &annotation_id, body.as_deref(), labels, choices, resolved)
+    svc.update_annotation_in_session(&project_root, source_path, &annotation_id, body.as_deref(), labels, choices, resolved)
         .map_err(CommandError::from)
 }
 
@@ -171,8 +246,16 @@ pub fn delete_annotation(
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
+    if let Some(session) = resolve_github_session_for_file(source_path)? {
+        let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
+        sidecar
+            .remove_annotation(&annotation_id)
+            .ok_or_else(|| CommandError::NotFound(format!("annotation {}", annotation_id)))?;
+        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        return Ok(());
+    }
     let project_root = resolve_project_root(source_path);
-    svc.delete_annotation(&project_root, source_path, &annotation_id)
+    svc.delete_annotation_from_session(&project_root, source_path, &annotation_id)
         .map_err(CommandError::from)
 }
 
@@ -182,8 +265,12 @@ pub fn clear_annotations(
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
+    if let Some(session) = resolve_github_session_for_file(source_path)? {
+        save_session_sidecar_for_file(&session, source_path, &SidecarFile::new(hash_file(source_path)?))?;
+        return Ok(());
+    }
     let project_root = resolve_project_root(source_path);
-    svc.clear_annotations(&project_root, source_path)
+    svc.clear_annotations_in_session(&project_root, source_path)
         .map_err(CommandError::from)
 }
 
@@ -240,6 +327,12 @@ pub fn signal_review_done(
     }
     fs::write(&signal_path, signal_content)?;
 
+    // Write verdict into the active session file
+    if let Ok(mut session) = redpen_runtime::annotations::load_active_session(&project_root) {
+        session.verdict = Some(verdict_str.to_string());
+        let _ = session.save(&project_root);
+    }
+
     // Fire OS notification for review complete
     let settings = state.settings.lock().unwrap();
     let service = NotificationService::new(app_handle);
@@ -251,8 +344,8 @@ pub fn signal_review_done(
     );
     drop(settings);
 
-    // Also POST annotations to the redpen channel (if running)
-    let sidecar = svc.get_annotations(source_path, &project_root)
+    // Also POST annotations from session
+    let sidecar = svc.get_annotations_from_session(source_path, &project_root)
         .map_err(CommandError::from)?;
     let json = serde_json::to_string(&sidecar.annotations)?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());

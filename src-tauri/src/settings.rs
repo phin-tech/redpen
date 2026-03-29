@@ -3,8 +3,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-pub const CONFIG_DIRECTORY: &str = ".config/redpen";
+pub const APP_HOME_DIRECTORY: &str = ".config/redpen";
 pub const SETTINGS_FILE_NAME: &str = "settings.json";
+
+fn default_checkout_root() -> Option<String> {
+    app_home_path()
+        .ok()
+        .map(|home| home.join("checkouts"))
+        .map(|path| path.to_string_lossy().to_string())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +37,14 @@ impl Default for NotificationSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/lib/bindings/")]
+pub struct TrackedRepo {
+    pub repo: String,
+    pub local_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct AppSettings {
     pub author: String,
     #[serde(default)]
@@ -38,6 +53,10 @@ pub struct AppSettings {
     pub ignored_folder_names: Vec<String>,
     #[serde(default = "default_diff_algorithm")]
     pub diff_algorithm: String,
+    #[serde(default = "default_checkout_root")]
+    pub default_checkout_root: Option<String>,
+    #[serde(default)]
+    pub tracked_github_repos: Vec<TrackedRepo>,
     #[serde(default)]
     pub notifications: NotificationSettings,
 }
@@ -53,6 +72,8 @@ impl Default for AppSettings {
             default_labels: Vec::new(),
             ignored_folder_names: Vec::new(),
             diff_algorithm: default_diff_algorithm(),
+            default_checkout_root: default_checkout_root(),
+            tracked_github_repos: Vec::new(),
             notifications: NotificationSettings::default(),
         }
     }
@@ -66,6 +87,8 @@ pub struct UpdateSettingsRequest {
     pub default_labels: Option<Vec<String>>,
     pub ignored_folder_names: Option<Vec<String>>,
     pub diff_algorithm: Option<String>,
+    pub default_checkout_root: Option<String>,
+    pub tracked_github_repos: Option<Vec<TrackedRepo>>,
     pub notifications: Option<NotificationSettings>,
 }
 
@@ -83,6 +106,12 @@ impl UpdateSettingsRequest {
         if let Some(diff_algorithm) = self.diff_algorithm {
             settings.diff_algorithm = diff_algorithm;
         }
+        if let Some(default_checkout_root) = self.default_checkout_root {
+            settings.default_checkout_root = normalize_optional_path(Some(default_checkout_root));
+        }
+        if let Some(tracked_github_repos) = self.tracked_github_repos {
+            settings.tracked_github_repos = normalize_tracked_repos(tracked_github_repos);
+        }
         if let Some(notifications) = self.notifications {
             settings.notifications = notifications;
         }
@@ -99,6 +128,10 @@ impl AppSettings {
         let mut settings: Self = serde_json::from_str(&content).map_err(|e| e.to_string())?;
         settings.ignored_folder_names =
             normalize_ignored_folder_names(settings.ignored_folder_names.clone());
+        settings.default_checkout_root =
+            normalize_optional_path(settings.default_checkout_root.clone());
+        settings.tracked_github_repos =
+            normalize_tracked_repos(settings.tracked_github_repos.clone());
         Ok(settings)
     }
 
@@ -116,9 +149,13 @@ impl AppSettings {
     }
 }
 
-pub fn settings_path() -> Result<PathBuf, String> {
+pub fn app_home_path() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
-    Ok(home.join(CONFIG_DIRECTORY).join(SETTINGS_FILE_NAME))
+    Ok(home.join(APP_HOME_DIRECTORY))
+}
+
+pub fn settings_path() -> Result<PathBuf, String> {
+    Ok(app_home_path()?.join(SETTINGS_FILE_NAME))
 }
 
 pub fn normalize_ignored_folder_names(names: Vec<String>) -> Vec<String> {
@@ -145,10 +182,73 @@ pub fn normalize_ignored_folder_names(names: Vec<String>) -> Vec<String> {
     normalized
 }
 
+pub fn normalize_tracked_repos(repos: Vec<TrackedRepo>) -> Vec<TrackedRepo> {
+    let mut normalized = Vec::new();
+
+    for repo in repos {
+        let repo_name = repo.repo.trim().trim_matches('/').to_string();
+        let local_path = normalize_path_string(repo.local_path);
+
+        if repo_name.is_empty() || local_path.is_empty() {
+            continue;
+        }
+
+        if normalized
+            .iter()
+            .any(|existing: &TrackedRepo| existing.repo.eq_ignore_ascii_case(&repo_name))
+        {
+            continue;
+        }
+
+        normalized.push(TrackedRepo {
+            repo: repo_name,
+            local_path,
+        });
+    }
+
+    normalized
+}
+
+pub fn normalize_optional_path(path: Option<String>) -> Option<String> {
+    path.and_then(|value| {
+        let normalized = normalize_path_string(value);
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    })
+}
+
+fn normalize_path_string(value: String) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if trimmed == "~" {
+        return dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from(trimmed))
+            .to_string_lossy()
+            .to_string();
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        return dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from(trimmed))
+            .join(rest)
+            .to_string_lossy()
+            .to_string();
+    }
+
+    trimmed.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        settings_path, AppSettings, NotificationSettings, UpdateSettingsRequest, CONFIG_DIRECTORY,
+        app_home_path, default_checkout_root, settings_path, AppSettings, NotificationSettings,
+        TrackedRepo, UpdateSettingsRequest, APP_HOME_DIRECTORY,
     };
     use std::path::PathBuf;
     use tempfile::tempdir;
@@ -162,6 +262,7 @@ mod tests {
 
         assert_eq!(settings.default_labels, Vec::<String>::new());
         assert_eq!(settings.ignored_folder_names, Vec::<String>::new());
+        assert_eq!(settings.default_checkout_root, default_checkout_root());
         assert!(!settings.author.is_empty());
     }
 
@@ -174,6 +275,11 @@ mod tests {
             author: "sam".to_string(),
             default_labels: vec!["todo".to_string(), "bug".to_string()],
             ignored_folder_names: vec!["node_modules".to_string(), ".venv".to_string()],
+            default_checkout_root: Some("/tmp/checkouts".to_string()),
+            tracked_github_repos: vec![TrackedRepo {
+                repo: "phin-tech/redpen".to_string(),
+                local_path: "/tmp/redpen".to_string(),
+            }],
             ..AppSettings::default()
         };
 
@@ -197,6 +303,8 @@ mod tests {
                 "".to_string(),
             ]),
             diff_algorithm: None,
+            default_checkout_root: None,
+            tracked_github_repos: None,
             notifications: None,
         }
         .apply(&mut settings);
@@ -210,7 +318,15 @@ mod tests {
     #[test]
     fn settings_path_uses_dot_config_redpen() {
         let path = settings_path().unwrap();
-        let suffix = PathBuf::from(CONFIG_DIRECTORY).join("settings.json");
+        let suffix = PathBuf::from(APP_HOME_DIRECTORY).join("settings.json");
+
+        assert!(path.ends_with(suffix));
+    }
+
+    #[test]
+    fn app_home_path_uses_dot_config_redpen() {
+        let path = app_home_path().unwrap();
+        let suffix = PathBuf::from(APP_HOME_DIRECTORY);
 
         assert!(path.ends_with(suffix));
     }
@@ -224,6 +340,8 @@ mod tests {
             author: "sam".to_string(),
             default_labels: vec![],
             ignored_folder_names: vec![],
+            default_checkout_root: None,
+            tracked_github_repos: vec![],
             notifications: NotificationSettings {
                 annotation_reply: false,
                 review_complete: true,
@@ -251,6 +369,82 @@ mod tests {
         // Should get defaults
         assert!(settings.notifications.annotation_reply);
         assert!(!settings.notifications.new_annotation);
+    }
+
+    #[test]
+    fn tracked_repos_are_normalized() {
+        let mut settings = AppSettings::default();
+
+        UpdateSettingsRequest {
+            author: None,
+            default_labels: None,
+            ignored_folder_names: None,
+            diff_algorithm: None,
+            default_checkout_root: None,
+            tracked_github_repos: Some(vec![
+                TrackedRepo {
+                    repo: " phin-tech/redpen ".to_string(),
+                    local_path: " /tmp/redpen ".to_string(),
+                },
+                TrackedRepo {
+                    repo: "phin-tech/redpen".to_string(),
+                    local_path: "/tmp/other".to_string(),
+                },
+            ]),
+            notifications: None,
+        }
+        .apply(&mut settings);
+
+        assert_eq!(
+            settings.tracked_github_repos,
+            vec![TrackedRepo {
+                repo: "phin-tech/redpen".to_string(),
+                local_path: "/tmp/redpen".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn default_checkout_root_is_normalized() {
+        let mut settings = AppSettings::default();
+
+        UpdateSettingsRequest {
+            author: None,
+            default_labels: None,
+            ignored_folder_names: None,
+            diff_algorithm: None,
+            default_checkout_root: Some(" /tmp/checkouts ".to_string()),
+            tracked_github_repos: None,
+            notifications: None,
+        }
+        .apply(&mut settings);
+
+        assert_eq!(
+            settings.default_checkout_root,
+            Some("/tmp/checkouts".to_string())
+        );
+    }
+
+    #[test]
+    fn tracked_repo_paths_expand_home_shortcut() {
+        let mut settings = AppSettings::default();
+
+        UpdateSettingsRequest {
+            author: None,
+            default_labels: None,
+            ignored_folder_names: None,
+            diff_algorithm: None,
+            default_checkout_root: None,
+            tracked_github_repos: Some(vec![TrackedRepo {
+                repo: "phin-tech/test-repo".to_string(),
+                local_path: "~/src/test-repo".to_string(),
+            }]),
+            notifications: None,
+        }
+        .apply(&mut settings);
+
+        assert!(settings.tracked_github_repos[0].local_path.starts_with('/'));
+        assert!(settings.tracked_github_repos[0].local_path.ends_with("/src/test-repo"));
     }
 
     #[test]

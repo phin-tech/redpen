@@ -8,6 +8,8 @@
   let author = $state("");
   let defaultLabels = $state("");
   let ignoredFolderNames = $state("");
+  let defaultCheckoutRoot = $state("");
+  let trackedGithubRepos = $state("");
   let notifyAnnotationReply = $state(true);
   let notifyReviewComplete = $state(true);
   let notifyNewAnnotation = $state(false);
@@ -15,12 +17,18 @@
   const authorInputId = "settings-author";
   const defaultLabelsInputId = "settings-default-labels";
   const ignoredFoldersInputId = "settings-ignored-folders";
+  const defaultCheckoutRootInputId = "settings-default-checkout-root";
+  const trackedReposInputId = "settings-tracked-repos";
 
   onMount(async () => {
     const settings = await getSettings();
     author = settings.author;
     defaultLabels = settings.defaultLabels.join(", ");
     ignoredFolderNames = settings.ignoredFolderNames.join(", ");
+    defaultCheckoutRoot = settings.defaultCheckoutRoot ?? "";
+    trackedGithubRepos = (settings.trackedGithubRepos ?? [])
+      .map((repo) => `${repo.repo}=${repo.localPath}`)
+      .join("\n");
     if (settings.notifications) {
       notifyAnnotationReply = settings.notifications.annotationReply;
       notifyReviewComplete = settings.notifications.reviewComplete;
@@ -38,10 +46,21 @@
       .split(",")
       .map((name) => name.trim())
       .filter((name) => name.length > 0);
+    const trackedRepos = trackedGithubRepos
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const [repo, localPath] = line.split("=").map((value) => value.trim());
+        return { repo, localPath };
+      })
+      .filter((repo) => repo.repo && repo.localPath);
     await updateSettings({
       author,
       defaultLabels: labels,
       ignoredFolderNames: ignoredFolders,
+      defaultCheckoutRoot: defaultCheckoutRoot.trim(),
+      trackedGithubRepos: trackedRepos,
       notifications: {
         annotationReply: notifyAnnotationReply,
         reviewComplete: notifyReviewComplete,
@@ -57,6 +76,8 @@
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
   }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -102,6 +123,31 @@
         class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
         style="box-shadow: var(--shadow-inset)"
       />
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs text-text-secondary font-medium" for={defaultCheckoutRootInputId}>Default checkout location</label>
+      <input
+        id={defaultCheckoutRootInputId}
+        bind:value={defaultCheckoutRoot}
+        placeholder="~/.config/redpen/checkouts"
+        class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
+        style="box-shadow: var(--shadow-inset)"
+      />
+      <p class="text-[11px] text-text-muted">Used when opening a PR for a repo that does not already have a tracked local checkout.</p>
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+      <label class="text-xs text-text-secondary font-medium" for={trackedReposInputId}>Tracked GitHub repos</label>
+      <textarea
+        id={trackedReposInputId}
+        bind:value={trackedGithubRepos}
+        rows="4"
+        placeholder="phin-tech/redpen=/Users/me/src/redpen&#10;phin-tech/test-repo=/Users/me/src/test-repo"
+        class="w-full bg-surface-panel border border-border-default/60 text-text-primary text-sm rounded-md px-2.5 py-1.5 focus:border-accent focus:ring-1 focus:ring-accent/20 outline-none transition-colors"
+        style="box-shadow: var(--shadow-inset)"
+      ></textarea>
+      <p class="text-[11px] text-text-muted">One repo per line as <code>owner/repo=/absolute/local/path</code>.</p>
     </div>
 
     <div class="flex flex-col gap-2 pt-2 border-t border-border-default/40">

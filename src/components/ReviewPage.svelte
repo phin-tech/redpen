@@ -33,7 +33,6 @@
   const progressPercent = $derived(
     annotationCount > 0 ? Math.round((resolvedCount / annotationCount) * 100) : 0
   );
-
   // Build flat card entries grouped by file
   interface CardEntry {
     annotation: Annotation;
@@ -282,6 +281,8 @@
           ann.anchor.range.startColumn,
           ann.anchor.range.endLine,
           ann.anchor.range.endColumn,
+          undefined,
+          annotationId,
         );
         break;
       }
@@ -326,6 +327,7 @@
     }
     return null;
   }
+
 </script>
 
 <svelte:window onkeydowncapture={handleKeydown} />

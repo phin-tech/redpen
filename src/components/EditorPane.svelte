@@ -5,8 +5,19 @@
   import DiffModeToggle from "./DiffModeToggle.svelte";
   import DiffRefPicker from "./DiffRefPicker.svelte";
   import ReviewPage from "./ReviewPage.svelte";
+  import PullRequestView from "./PullRequestView.svelte";
+  import GitHubInbox from "./GitHubInbox.svelte";
+  import { getReviewSession, clearReviewSession } from "$lib/stores/review.svelte";
   import { getEditor, getFileExtension, isMarkdownFile, getShowPreview, togglePreview } from "$lib/stores/editor.svelte";
-  import { getDiffState, enterDiff, exitDiff, setDiffMode } from "$lib/stores/diff.svelte";
+  import {
+    getDiffState,
+    enterDiff,
+    exitDiff,
+    setDiffMode,
+    setDiffDefaults,
+    resetDiffDefaults,
+    computeDiff,
+  } from "$lib/stores/diff.svelte";
   import {
     getReviewPageState,
     isReviewPageOpen,
@@ -17,18 +28,24 @@
     closeReviewPage,
   } from "$lib/stores/reviewPage.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
   import { sortedAnnotations, getBubblesEnabled, toggleBubbles } from "$lib/stores/annotations.svelte";
   import BubbleKindFilter from "./BubbleKindFilter.svelte";
   import { highlightsModeExtensions, buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
+  import { submitReviewVerdict, type ReviewVerdict } from "$lib/review";
   import { onDestroy } from "svelte";
 
   let {
     onSelectionChange,
     onJumpToFile,
+    onOpenFolder,
+    showShortcutHelp = $bindable(false),
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
     onJumpToFile?: (filePath: string, line: number) => void;
+    onOpenFolder?: () => Promise<void>;
+    showShortcutHelp?: boolean;
     ref?: {
       scrollToLine: (line: number) => void;
       openSearch: () => void;
@@ -47,6 +64,8 @@
   const diff = getDiffState();
   const workspace = getWorkspace();
   const reviewState = getReviewPageState();
+  const reviewSession = getReviewSession();
+  const githubReview = getGitHubReviewState();
 
   type EditorRef = {
     scrollToLine: (line: number) => void;
@@ -73,8 +92,9 @@
     hasVisualMode: () => boolean;
   } | undefined = $state(undefined);
   let cleanupScrollSync: (() => void) | null = null;
-  let showReviewShortcutHelp = $state(false);
   let pendingCodeG = $state(false);
+  let showPrView = $state(false);
+  let lastGitHubSessionId = $state<string | null>(null);
 
   interface ShortcutHelpSection {
     title: string;
@@ -122,6 +142,20 @@
     isReviewPageOpen() ? reviewAnnotationCount : null
   );
 
+  $effect(() => {
+    if (!githubReview.activeSession && showPrView) {
+      showPrView = false;
+    }
+  });
+
+  $effect(() => {
+    const sessionId = githubReview.activeSession?.id ?? null;
+    if (sessionId !== lastGitHubSessionId) {
+      showPrView = false;
+      lastGitHubSessionId = sessionId;
+    }
+  });
+
   // Forward the active ref to parent
   $effect(() => {
     ref = getShowPreview() && isMarkdownFile() ? previewRef as EditorRef | undefined : editorRef;
@@ -153,6 +187,29 @@
 
   const directory = $derived(workspace.rootFolders[0] ?? "");
 
+  $effect(() => {
+    const session = githubReview.activeSession;
+    const filePath = editor.currentFilePath;
+
+    if (session && session.worktreePath === directory) {
+      setDiffDefaults(
+        session.baseSha,
+        session.headSha,
+        session.baseRef,
+        session.headRef,
+      );
+      if (diff.enabled && filePath) {
+        void computeDiff(directory, filePath);
+      }
+      return;
+    }
+
+    resetDiffDefaults();
+    if (diff.enabled && filePath && directory) {
+      void computeDiff(directory, filePath);
+    }
+  });
+
   function handleEnterDiff(mode: import("$lib/types").DiffMode) {
     if (editor.currentFilePath && directory) {
       setDiffMode(mode);
@@ -161,15 +218,33 @@
   }
 
   function handleSelectCodeView() {
+    showPrView = false;
     if (isReviewPageOpen()) {
       closeReviewPage();
     }
   }
 
   function handleSelectReviewView() {
+    showPrView = false;
     if (!isReviewPageOpen()) {
       openReviewPage("changes");
     }
+  }
+
+  function handleSelectPrView() {
+    showPrView = true;
+    if (isReviewPageOpen()) {
+      closeReviewPage();
+    }
+  }
+
+  async function handleAgentReviewVerdict(verdict: ReviewVerdict) {
+    if (!editor.currentFilePath) return;
+    await submitReviewVerdict(editor.currentFilePath, verdict);
+    clearReviewSession();
+  }
+
+  function handleWindowClick(e: MouseEvent) {
   }
 
   function handleWindowKeydown(e: KeyboardEvent) {
@@ -182,11 +257,11 @@
 
     if (isInputTarget) return;
 
-    if (showReviewShortcutHelp) {
+    if (showShortcutHelp) {
       if (e.key === "Escape" || e.key === "?") {
         e.preventDefault();
         e.stopPropagation();
-        showReviewShortcutHelp = false;
+        showShortcutHelp = false;
       }
       return;
     }
@@ -196,7 +271,7 @@
     if (e.key === "?") {
       e.preventDefault();
       e.stopPropagation();
-      showReviewShortcutHelp = true;
+      showShortcutHelp = true;
       pendingCodeG = false;
       return;
     }
@@ -319,9 +394,10 @@
       onSelectionChange?.(mappedFromLine, fromCol, mappedToLine, toCol);
     };
   }
+
 </script>
 
-<svelte:window onkeydowncapture={handleWindowKeydown} />
+<svelte:window onkeydowncapture={handleWindowKeydown} onclick={handleWindowClick} />
 
 <div class="editor-pane">
   <!-- Toolbar: always visible when a file is open -->
@@ -330,14 +406,14 @@
       <div class="view-tabs">
         <button
           class="toggle-btn view-tab"
-          class:active={!isReviewPageOpen()}
+          class:active={!isReviewPageOpen() && !showPrView}
           onclick={handleSelectCodeView}
         >
           Code
         </button>
         <button
           class="toggle-btn view-tab view-tab-review"
-          class:active={isReviewPageOpen()}
+          class:active={isReviewPageOpen() && !showPrView}
           onclick={handleSelectReviewView}
         >
           Review
@@ -345,6 +421,15 @@
             {reviewTabBadge ?? ""}
           </span>
         </button>
+        {#if githubReview.activeSession}
+          <button
+            class="toggle-btn view-tab"
+            class:active={showPrView}
+            onclick={handleSelectPrView}
+          >
+            PR
+          </button>
+        {/if}
       </div>
       <div class="separator"></div>
       {#if isReviewPageOpen()}
@@ -363,11 +448,18 @@
               {reviewResolvedCount} resolved
             </span>
           {/if}
-          <span class="review-toolbar-spacer"></span>
-          <button class="toggle-btn review-toolbar-btn" onclick={() => (showReviewShortcutHelp = true)}>
-            Help
-            <kbd>?</kbd>
-          </button>
+          {#if reviewSession.active && !githubReview.activeSession}
+            <button class="toggle-btn review-toolbar-btn review-toolbar-btn-success" onclick={() => void handleAgentReviewVerdict("approved")}>
+              Approve
+            </button>
+            <button class="toggle-btn review-toolbar-btn review-toolbar-btn-danger" onclick={() => void handleAgentReviewVerdict("changes_requested")}>
+              Request changes
+            </button>
+          {/if}
+        </div>
+      {:else if showPrView && githubReview.activeSession}
+        <div class="review-toolbar">
+          <span class="review-toolbar-meta">PR overview</span>
         </div>
       {:else}
         <DiffModeToggle onEnterDiff={handleEnterDiff} />
@@ -406,21 +498,29 @@
             Preview
           </button>
         {/if}
-        <span class="review-toolbar-spacer"></span>
-        <button class="toggle-btn review-toolbar-btn" onclick={() => (showReviewShortcutHelp = true)}>
-          Help
-          <kbd>?</kbd>
-        </button>
+        {#if reviewSession.active && !githubReview.activeSession}
+          <div class="separator"></div>
+          <button class="toggle-btn review-toolbar-btn review-toolbar-btn-success" onclick={() => void handleAgentReviewVerdict("approved")}>
+            Approve
+          </button>
+          <button class="toggle-btn review-toolbar-btn review-toolbar-btn-danger" onclick={() => void handleAgentReviewVerdict("changes_requested")}>
+            Request changes
+          </button>
+        {/if}
       {/if}
     </div>
   {/if}
 
   <!-- Content area -->
   <div class="pane-content">
-    {#if isReviewPageOpen()}
+    {#if workspace.rootFolders.length === 0}
+      <GitHubInbox onOpenFolder={onOpenFolder ?? (async () => {})} />
+    {:else if showPrView && githubReview.activeSession}
+      <PullRequestView session={githubReview.activeSession} />
+    {:else if isReviewPageOpen()}
       <ReviewPage
         onJumpToFile={(path, line) => onJumpToFile?.(path, line)}
-        bind:showShortcutHelp={showReviewShortcutHelp}
+        bind:showShortcutHelp
       />
     {:else if diff.enabled && diff.loading}
       <div class="diff-status">Computing diff...</div>
@@ -431,7 +531,7 @@
       </div>
     {:else if diff.enabled && diff.diffResult}
       {#if diff.diffResult.hunks.length === 0}
-        <div class="diff-status">No changes between {diff.baseRef} and {diff.targetRef}</div>
+        <div class="diff-status">No changes between {diff.baseLabel} and {diff.targetLabel}</div>
       {:else if diff.mode === "split"}
         {@const splitDeco = buildSplitDecorations(diff.diffResult)}
         <div class="split-diff">
@@ -475,10 +575,10 @@
     {/if}
   </div>
 
-  {#if showReviewShortcutHelp && !isReviewPageOpen()}
+  {#if showShortcutHelp && !isReviewPageOpen()}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="shortcut-help-overlay" onclick={() => (showReviewShortcutHelp = false)}>
+    <div class="shortcut-help-overlay" onclick={() => (showShortcutHelp = false)}>
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="shortcut-help-modal"
@@ -493,7 +593,7 @@
             <h2>Code shortcuts</h2>
             <p>Global and editor shortcuts for the code view.</p>
           </div>
-          <button class="shortcut-help-close" onclick={() => (showReviewShortcutHelp = false)} aria-label="Close keyboard shortcut help">
+          <button class="shortcut-help-close" onclick={() => (showShortcutHelp = false)} aria-label="Close keyboard shortcut help">
             ×
           </button>
         </div>
@@ -520,6 +620,7 @@
       </div>
     </div>
   {/if}
+
 </div>
 
 <style>
@@ -639,6 +740,16 @@
   }
   .review-toolbar-btn:hover {
     border-color: var(--border-emphasis);
+  }
+  .review-toolbar-btn-success {
+    color: var(--color-success);
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--border-default));
+    background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  }
+  .review-toolbar-btn-danger {
+    color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--color-danger) 35%, var(--border-default));
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
   }
   .review-toolbar-btn kbd {
     background: var(--surface-base);

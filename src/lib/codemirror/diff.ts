@@ -37,14 +37,8 @@ class DiffLineNumber extends GutterMarker {
 }
 
 export function highlightsModeExtensions(diffResult: DiffResult): Extension {
-    const insertedLines = new Set<number>();
-    for (const hunk of diffResult.hunks) {
-        for (const change of hunk.changes) {
-            if (change.kind === "insert" && change.newLine != null) {
-                insertedLines.add(change.newLine);
-            }
-        }
-    }
+    // Use pre-sorted arrays from Rust — no JS sorting needed
+    const sorted = diffResult.insertedLines;
 
     return ViewPlugin.fromClass(
         class {
@@ -59,7 +53,6 @@ export function highlightsModeExtensions(diffResult: DiffResult): Extension {
             }
             buildDecorations(view: EditorView): DecorationSet {
                 const builder = new RangeSetBuilder<Decoration>();
-                const sorted = Array.from(insertedLines).sort((a, b) => a - b);
                 for (const lineNum of sorted) {
                     if (lineNum <= view.state.doc.lines) {
                         const line = view.state.doc.line(lineNum);
@@ -169,8 +162,11 @@ export interface SplitDecorationResult {
 }
 
 export function buildSplitDecorations(diffResult: DiffResult): SplitDecorationResult {
-    const deletedLines = new Set<number>();
-    const insertedLines = new Set<number>();
+    // Use pre-sorted arrays from Rust for line highlighting
+    const sortedDeleted = diffResult.deletedLines;
+    const sortedInserted = diffResult.insertedLines;
+
+    // Ghost lines still need per-hunk computation
     const ghostsOld = new Map<number, number>();
     const ghostsNew = new Map<number, number>();
 
@@ -182,11 +178,9 @@ export function buildSplitDecorations(diffResult: DiffResult): SplitDecorationRe
 
         for (const change of hunk.changes) {
             if (change.kind === "delete" && change.oldLine != null) {
-                deletedLines.add(change.oldLine);
                 deletes++;
                 lastDeleteLine = change.oldLine;
             } else if (change.kind === "insert" && change.newLine != null) {
-                insertedLines.add(change.newLine);
                 inserts++;
                 lastInsertLine = change.newLine;
             }
@@ -206,8 +200,7 @@ export function buildSplitDecorations(diffResult: DiffResult): SplitDecorationRe
             update(u: ViewUpdate) { if (u.docChanged) this.decorations = this.build(u.view); }
             build(view: EditorView): DecorationSet {
                 const builder = new RangeSetBuilder<Decoration>();
-                const lines = Array.from(deletedLines).sort((a, b) => a - b);
-                for (const lineNum of lines) {
+                for (const lineNum of sortedDeleted) {
                     if (lineNum <= view.state.doc.lines) {
                         const line = view.state.doc.line(lineNum);
                         builder.add(line.from, line.from, removedLine);
@@ -236,8 +229,7 @@ export function buildSplitDecorations(diffResult: DiffResult): SplitDecorationRe
             update(u: ViewUpdate) { if (u.docChanged) this.decorations = this.build(u.view); }
             build(view: EditorView): DecorationSet {
                 const builder = new RangeSetBuilder<Decoration>();
-                const lines = Array.from(insertedLines).sort((a, b) => a - b);
-                for (const lineNum of lines) {
+                for (const lineNum of sortedInserted) {
                     if (lineNum <= view.state.doc.lines) {
                         const line = view.state.doc.line(lineNum);
                         builder.add(line.from, line.from, addedLine);
