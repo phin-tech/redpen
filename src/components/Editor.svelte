@@ -10,6 +10,13 @@
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { highlightsModeExtensions } from "$lib/codemirror/diff";
   import { sortedAnnotations, getBubblesEnabled, getBubbleKindFilter, selectAnnotation, removeAnnotation, updateChoices } from "$lib/stores/annotations.svelte";
+  import {
+    moveCursorLine,
+    jumpToBoundary,
+    toggleVisualSelection,
+    clearVisualSelection,
+    hasVisualSelection,
+  } from "$lib/codemirror/vimish";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
   let {
@@ -17,7 +24,18 @@
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
-    ref?: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined;
+    ref?: {
+      scrollToLine: (line: number) => void;
+      openSearch: () => void;
+      closeSearch: () => void;
+      navigateMatch: (dir: 1 | -1) => void;
+      getView: () => EditorView | null;
+      moveCursorLine: (dir: 1 | -1) => void;
+      jumpToBoundary: (boundary: "top" | "bottom") => void;
+      toggleVisualSelection: (mode: "char" | "line") => void;
+      clearVisualSelection: () => void;
+      hasVisualSelection: () => boolean;
+    } | undefined;
   } = $props();
 
   let container: HTMLDivElement;
@@ -118,7 +136,18 @@
 
   // Expose functions to parent via ref
   $effect(() => {
-    ref = { scrollToLine, openSearch, closeSearch, navigateMatch };
+    ref = {
+      scrollToLine,
+      openSearch,
+      closeSearch,
+      navigateMatch,
+      getView: () => view,
+      moveCursorLine: (dir) => { if (view) moveCursorLine(view, dir); },
+      jumpToBoundary: (boundary) => { if (view) jumpToBoundary(view, boundary); },
+      toggleVisualSelection: (mode) => { if (view) toggleVisualSelection(view, mode); },
+      clearVisualSelection: () => { if (view) clearVisualSelection(view); },
+      hasVisualSelection: () => (view ? hasVisualSelection(view) : false),
+    };
   });
 
   onDestroy(() => {

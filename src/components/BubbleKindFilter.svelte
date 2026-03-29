@@ -80,8 +80,9 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 8px;
-    border: none;
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 1px solid transparent;
     background: transparent;
     color: var(--text-muted);
     font-size: 12px;
@@ -93,11 +94,13 @@
   .filter-btn:hover {
     color: var(--text-secondary);
     background: var(--surface-raised);
+    border-color: var(--border-default);
   }
 
   .filter-btn.has-filter {
-    color: var(--accent);
-    background: var(--accent-subtle);
+    color: var(--view-active);
+    background: var(--view-active-subtle);
+    border-color: var(--view-active-border);
   }
 
   .filter-count {
@@ -139,7 +142,7 @@
     width: 13px;
     height: 13px;
     margin: 0;
-    accent-color: var(--accent);
+    accent-color: var(--view-active);
     cursor: pointer;
   }
 

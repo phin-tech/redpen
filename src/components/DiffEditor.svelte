@@ -6,6 +6,13 @@
     import { oneDark } from "@codemirror/theme-one-dark";
     import { getLanguageForExtension } from "$lib/codemirror/languages";
     import { redPenTheme } from "$lib/codemirror/theme";
+    import {
+        moveCursorLine,
+        jumpToBoundary,
+        toggleVisualSelection,
+        clearVisualSelection,
+        hasVisualSelection,
+    } from "$lib/codemirror/vimish";
 
     interface Props {
         content: string;
@@ -25,6 +32,26 @@
 
     export function getView(): EditorView | null {
         return view;
+    }
+
+    export function moveCursorByLine(dir: 1 | -1) {
+        if (view) moveCursorLine(view, dir);
+    }
+
+    export function jumpCursorToBoundary(boundary: "top" | "bottom") {
+        if (view) jumpToBoundary(view, boundary);
+    }
+
+    export function toggleVisualMode(mode: "char" | "line") {
+        if (view) toggleVisualSelection(view, mode);
+    }
+
+    export function clearVisualMode() {
+        if (view) clearVisualSelection(view);
+    }
+
+    export function hasVisualMode(): boolean {
+        return view ? hasVisualSelection(view) : false;
     }
 
     onDestroy(() => {

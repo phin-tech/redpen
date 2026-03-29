@@ -27,6 +27,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { watch } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
+  import { submitReviewVerdict } from "$lib/review";
   import { isShortcutInputTarget, matchesShortcut } from "$lib/shortcuts";
 
   import { onMount, onDestroy, untrack } from "svelte";
@@ -233,6 +234,11 @@
     openAnnotationPopover();
   }
 
+  async function submitCurrentReviewVerdict(verdict: "approved" | "changes_requested") {
+    if (!editor.currentFilePath) return;
+    await submitReviewVerdict(editor.currentFilePath, verdict);
+  }
+
   async function openFolderPicker() {
     const selected = await openDialog({ directory: true, multiple: true });
     if (!selected) return;
@@ -281,6 +287,9 @@
     openReviewChanges: () => openReviewPage("changes"),
     openAgentFeedback: () => openReviewPage("feedback"),
     isReviewPageOpen: () => isReviewPageOpen(),
+    canSubmitReviewVerdict: () => Boolean(editor.currentFilePath),
+    approveReview: () => submitCurrentReviewVerdict("approved"),
+    requestReviewChanges: () => submitCurrentReviewVerdict("changes_requested"),
   };
 
   // Auto-collapse file tree in split mode
@@ -342,6 +351,25 @@
     }
 
     if (ignoreGlobalShortcuts) return;
+
+    const isEditorTarget = e.target instanceof HTMLElement && e.target.closest(".cm-editor");
+
+    if (!isEditorTarget && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.key === "[") {
+        if (isReviewPageOpen()) {
+          e.preventDefault();
+          closeReviewPage();
+        }
+        return;
+      }
+      if (e.key === "]") {
+        if (!isReviewPageOpen()) {
+          e.preventDefault();
+          void runCommand("review.changes");
+        }
+        return;
+      }
+    }
 
     if (matchesShortcut(e, ["Mod", "Enter"])) {
       e.preventDefault();

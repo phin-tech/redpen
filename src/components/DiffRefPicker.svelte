@@ -109,25 +109,38 @@
     }
     .ref-dropdown { position: relative; }
     .ref-btn {
-        padding: 3px 8px;
+        min-height: 30px;
+        padding: 4px 10px;
         background: var(--surface-raised);
         border: 1px solid var(--border-default);
         border-radius: 4px;
         cursor: pointer;
-        font-size: 11px;
+        font-size: 12px;
         font-family: inherit;
+        transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+    .ref-btn:hover {
+        border-color: var(--border-emphasis);
+        background: color-mix(in srgb, var(--surface-highlight) 55%, transparent);
     }
     .ref-btn.base { color: var(--accent-purple); }
     .ref-btn.target { color: var(--color-success); }
     .swap-btn {
-        background: none;
-        border: none;
+        min-height: 30px;
+        padding: 4px 8px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
         color: var(--text-muted);
         cursor: pointer;
-        font-size: 11px;
-        padding: 2px 4px;
+        font-size: 12px;
+        transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
-    .swap-btn:hover { color: var(--text-primary); }
+    .swap-btn:hover {
+        color: var(--text-primary);
+        background: var(--surface-raised);
+        border-color: var(--border-default);
+    }
     .dropdown-menu {
         position: absolute;
         top: 100%;

@@ -18,19 +18,14 @@
 
   let {
     onJumpToFile,
+    showShortcutHelp = $bindable(false),
   }: {
     onJumpToFile: (filePath: string, line: number) => void;
+    showShortcutHelp?: boolean;
   } = $props();
 
   const reviewState = getReviewPageState();
   const activeIndex = $derived(reviewState.activeCardIndex);
-
-  const modeLabel = $derived(
-    reviewState.mode === "changes" ? "Review Changes" : "Agent Feedback"
-  );
-  const scopeLabel = $derived(
-    reviewState.scope === "all-changes" ? "All Changes" : "Session"
-  );
 
   const totalItems = $derived(getTotalItems());
   const annotationCount = $derived(getAnnotationCount());
@@ -46,6 +41,48 @@
     filePath: string;
     flatIndex: number;
   }
+
+  interface ShortcutHelpSection {
+    title: string;
+    items: { keys: string[]; label: string }[];
+  }
+
+  const shortcutHelpSections: ShortcutHelpSection[] = [
+    {
+      title: "Navigation",
+      items: [
+        { keys: ["j", "k"], label: "next / previous card" },
+        { keys: ["gg", "G"], label: "jump to top / bottom" },
+        { keys: ["o"], label: "open current file in editor" },
+        { keys: ["s"], label: "toggle review scope" },
+      ],
+    },
+    {
+      title: "Snippet",
+      items: [
+        { keys: ["h", "l"], label: "expand above / below" },
+        { keys: ["H", "L"], label: "contract above / below" },
+        { keys: ["R"], label: "reset snippet context" },
+      ],
+    },
+    {
+      title: "Actions",
+      items: [
+        { keys: ["r"], label: "reply to current thread" },
+        { keys: ["e"], label: "resolve / unresolve current item" },
+        { keys: ["1-9"], label: "toggle a choice" },
+        { keys: ["dd"], label: "delete current annotation" },
+      ],
+    },
+    {
+      title: "UI",
+      items: [
+        { keys: ["[", "]"], label: "switch code / review view" },
+        { keys: ["?"], label: "toggle this help" },
+        { keys: ["Esc"], label: "close help or exit review" },
+      ],
+    },
+  ];
 
   const cardEntries = $derived.by(() => {
     const result: { filePath: string; fileName: string; cards: CardEntry[]; jumpLine: number; diffOnlyIndex: number | null }[] = [];
@@ -90,6 +127,24 @@
   function handleKeydown(e: KeyboardEvent) {
     // Don't intercept when typing in an input
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return;
+    }
+
+    if (e.key === "?") {
+      e.preventDefault();
+      e.stopPropagation();
+      showShortcutHelp = !showShortcutHelp;
+      pendingG = false;
+      pendingDelete = false;
+      return;
+    }
+
+    if (showShortcutHelp) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        showShortcutHelp = false;
+      }
       return;
     }
 
@@ -273,27 +328,9 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+<svelte:window onkeydowncapture={handleKeydown} />
 
 <div class="review-page">
-  <!-- Top bar -->
-  <div class="review-topbar">
-    <span class="review-topbar-title">{modeLabel}</span>
-    {#if reviewState.mode === "changes"}
-      <button class="review-topbar-scope" onclick={toggleScope}>
-        {scopeLabel} <kbd>s</kbd>
-      </button>
-    {/if}
-    <span class="review-topbar-count">{reviewState.files.length} files · {annotationCount} annotations</span>
-    {#if resolvedCount > 0}
-      <span class="review-topbar-resolved">{resolvedCount} resolved</span>
-    {/if}
-    <span class="review-topbar-spacer"></span>
-    <button class="review-topbar-close" onclick={closeReviewPage}>
-      Close <kbd>Esc</kbd>
-    </button>
-  </div>
-
   <!-- Progress bar -->
   <div class="review-progress">
     <div class="review-progress-fill" style:width="{progressPercent}%"></div>
@@ -370,6 +407,52 @@
     </div>
   {/if}
 
+  {#if showShortcutHelp}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="review-help-overlay" onclick={() => (showShortcutHelp = false)}>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        class="review-help-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Review keyboard shortcuts"
+        tabindex="-1"
+        onclick={(e) => e.stopPropagation()}
+      >
+        <div class="review-help-header">
+          <div>
+            <h2>Review shortcuts</h2>
+            <p>Scoped to this review screen. The existing Vim-style keys stay unchanged.</p>
+          </div>
+          <button class="review-help-close" onclick={() => (showShortcutHelp = false)} aria-label="Close keyboard shortcut help">
+            ×
+          </button>
+        </div>
+
+        <div class="review-help-grid">
+          {#each shortcutHelpSections as section}
+            <section class="review-help-section">
+              <h3>{section.title}</h3>
+              <div class="review-help-list">
+                {#each section.items as item}
+                  <div class="review-help-row">
+                    <div class="review-help-keys">
+                      {#each item.keys as key}
+                        <kbd>{key}</kbd>
+                      {/each}
+                    </div>
+                    <span>{item.label}</span>
+                  </div>
+                {/each}
+              </div>
+            </section>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Keyboard hint bar -->
   <div class="review-nav-hint">
     <span><kbd>j</kbd><kbd>k</kbd> nav</span>
@@ -383,6 +466,7 @@
     <span><kbd>e</kbd> resolve</span>
     <span><kbd>dd</kbd> delete</span>
     <span><kbd>o</kbd> open</span>
+    <span><kbd>?</kbd> help</span>
     <span><kbd>Esc</kbd> close</span>
   </div>
 </div>
@@ -394,86 +478,6 @@
     flex-direction: column;
     background: var(--surface-base);
     overflow: hidden;
-  }
-  .review-topbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 20px;
-    background: var(--surface-panel);
-    border-bottom: 1px solid var(--border-default);
-    box-shadow: var(--shadow-xs);
-    flex-shrink: 0;
-    z-index: 2;
-  }
-  .review-topbar-title {
-    font-weight: 600;
-    font-size: 15px;
-    color: var(--text-primary);
-  }
-  .review-topbar-scope {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-default);
-    color: var(--text-secondary);
-    border-radius: 6px;
-    padding: 2px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-family: inherit;
-  }
-  .review-topbar-scope:hover {
-    color: var(--text-primary);
-    border-color: var(--text-muted);
-  }
-  .review-topbar-scope kbd {
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    border-radius: 3px;
-    padding: 0 4px;
-    font-family: inherit;
-    font-size: 10px;
-  }
-  .review-topbar-count {
-    font-size: 12px;
-    color: var(--text-secondary);
-    background: var(--surface-raised);
-    border: 1px solid var(--border-default);
-    padding: 2px 8px;
-    border-radius: 10px;
-  }
-  .review-topbar-resolved {
-    font-size: 12px;
-    color: var(--color-success);
-  }
-  .review-topbar-spacer {
-    flex: 1;
-  }
-  .review-topbar-close {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-default);
-    color: var(--text-secondary);
-    border-radius: 6px;
-    padding: 4px 12px;
-    font-size: 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .review-topbar-close:hover {
-    color: var(--text-primary);
-    border-color: var(--text-muted);
-  }
-  .review-topbar-close kbd {
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    border-radius: 3px;
-    padding: 0 4px;
-    font-family: inherit;
-    font-size: 10px;
   }
   .review-progress {
     height: 3px;
@@ -605,6 +609,106 @@
     color: var(--text-primary);
     cursor: pointer;
     font-size: 13px;
+  }
+  .review-help-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(3px);
+  }
+  .review-help-modal {
+    width: min(760px, 100%);
+    max-height: min(560px, calc(100vh - 80px));
+    overflow: auto;
+    background: var(--gradient-panel), var(--surface-panel);
+    border: 1px solid var(--border-emphasis);
+    border-radius: 14px;
+    box-shadow: var(--shadow-popover);
+    padding: 20px;
+  }
+  .review-help-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .review-help-header h2 {
+    margin: 0;
+    font-size: 18px;
+    color: var(--text-primary);
+  }
+  .review-help-header p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .review-help-close {
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .review-help-close:hover {
+    color: var(--text-primary);
+    border-color: var(--border-emphasis);
+  }
+  .review-help-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .review-help-section {
+    background: color-mix(in srgb, var(--surface-panel) 80%, var(--surface-raised));
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .review-help-section h3 {
+    margin: 0 0 10px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .review-help-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .review-help-row {
+    display: grid;
+    grid-template-columns: minmax(92px, auto) 1fr;
+    gap: 10px;
+    align-items: start;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .review-help-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .review-help-row kbd {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text-primary);
   }
   .review-nav-hint {
     position: sticky;

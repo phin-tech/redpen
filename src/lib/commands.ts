@@ -22,6 +22,9 @@ export interface AppCommandContext {
   openReviewChanges: () => void;
   openAgentFeedback: () => void;
   isReviewPageOpen: () => boolean;
+  canSubmitReviewVerdict: () => boolean;
+  approveReview: () => Promise<void>;
+  requestReviewChanges: () => Promise<void>;
 }
 
 export interface AppCommandDefinition {
@@ -176,6 +179,22 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       keywords: ["review", "agent", "feedback", "questions"],
       isEnabled: (context) => context.hasRoots() && !context.isReviewPageOpen(),
       run: (context) => context.openAgentFeedback(),
+    },
+    {
+      id: "review.approve",
+      title: "Approve review",
+      section: "Review",
+      keywords: ["approve", "accept", "ship", "review"],
+      isEnabled: (context) => context.canSubmitReviewVerdict(),
+      run: (context) => context.approveReview(),
+    },
+    {
+      id: "review.requestChanges",
+      title: "Request changes",
+      section: "Review",
+      keywords: ["request", "changes", "reject", "review"],
+      isEnabled: (context) => context.canSubmitReviewVerdict(),
+      run: (context) => context.requestReviewChanges(),
     },
   ];
 }

@@ -3,7 +3,7 @@
   import type { HTMLButtonAttributes } from 'svelte/elements';
 
   interface Props extends HTMLButtonAttributes {
-    variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
     size?: 'sm' | 'md';
     disabled?: boolean;
     class?: string;
@@ -25,7 +25,10 @@
     secondary:
       'bg-surface-raised text-text-secondary border border-border-subtle hover:bg-surface-highlight',
     ghost: 'text-text-secondary hover:bg-surface-highlight hover:text-text-primary',
-    danger: 'text-danger hover:bg-danger/10',
+    danger:
+      'bg-[color:color-mix(in_srgb,var(--color-danger)_16%,transparent)] text-[var(--color-danger)] border border-[color:color-mix(in_srgb,var(--color-danger)_35%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--color-danger)_22%,transparent)]',
+    success:
+      'bg-[color:color-mix(in_srgb,var(--color-success)_16%,transparent)] text-[var(--color-success)] border border-[color:color-mix(in_srgb,var(--color-success)_35%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--color-success)_22%,transparent)]',
   };
 
   const sizeStyles: Record<string, string> = {

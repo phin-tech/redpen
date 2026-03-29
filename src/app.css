@@ -25,6 +25,10 @@
   --accent-hover: #FFAF9B;
   --accent-subtle: rgba(242, 140, 116, 0.16);
   --accent-annotation-border: rgba(242, 140, 116, 0.58);
+  --view-active: #72AEE6;
+  --view-active-hover: #8BBBEA;
+  --view-active-subtle: rgba(114, 174, 230, 0.16);
+  --view-active-border: rgba(114, 174, 230, 0.38);
 
   /* Annotation kind colors */
   --kind-comment: #D9B15F;

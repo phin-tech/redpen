@@ -16,7 +16,7 @@
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
   import { formatShortcut } from "$lib/shortcuts";
-  import { invoke } from "@tauri-apps/api/core";
+  import { submitReviewVerdict, type ReviewVerdict } from "$lib/review";
   import AnnotationCard from "./AnnotationCard.svelte";
 
   let {
@@ -35,9 +35,9 @@
   let editBody = $state("");
   let reviewDone: string | null = $state(null);
 
-  async function handleReviewVerdict(verdict: "approved" | "changes_requested") {
+  async function handleReviewVerdict(verdict: ReviewVerdict) {
     if (!editor.currentFilePath) return;
-    await invoke("signal_review_done", { filePath: editor.currentFilePath, verdict });
+    await submitReviewVerdict(editor.currentFilePath, verdict);
     clearReviewSession();
     reviewDone = verdict;
     setTimeout(() => (reviewDone = null), 3000);
@@ -244,15 +244,15 @@
         </Button>
       </div>
       {#if reviewDone}
-        <Button variant="secondary" disabled class="w-full {reviewDone === 'approved' ? 'bg-success/20 text-success border-success/30' : 'bg-warning/20 text-warning border-warning/30'}">
+        <Button variant={reviewDone === 'approved' ? 'success' : 'danger'} disabled class="w-full">
           {reviewDone === 'approved' ? 'Approved!' : 'Changes requested!'}
         </Button>
       {:else}
         <div class="flex gap-2">
-          <Button variant="secondary" onclick={() => handleReviewVerdict("approved")} class="flex-1">
+          <Button variant="success" onclick={() => handleReviewVerdict("approved")} class="flex-1">
             Approve
           </Button>
-          <Button onclick={() => handleReviewVerdict("changes_requested")} class="flex-1">
+          <Button variant="danger" onclick={() => handleReviewVerdict("changes_requested")} class="flex-1">
             Request changes
           </Button>
         </div>
