@@ -31,6 +31,25 @@ tasks:
       - cargo check --workspace
       - task: generate:bindings
 
+  dev:clean:
+    desc: "Remove installed desktop app and CLI"
+    cmds:
+      - |
+        APP="/Applications/Red Pen.app"
+        if [ -d "$APP" ]; then
+          rm -rf "$APP"
+          echo "Removed $APP"
+        else
+          echo "No installed app found at $APP"
+        fi
+      - |
+        CLI=$(which redpen 2>/dev/null || true)
+        if [ -n "$CLI" ]; then
+          cargo uninstall redpen-cli 2>/dev/null && echo "Uninstalled redpen CLI" || echo "CLI not installed via cargo"
+        else
+          echo "No redpen CLI found in PATH"
+        fi
+
   dev:install:
     desc: "Build and install the desktop app and CLI locally"
     cmds:

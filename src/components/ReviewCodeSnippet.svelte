@@ -84,6 +84,27 @@
     });
   });
 
+  function contractAbove() {
+    if (expandedAbove <= 0) return;
+    const remove = Math.min(5, expandedAbove);
+    extraLinesAbove = extraLinesAbove.slice(remove);
+    expandedAbove -= remove;
+  }
+
+  function contractBelow() {
+    if (expandedBelow <= 0) return;
+    const remove = Math.min(5, expandedBelow);
+    extraLinesBelow = extraLinesBelow.slice(0, extraLinesBelow.length - remove);
+    expandedBelow -= remove;
+  }
+
+  function reset() {
+    expandedAbove = 0;
+    expandedBelow = 0;
+    extraLinesAbove = [];
+    extraLinesBelow = [];
+  }
+
   const canExpandAbove = $derived(
     snippet !== null && snippet.startLine - expandedAbove > 1
   );
@@ -91,11 +112,12 @@
     snippet !== null &&
     snippet.startLine + snippet.lines.length - 1 + expandedBelow < snippet.totalLines
   );
+
 </script>
 
 <div class="review-snippet">
   {#if canExpandAbove && !diffHunk}
-    <button class="snippet-expand" onclick={expandAbove}>
+    <button class="snippet-expand snippet-expand-above" onclick={expandAbove}>
       ··· expand above ···
     </button>
   {/if}
@@ -116,10 +138,13 @@
   {/each}
 
   {#if canExpandBelow && !diffHunk}
-    <button class="snippet-expand" onclick={expandBelow}>
+    <button class="snippet-expand snippet-expand-below" onclick={expandBelow}>
       ··· expand below ···
     </button>
   {/if}
+  <button class="snippet-contract-above" hidden onclick={contractAbove}></button>
+  <button class="snippet-contract-below" hidden onclick={contractBelow}></button>
+  <button class="snippet-reset" hidden onclick={reset}></button>
 </div>
 
 <style>

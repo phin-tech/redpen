@@ -4,6 +4,8 @@ export {
   type Anchor,
   type Annotation,
   type AnnotationKind,
+  type Choice,
+  type SelectionMode,
   type AppSettings,
   type BranchInfo,
   type ChangeKind,

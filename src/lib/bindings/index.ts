@@ -4,6 +4,8 @@
 export type { Anchor } from "./Anchor";
 export type { Annotation } from "./Annotation";
 export type { AnnotationKind } from "./AnnotationKind";
+export type { Choice } from "./Choice";
+export type { SelectionMode } from "./SelectionMode";
 export type { AppSettings } from "./AppSettings";
 export type { BranchInfo } from "./BranchInfo";
 export type { ChangeKind } from "./ChangeKind";

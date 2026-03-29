@@ -57,6 +57,11 @@
   }
 
   function handleReplyKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      replyInputRef?.blur();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submitReply();
@@ -67,6 +72,7 @@
   export function focusReply() {
     replyInputRef?.focus();
   }
+
 
   function relativeTime(dateStr: string | null | undefined): string {
     if (!dateStr) return "";
@@ -125,7 +131,9 @@
               name="review-choice-{annotation.id}"
               checked={choice.selected}
               onchange={() => onChoiceToggle(annotation.id, i)}
+              hidden
             />
+            <kbd class="review-card-choice-key">{i + 1}</kbd>
             <span>{choice.label}</span>
           </label>
         {/each}
@@ -262,6 +270,16 @@
   .review-card-choice:hover {
     border-color: var(--text-muted);
     color: var(--text-primary);
+  }
+  .review-card-choice-key {
+    background: var(--surface-base);
+    border: 1px solid var(--border-default);
+    border-radius: 3px;
+    padding: 0 5px;
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
   }
   .review-card-choice-selected {
     border-color: var(--accent);
