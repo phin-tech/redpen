@@ -286,9 +286,11 @@ async fn rpc_review_wait(
                     Json(serde_json::json!({"error": "session cancelled"})),
                 )
                     .into_response(),
-                Err(_) => {
-                    persisted_wait_response(&state.bridge, &req.session_id, timeout_secs).await
-                }
+                Err(_) => (
+                    StatusCode::GATEWAY_TIMEOUT,
+                    Json(serde_json::json!({"error": "review timed out"})),
+                )
+                    .into_response(),
             }
         }
         None => {

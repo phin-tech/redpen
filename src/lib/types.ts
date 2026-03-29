@@ -9,7 +9,6 @@ export {
   type BranchInfo,
   type ChangeKind,
   type CommitInfo,
-  type CreateAnnotationRequest,
   type DiffChange,
   type DiffHunk,
   type DiffResult,

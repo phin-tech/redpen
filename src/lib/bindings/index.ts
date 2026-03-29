@@ -10,7 +10,6 @@ export type { AppSettings } from "./AppSettings";
 export type { BranchInfo } from "./BranchInfo";
 export type { ChangeKind } from "./ChangeKind";
 export type { CommitInfo } from "./CommitInfo";
-export type { CreateAnnotationRequest } from "./CreateAnnotationRequest";
 export type { DiffChange } from "./DiffChange";
 export type { DiffHunk } from "./DiffHunk";
 export type { DiffResult } from "./DiffResult";
