@@ -6,6 +6,7 @@ use redpen_core::export::export_markdown;
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
 use std::fs;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 use std::process;
 
@@ -44,7 +45,13 @@ enum Commands {
         selection_mode: String,
     },
     /// List all annotations as JSON
-    List { file: PathBuf },
+    List {
+        /// File to list annotations for
+        file: Option<PathBuf>,
+        /// List all annotations for a review session
+        #[arg(long)]
+        session: Option<String>,
+    },
     /// Export annotations as markdown
     Export {
         file: PathBuf,
@@ -55,17 +62,25 @@ enum Commands {
     Status { file: PathBuf },
     /// Open file(s) or directory in the desktop app
     Open {
-        /// Files or directories to open
-        #[arg(required = true)]
+        /// Files or directories to open (optional when using --diff-base or --pre-push)
         paths: Vec<PathBuf>,
         #[arg(long)]
         line: Option<u32>,
         /// Block until review is complete (combines open + wait)
         #[arg(long)]
         wait: bool,
-        /// Timeout in seconds when using --wait (default: no timeout)
+        /// Timeout in seconds when using --wait (default: no timeout, or 600s with --pre-push)
         #[arg(long)]
         timeout: Option<u64>,
+        /// Disable timeout (overrides --timeout and --pre-push default)
+        #[arg(long)]
+        no_timeout: bool,
+        /// Compute changed files by diffing against the given git ref
+        #[arg(long, conflicts_with = "paths")]
+        diff_base: Option<String>,
+        /// Read git pre-push hook stdin to determine changed files. Implies --wait.
+        #[arg(long, conflicts_with = "paths", conflicts_with = "diff_base")]
+        pre_push: bool,
     },
     /// Wait for review to complete (blocks until "Done Reviewing" is clicked in the app)
     Wait {
@@ -90,6 +105,13 @@ enum Commands {
     /// Print agent usage prompt (system prompt for AI agents using redpen)
     Agents,
 }
+
+/// Exit codes for the pre-push review gate.
+#[allow(dead_code)]
+const EXIT_APPROVED: i32 = 0;
+const EXIT_CHANGES_REQUESTED: i32 = 1;
+const EXIT_TIMEOUT: i32 = 2;
+const EXIT_NO_APP: i32 = 3;
 
 fn main() {
     let cli = Cli::parse();
@@ -117,7 +139,15 @@ fn main() {
             &choice,
             &selection_mode,
         ),
-        Commands::List { file } => cmd_list(&file),
+        Commands::List { file, session } => {
+            if let Some(session_id) = session {
+                cmd_list_session(&session_id)
+            } else if let Some(file) = file {
+                cmd_list(&file)
+            } else {
+                Err("Either a file path or --session <id> is required".into())
+            }
+        }
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
         Commands::Status { file } => cmd_status(&file),
         Commands::Open {
@@ -125,14 +155,10 @@ fn main() {
             line,
             wait,
             timeout,
-        } => {
-            if wait {
-                // Combined open + wait — server handles both in one call
-                cmd_open_and_wait(&paths, line, timeout)
-            } else {
-                cmd_open(&paths, line)
-            }
-        }
+            no_timeout,
+            diff_base,
+            pre_push,
+        } => cmd_open_dispatch(paths, line, wait, timeout, no_timeout, diff_base, pre_push),
         Commands::Wait {
             paths,
             timeout,
@@ -393,6 +419,40 @@ fn notify_app(kind: &str, file_path: &Path, line: Option<u32>) {
     }
 }
 
+/// Print a human-readable summary to stderr when a review is rejected.
+fn print_rejection_summary(
+    files: &[PathBuf],
+    session_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("\nReview verdict: changes_requested");
+    eprintln!("Session: {}", session_id);
+    for file in files {
+        let project_root = resolve_project_root(file);
+        let sidecar = load_sidecar_for_file(&project_root, file)?;
+        let count = sidecar.annotations.len();
+        if count > 0 {
+            eprintln!("{} annotation(s) on {}", count, file.display());
+        }
+    }
+    eprintln!("Push blocked. Fix the flagged issues and push again.\n");
+    eprintln!(
+        "Run `redpen list --session {}` for full annotation details.",
+        session_id
+    );
+    Ok(())
+}
+
+fn cmd_list_session(session_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    ensure_server_available()?;
+    match server_client::session_annotations(session_id) {
+        Some(annotations) => {
+            println!("{}", serde_json::to_string_pretty(&annotations)?);
+            Ok(())
+        }
+        None => Err(format!("Could not fetch annotations for session {}", session_id).into()),
+    }
+}
+
 fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let project_root = resolve_project_root(&abs_path);
@@ -478,12 +538,17 @@ fn cmd_wait_via_server(
     };
 
     match server_client::review_wait(&session_id, timeout) {
-        Some(resp) => {
+        server_client::ReviewWaitResult::Ok(resp) => {
             let output = review_output(files, resp.verdict, &session_id)?;
             println!("{}", serde_json::to_string_pretty(&output)?);
             Ok(())
         }
-        None => Err("Review wait failed via Red Pen server".into()),
+        server_client::ReviewWaitResult::Timeout => {
+            Err("Review wait timed out".into())
+        }
+        server_client::ReviewWaitResult::ServerUnavailable => {
+            Err("Review wait failed — Red Pen server unavailable".into())
+        }
     }
 }
 
@@ -555,6 +620,155 @@ fn expand_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn cmd_open_dispatch(
+    paths: Vec<PathBuf>,
+    line: Option<u32>,
+    wait: bool,
+    timeout: Option<u64>,
+    no_timeout: bool,
+    diff_base: Option<String>,
+    pre_push: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (resolved_paths, effective_wait, effective_timeout) = if pre_push {
+        let diff_sha = parse_pre_push_stdin()?;
+        let files = git_diff_files(&diff_sha)?;
+        if files.is_empty() {
+            // No changed files — allow push
+            return Ok(());
+        }
+        let t = if no_timeout {
+            None
+        } else {
+            Some(timeout.unwrap_or(600))
+        };
+        (files, true, t) // --pre-push implies --wait
+    } else if let Some(ref base) = diff_base {
+        let files = git_diff_files(base)?;
+        if files.is_empty() {
+            eprintln!("No changed files");
+            return Ok(());
+        }
+        let t = if no_timeout { None } else { timeout };
+        (files, wait, t)
+    } else {
+        if paths.is_empty() {
+            return Err("Provide file paths, or use --diff-base or --pre-push".into());
+        }
+        let t = if no_timeout { None } else { timeout };
+        (paths, wait, t)
+    };
+
+    if effective_wait {
+        cmd_open_and_wait(&resolved_paths, line, effective_timeout)
+    } else {
+        cmd_open(&resolved_paths, line)
+    }
+}
+
+/// Parse git pre-push stdin to extract the diff base sha.
+/// Format: `<local-ref> <local-sha> <remote-ref> <remote-sha>`
+/// Returns the remote sha (what to diff against).
+fn parse_pre_push_stdin() -> Result<String, Box<dyn std::error::Error>> {
+    let stdin = io::stdin();
+    let line = stdin
+        .lock()
+        .lines()
+        .next()
+        .ok_or("No input on stdin — is this running as a git pre-push hook?")?
+        .map_err(|e| format!("Failed to read stdin: {}", e))?;
+
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 4 {
+        return Err(format!(
+            "Expected git pre-push format: <local-ref> <local-sha> <remote-ref> <remote-sha>, got: {}",
+            line
+        )
+        .into());
+    }
+
+    let local_sha = parts[1];
+    let remote_sha = parts[3];
+    let zero_sha = "0000000000000000000000000000000000000000";
+
+    // Push deletion — nothing to review
+    if local_sha == zero_sha {
+        return Err("Push deletion — nothing to review".into());
+    }
+
+    // New branch — diff against merge-base with default branch
+    if remote_sha == zero_sha {
+        let default_branch = git_default_branch()?;
+        let output = process::Command::new("git")
+            .args(["merge-base", &default_branch, "HEAD"])
+            .output()?;
+        if !output.status.success() {
+            return Err(format!(
+                "Could not find merge-base with {}: {}",
+                default_branch,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )
+            .into());
+        }
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+
+    Ok(remote_sha.to_string())
+}
+
+/// Get the default branch name (main or master).
+fn git_default_branch() -> Result<String, Box<dyn std::error::Error>> {
+    // Try origin/HEAD first
+    let output = process::Command::new("git")
+        .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
+        .output()?;
+    if output.status.success() {
+        let full_ref = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Some(branch) = full_ref.strip_prefix("refs/remotes/origin/") {
+            return Ok(branch.to_string());
+        }
+    }
+
+    // Fallback: check if main or master exist
+    for branch in ["main", "master"] {
+        let status = process::Command::new("git")
+            .args(["rev-parse", "--verify", &format!("origin/{}", branch)])
+            .stdout(process::Stdio::null())
+            .stderr(process::Stdio::null())
+            .status()?;
+        if status.success() {
+            return Ok(branch.to_string());
+        }
+    }
+
+    Err("Could not determine default branch".into())
+}
+
+/// Compute changed files by diffing against a git ref.
+/// Excludes deleted files and uses new paths for renames.
+fn git_diff_files(base: &str) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let output = process::Command::new("git")
+        .args(["diff", "--name-only", "--diff-filter=d", &format!("{}..HEAD", base)])
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let files: Vec<PathBuf> = stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(PathBuf::from)
+        .filter(|p| p.exists())
+        .collect();
+
+    Ok(files)
+}
+
 fn cmd_open_and_wait(
     paths: &[PathBuf],
     line: Option<u32>,
@@ -567,20 +781,37 @@ fn cmd_open_and_wait(
     }
 
     let file_str = files[0].to_string_lossy();
-    ensure_server_available()?;
+    if let Err(e) = ensure_server_available() {
+        eprintln!("Error: {}", e);
+        process::exit(EXIT_NO_APP);
+    }
 
     let session_id = server_client::review_start(&file_str, line, None)
         .ok_or("Could not start review session via Red Pen server")?;
 
     for file in files.iter().skip(1) {
-        let _ = server_client::open_file(&file.to_string_lossy(), line);
+        let _ = server_client::open_file_in_session(&file.to_string_lossy(), line, &session_id);
     }
 
-    let wait = server_client::review_wait(&session_id, timeout)
-        .ok_or("Review wait failed via Red Pen server")?;
-    let output = review_output(&files, wait.verdict, &session_id)?;
-    println!("{}", serde_json::to_string_pretty(&output)?);
-    Ok(())
+    match server_client::review_wait(&session_id, timeout) {
+        server_client::ReviewWaitResult::Ok(resp) => {
+            let output = review_output(&files, resp.verdict.clone(), &session_id)?;
+            println!("{}", serde_json::to_string_pretty(&output)?);
+            if resp.verdict == "changes_requested" {
+                print_rejection_summary(&files, &session_id)?;
+                process::exit(EXIT_CHANGES_REQUESTED);
+            }
+            Ok(())
+        }
+        server_client::ReviewWaitResult::Timeout => {
+            eprintln!("Review timed out. Push blocked.");
+            process::exit(EXIT_TIMEOUT);
+        }
+        server_client::ReviewWaitResult::ServerUnavailable => {
+            eprintln!("Lost connection to Red Pen server.");
+            process::exit(EXIT_NO_APP);
+        }
+    }
 }
 
 fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
@@ -746,8 +977,14 @@ redpen annotate <file> --body "Done — refactored to use typed errors" --reply-
 # Open file(s) in the desktop app and wait for review
 redpen open <file1> <file2> ... --wait --timeout 600
 
+# Open all files changed since a git ref (for pre-push hooks)
+redpen open --diff-base <sha> --wait --timeout 600
+
 # List annotations as JSON
 redpen list <file>
+
+# List all annotations for a review session
+redpen list --session <session-id>
 
 # Check annotation counts
 redpen status <file>
