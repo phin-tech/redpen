@@ -448,7 +448,9 @@ mod tests {
         .apply(&mut settings);
 
         assert!(settings.tracked_github_repos[0].local_path.starts_with('/'));
-        assert!(settings.tracked_github_repos[0].local_path.ends_with("/src/test-repo"));
+        assert!(settings.tracked_github_repos[0]
+            .local_path
+            .ends_with("/src/test-repo"));
     }
 
     #[test]

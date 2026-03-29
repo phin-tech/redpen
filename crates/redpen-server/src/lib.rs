@@ -31,13 +31,15 @@ pub trait AppBridge: Send + Sync + 'static {
     /// Load annotations for a file from the sidecar store.
     fn get_annotations(&self, file: &str) -> Result<Vec<Annotation>, String>;
     /// Open a GitHub PR review and return the managed worktree path.
-    fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>) -> Result<String, String>;
+    fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>)
+        -> Result<String, String>;
     /// Persist a newly-started review session.
     fn start_review_session(&self, session_id: &str, file: &str) -> Result<(), String>;
     /// Persist review completion state.
     fn complete_review_session(&self, session_id: &str, verdict: &str) -> Result<(), String>;
     /// Read persisted status for a review session.
-    fn review_session_status(&self, session_id: &str) -> Result<Option<ReviewSessionState>, String>;
+    fn review_session_status(&self, session_id: &str)
+        -> Result<Option<ReviewSessionState>, String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,11 +242,12 @@ async fn rpc_review_start(
     Json(req): Json<ReviewStartRequest>,
 ) -> impl IntoResponse {
     let file = req.file.clone();
-    let session_id = state.sessions.create_with_id(req.session_id, file.clone()).await;
+    let session_id = state
+        .sessions
+        .create_with_id(req.session_id, file.clone())
+        .await;
     let _ = state.bridge.start_review_session(&session_id, &file);
-    let _ = state
-        .bridge
-        .open_file(&file, req.line, Some(&session_id));
+    let _ = state.bridge.open_file(&file, req.line, Some(&session_id));
     (StatusCode::OK, Json(ReviewStartResponse { session_id }))
 }
 
@@ -283,10 +286,15 @@ async fn rpc_review_wait(
                     Json(serde_json::json!({"error": "session cancelled"})),
                 )
                     .into_response(),
-                Err(_) => persisted_wait_response(&state.bridge, &req.session_id, timeout_secs).await,
+                Err(_) => {
+                    persisted_wait_response(&state.bridge, &req.session_id, timeout_secs).await
+                }
             }
         }
-        None => persisted_wait_response(&state.bridge, &req.session_id, req.timeout.unwrap_or(300)).await,
+        None => {
+            persisted_wait_response(&state.bridge, &req.session_id, req.timeout.unwrap_or(300))
+                .await
+        }
     }
 }
 
@@ -296,11 +304,12 @@ async fn rpc_review(
     Json(req): Json<ReviewRequest>,
 ) -> impl IntoResponse {
     let file = req.file.clone();
-    let session_id = state.sessions.create_with_id(req.session_id, file.clone()).await;
+    let session_id = state
+        .sessions
+        .create_with_id(req.session_id, file.clone())
+        .await;
     let _ = state.bridge.start_review_session(&session_id, &file);
-    let _ = state
-        .bridge
-        .open_file(&file, req.line, Some(&session_id));
+    let _ = state.bridge.open_file(&file, req.line, Some(&session_id));
     let rx = state
         .sessions
         .take_receiver(&session_id)
@@ -531,7 +540,10 @@ mod tests {
             Ok(())
         }
 
-        fn review_session_status(&self, _session_id: &str) -> Result<Option<ReviewSessionState>, String> {
+        fn review_session_status(
+            &self,
+            _session_id: &str,
+        ) -> Result<Option<ReviewSessionState>, String> {
             Ok(None)
         }
     }

@@ -144,7 +144,9 @@ impl StateDb {
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
         let now = Utc::now().to_rfc3339();
-        let repo_id = if let (Some(repo), Some(local_repo_path)) = (&session.repo, &session.local_repo_path) {
+        let repo_id = if let (Some(repo), Some(local_repo_path)) =
+            (&session.repo, &session.local_repo_path)
+        {
             Some(upsert_repo_tx(&tx, repo, local_repo_path, &now)?)
         } else {
             None
@@ -247,7 +249,12 @@ impl StateDb {
                 last_accessed_at = ?4
             WHERE id = ?1
             "#,
-            params![session_id, ReviewSessionStatus::Completed.as_str(), verdict, now],
+            params![
+                session_id,
+                ReviewSessionStatus::Completed.as_str(),
+                verdict,
+                now
+            ],
         )?;
 
         if updated == 0 {
@@ -276,7 +283,10 @@ impl StateDb {
     ) -> Result<(), StorageError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
-        tx.execute("DELETE FROM session_files WHERE session_id = ?1", params![session_id])?;
+        tx.execute(
+            "DELETE FROM session_files WHERE session_id = ?1",
+            params![session_id],
+        )?;
         for file in files {
             insert_session_file_tx(&tx, session_id, file)?;
         }
@@ -304,7 +314,11 @@ impl StateDb {
         Ok(())
     }
 
-    pub fn delete_session_file(&self, session_id: &str, file_path: &str) -> Result<(), StorageError> {
+    pub fn delete_session_file(
+        &self,
+        session_id: &str,
+        file_path: &str,
+    ) -> Result<(), StorageError> {
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
         tx.execute(
@@ -324,13 +338,9 @@ impl StateDb {
         session_id: &str,
     ) -> Result<Option<StoredReviewSession>, StorageError> {
         let conn = self.connect()?;
-        conn.query_row(
-            SESSION_SELECT_SQL,
-            params![session_id],
-            map_session_row,
-        )
-        .optional()
-        .map_err(StorageError::from)
+        conn.query_row(SESSION_SELECT_SQL, params![session_id], map_session_row)
+            .optional()
+            .map_err(StorageError::from)
     }
 
     pub fn list_session_files(
@@ -355,7 +365,8 @@ impl StateDb {
                 resolved_count: row.get::<_, i64>(4)? as usize,
             })
         })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(StorageError::from)
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
     }
 
     pub fn find_github_session_for_file(
@@ -396,7 +407,13 @@ impl StateDb {
                     .as_ref()
                     .is_some_and(|worktree| file_path.starts_with(Path::new(worktree)))
             })
-            .max_by_key(|session| session.worktree_path.as_ref().map(|path| path.len()).unwrap_or(0)))
+            .max_by_key(|session| {
+                session
+                    .worktree_path
+                    .as_ref()
+                    .map(|path| path.len())
+                    .unwrap_or(0)
+            }))
     }
 
     pub fn review_session_status(
@@ -505,8 +522,14 @@ impl StateDb {
                 None,
                 None,
             )?;
-            tx.execute("DELETE FROM session_files WHERE session_id = ?1", params![session_id])?;
-            tx.execute("DELETE FROM review_sessions WHERE id = ?1", params![session_id.clone()])?;
+            tx.execute(
+                "DELETE FROM session_files WHERE session_id = ?1",
+                params![session_id],
+            )?;
+            tx.execute(
+                "DELETE FROM review_sessions WHERE id = ?1",
+                params![session_id.clone()],
+            )?;
             tx.commit()?;
             removed += 1;
         }
@@ -778,7 +801,8 @@ fn insert_session_file_tx(
 }
 
 pub fn app_home_path() -> Result<PathBuf, StorageError> {
-    let home = dirs::home_dir().ok_or_else(|| StorageError::Message("could not resolve home directory".into()))?;
+    let home = dirs::home_dir()
+        .ok_or_else(|| StorageError::Message("could not resolve home directory".into()))?;
     Ok(home.join(APP_HOME_DIRECTORY))
 }
 

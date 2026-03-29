@@ -3,9 +3,7 @@
 //! All functions return `Option` — `None` means the server isn't running
 //! and the caller should fall back to deep links / signal files.
 
-use redpen_server::{
-    OkResponse, ReviewPrResponse, ReviewStartResponse, ReviewWaitResponse,
-};
+use redpen_server::{OkResponse, ReviewPrResponse, ReviewStartResponse, ReviewWaitResponse};
 use serde::de::DeserializeOwned;
 use serde_json::json;
 

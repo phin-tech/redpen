@@ -335,7 +335,12 @@ impl WorkspaceIndexService {
     }
 
     fn event_is_relevant(&self, root: &str, paths: &[PathBuf]) -> bool {
-        let settings = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let settings = self
+            .inner
+            .settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let ignored_names = ignored_folder_names(&settings);
         let root_path = canonicalize_path(Path::new(root));
         let repo = git2::Repository::discover(&root_path).ok();
@@ -411,7 +416,12 @@ impl WorkspaceIndexService {
                 entry.status.error = None;
             }
 
-            let settings = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let settings = self
+                .inner
+                .settings
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             let snapshot = build_index_snapshot(Path::new(&root), &settings, None);
 
             let should_continue = {

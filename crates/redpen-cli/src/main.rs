@@ -138,9 +138,7 @@ fn main() {
             timeout,
             session,
         } => cmd_wait(&paths, timeout, session.as_deref()),
-        Commands::ReviewPr { pr_ref, local_path } => {
-            cmd_review_pr(&pr_ref, local_path.as_deref())
-        }
+        Commands::ReviewPr { pr_ref, local_path } => cmd_review_pr(&pr_ref, local_path.as_deref()),
         Commands::Agents => {
             print!("{}", AGENT_PROMPT);
             Ok(())

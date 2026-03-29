@@ -1,9 +1,9 @@
 use crate::commands::github_review::open_github_pr_review_impl;
 use crate::commands::github_review::GitHubPrSession;
+use crate::state::AppState;
 use crate::storage::{
     IndexedSessionFile, ReviewSessionKind, ReviewSessionStatus, StoredReviewSession,
 };
-use crate::state::AppState;
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::Annotation;
 use redpen_core::hash::hash_file;
@@ -38,7 +38,10 @@ impl AppBridge for TauriBridge {
             url.push_str(&format!("&line={}", l));
         }
         if let Some(session_id) = review_session_id {
-            url.push_str(&format!("&reviewSession={}", urlencoding::encode(session_id)));
+            url.push_str(&format!(
+                "&reviewSession={}",
+                urlencoding::encode(session_id)
+            ));
         }
         self.handle
             .emit("deep-link-open", &url)
@@ -60,7 +63,11 @@ impl AppBridge for TauriBridge {
         Ok(sidecar.annotations)
     }
 
-    fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>) -> Result<String, String> {
+    fn open_pr_review(
+        &self,
+        pr_ref: &str,
+        local_path_hint: Option<&str>,
+    ) -> Result<String, String> {
         let state = self.handle.state::<AppState>();
         let session = open_github_pr_review_impl(
             &state,
@@ -69,7 +76,10 @@ impl AppBridge for TauriBridge {
         )
         .map_err(|e| e.to_string())?;
         self.handle
-            .emit("open-github-review-session", SerializableGitHubPrSession::from(&session))
+            .emit(
+                "open-github-review-session",
+                SerializableGitHubPrSession::from(&session),
+            )
             .map_err(|e| e.to_string())?;
         Ok(session.worktree_path)
     }
@@ -90,7 +100,9 @@ impl AppBridge for TauriBridge {
             status: ReviewSessionStatus::Active,
             repo: None,
             pr_number: None,
-            title: source_path.file_name().map(|name| name.to_string_lossy().to_string()),
+            title: source_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string()),
             body: None,
             url: None,
             local_repo_path: None,
@@ -123,7 +135,11 @@ impl AppBridge for TauriBridge {
                     relative_path,
                     annotation_count: sidecar.annotations.len(),
                     pending_count: 0,
-                    resolved_count: sidecar.annotations.iter().filter(|annotation| annotation.resolved).count(),
+                    resolved_count: sidecar
+                        .annotations
+                        .iter()
+                        .filter(|annotation| annotation.resolved)
+                        .count(),
                 }],
             )
             .map_err(|e| e.to_string())
@@ -136,7 +152,9 @@ impl AppBridge for TauriBridge {
             .complete_review_session(session_id, verdict)
             .map_err(|e| e.to_string())?
         {
-            if let (Some(project_root), Some(file_path)) = (session.project_root, session.primary_file_path) {
+            if let (Some(project_root), Some(file_path)) =
+                (session.project_root, session.primary_file_path)
+            {
                 let source_path = Path::new(&file_path);
                 if source_path.exists() {
                     let sidecar = load_sidecar_for_file(Path::new(&project_root), source_path)?;
@@ -167,7 +185,10 @@ impl AppBridge for TauriBridge {
         Ok(())
     }
 
-    fn review_session_status(&self, session_id: &str) -> Result<Option<ReviewSessionState>, String> {
+    fn review_session_status(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ReviewSessionState>, String> {
         let state = self.handle.state::<AppState>();
         state
             .storage

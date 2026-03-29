@@ -1,7 +1,9 @@
 use crate::commands::error::{CommandError, CommandResult};
 use crate::commands::github_review::GitHubPrSession;
 use crate::state::AppState;
-use crate::storage::{is_stale_timestamp, ReviewSessionKind, ReviewSessionStatus, StoredReviewSession};
+use crate::storage::{
+    is_stale_timestamp, ReviewSessionKind, ReviewSessionStatus, StoredReviewSession,
+};
 use tauri::State;
 use ts_rs::TS;
 
@@ -57,7 +59,10 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
 
     let active_session = sessions
         .iter()
-        .find(|session| session.status == ReviewSessionStatus::Active && !is_stale_timestamp(&session.updated_at))
+        .find(|session| {
+            session.status == ReviewSessionStatus::Active
+                && !is_stale_timestamp(&session.updated_at)
+        })
         .cloned()
         .map(history_item_from_session);
 
@@ -79,7 +84,9 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
 
     let stale_sessions = sessions
         .iter()
-        .filter(|session| session.status == ReviewSessionStatus::Stale || is_stale_timestamp(&session.updated_at))
+        .filter(|session| {
+            session.status == ReviewSessionStatus::Stale || is_stale_timestamp(&session.updated_at)
+        })
         .take(6)
         .cloned()
         .map(history_item_from_session)
@@ -102,7 +109,9 @@ pub fn resume_review_session(
         .storage
         .get_review_session(&session_id)
         .map_err(storage_error)?
-        .ok_or_else(|| CommandError::NotFound(format!("Review session {} not found", session_id)))?;
+        .ok_or_else(|| {
+            CommandError::NotFound(format!("Review session {} not found", session_id))
+        })?;
     let files = state
         .storage
         .list_session_files(&session.id)
@@ -130,7 +139,10 @@ pub fn resume_review_session(
 pub fn cleanup_stale_review_sessions(
     state: State<'_, AppState>,
 ) -> CommandResult<CleanupReviewSessionsResult> {
-    let result = state.storage.cleanup_stale_sessions().map_err(storage_error)?;
+    let result = state
+        .storage
+        .cleanup_stale_sessions()
+        .map_err(storage_error)?;
     Ok(CleanupReviewSessionsResult {
         removed_sessions: result.removed_sessions,
     })
@@ -138,10 +150,13 @@ pub fn cleanup_stale_review_sessions(
 
 fn history_item_from_session(session: StoredReviewSession) -> ReviewHistoryItem {
     let title = match session.kind {
-        ReviewSessionKind::GitHubPr => session
-            .title
-            .clone()
-            .unwrap_or_else(|| format!("{} #{}", session.repo.clone().unwrap_or_default(), session.pr_number.unwrap_or_default())),
+        ReviewSessionKind::GitHubPr => session.title.clone().unwrap_or_else(|| {
+            format!(
+                "{} #{}",
+                session.repo.clone().unwrap_or_default(),
+                session.pr_number.unwrap_or_default()
+            )
+        }),
         ReviewSessionKind::LocalReview => session
             .title
             .clone()
@@ -177,12 +192,12 @@ fn history_item_from_session(session: StoredReviewSession) -> ReviewHistoryItem 
 fn github_session_from_stored(session: StoredReviewSession) -> CommandResult<GitHubPrSession> {
     Ok(GitHubPrSession {
         id: session.id,
-        repo: session
-            .repo
-            .ok_or_else(|| CommandError::InvalidArgument("Stored review session is missing repo".into()))?,
-        number: session
-            .pr_number
-            .ok_or_else(|| CommandError::InvalidArgument("Stored review session is missing PR number".into()))?,
+        repo: session.repo.ok_or_else(|| {
+            CommandError::InvalidArgument("Stored review session is missing repo".into())
+        })?,
+        number: session.pr_number.ok_or_else(|| {
+            CommandError::InvalidArgument("Stored review session is missing PR number".into())
+        })?,
         title: session.title.unwrap_or_default(),
         author_login: session.author_login.unwrap_or_default(),
         viewer_login: session.viewer_login.unwrap_or_default(),

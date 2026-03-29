@@ -172,8 +172,8 @@ pub fn read_file_lines(
     center_line: u32,
     context: u32,
 ) -> Result<FileSnippet, String> {
-    let content = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
     let all_lines: Vec<&str> = content.lines().collect();
     let total_lines = all_lines.len() as u32;
 
@@ -235,8 +235,16 @@ pub fn update_annotation(
         return Ok(updated);
     }
     let project_root = resolve_project_root(source_path);
-    svc.update_annotation_in_session(&project_root, source_path, &annotation_id, body.as_deref(), labels, choices, resolved)
-        .map_err(CommandError::from)
+    svc.update_annotation_in_session(
+        &project_root,
+        source_path,
+        &annotation_id,
+        body.as_deref(),
+        labels,
+        choices,
+        resolved,
+    )
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -266,7 +274,11 @@ pub fn clear_annotations(
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     if let Some(session) = resolve_github_session_for_file(source_path)? {
-        save_session_sidecar_for_file(&session, source_path, &SidecarFile::new(hash_file(source_path)?))?;
+        save_session_sidecar_for_file(
+            &session,
+            source_path,
+            &SidecarFile::new(hash_file(source_path)?),
+        )?;
         return Ok(());
     }
     let project_root = resolve_project_root(source_path);
@@ -318,10 +330,11 @@ pub fn signal_review_done(
     let verdict_str = verdict.as_deref().unwrap_or("approved");
 
     if let Some(session_id) = session_id.as_deref() {
-        let _ = tauri::async_runtime::block_on(
-            state.review_sessions.complete(session_id, verdict_str),
-        );
-        let _ = state.storage.complete_review_session(session_id, verdict_str);
+        let _ =
+            tauri::async_runtime::block_on(state.review_sessions.complete(session_id, verdict_str));
+        let _ = state
+            .storage
+            .complete_review_session(session_id, verdict_str);
     }
 
     // Fire OS notification for review complete
@@ -336,7 +349,8 @@ pub fn signal_review_done(
     drop(settings);
 
     // Also POST annotations from session
-    let sidecar = svc.get_annotations_from_session(source_path, &project_root)
+    let sidecar = svc
+        .get_annotations_from_session(source_path, &project_root)
         .map_err(CommandError::from)?;
     let json = serde_json::to_string(&sidecar.annotations)?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());
