@@ -1,23 +1,35 @@
 #!/usr/bin/env bash
-# Check that the current branch is up to date with its remote tracking branch.
+# Check that the current branch is up to date with its remote tracking branch
+# and that it has not fallen behind origin/main.
 set -euo pipefail
 
 branch=$(git rev-parse --abbrev-ref HEAD)
-remote=$(git config --get "branch.${branch}.remote" 2>/dev/null || echo "")
+remote=$(git config --get "branch.${branch}.remote" 2>/dev/null || echo "origin")
 
-if [[ -z "$remote" ]]; then
-  echo "No remote tracking branch for '$branch', skipping up-to-date check"
-  exit 0
+git fetch "$remote" "$branch" main --quiet 2>/dev/null || git fetch "$remote" --quiet
+
+exit_code=0
+
+# Check against own remote tracking branch (skip if branch has no upstream yet)
+if git rev-parse --verify "$remote/$branch" &>/dev/null; then
+  behind=$(git rev-list --count "HEAD..$remote/$branch")
+  if [[ "$behind" -gt 0 ]]; then
+    echo "ERROR: '$branch' is $behind commit(s) behind '$remote/$branch'. Pull before pushing."
+    exit_code=1
+  else
+    echo "OK: '$branch' is up to date with '$remote/$branch'"
+  fi
 fi
 
-git fetch "$remote" "$branch" --quiet
-
-remote_ref="$remote/$branch"
-behind=$(git rev-list --count "HEAD..${remote_ref}" 2>/dev/null || echo "0")
-
-if [[ "$behind" -gt 0 ]]; then
-  echo "ERROR: '$branch' is $behind commit(s) behind '$remote_ref'. Pull before pushing."
-  exit 1
+# Check against main
+if [[ "$branch" != "main" ]] && git rev-parse --verify "$remote/main" &>/dev/null; then
+  behind_main=$(git rev-list --count "HEAD..$remote/main")
+  if [[ "$behind_main" -gt 0 ]]; then
+    echo "ERROR: '$branch' is $behind_main commit(s) behind '$remote/main'. Rebase before pushing."
+    exit_code=1
+  else
+    echo "OK: '$branch' is up to date with '$remote/main'"
+  fi
 fi
 
-echo "OK: '$branch' is up to date with '$remote_ref'"
+exit "$exit_code"
