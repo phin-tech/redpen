@@ -31,7 +31,7 @@
   import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
   import { sortedAnnotations, getBubblesEnabled, toggleBubbles } from "$lib/stores/annotations.svelte";
   import BubbleKindFilter from "./BubbleKindFilter.svelte";
-  import { highlightsModeExtensions, buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
+  import { buildUnifiedDocument, buildSplitDecorations, scrollSync } from "$lib/codemirror/diff";
   import { submitReviewVerdict, type ReviewVerdict } from "$lib/review";
   import { onDestroy } from "svelte";
 
@@ -51,12 +51,12 @@
       openSearch: () => void;
       closeSearch: () => void;
       navigateMatch: (dir: 1 | -1) => void;
-      getView?: () => any;
-      moveCursorLine?: (dir: 1 | -1) => void;
-      jumpToBoundary?: (boundary: "top" | "bottom") => void;
-      toggleVisualSelection?: (mode: "char" | "line") => void;
-      clearVisualSelection?: () => void;
-      hasVisualSelection?: () => boolean;
+      getView: () => any;
+      moveCursorLine: (dir: 1 | -1) => void;
+      jumpToBoundary: (boundary: "top" | "bottom") => void;
+      toggleVisualSelection: (mode: "char" | "line") => void;
+      clearVisualSelection: () => void;
+      hasVisualSelection: () => boolean;
     } | undefined;
   } = $props();
 
@@ -72,17 +72,24 @@
     openSearch: () => void;
     closeSearch: () => void;
     navigateMatch: (dir: 1 | -1) => void;
-    getView?: () => any;
-    moveCursorLine?: (dir: 1 | -1) => void;
-    jumpToBoundary?: (boundary: "top" | "bottom") => void;
-    toggleVisualSelection?: (mode: "char" | "line") => void;
-    clearVisualSelection?: () => void;
-    hasVisualSelection?: () => boolean;
+    getView: () => any;
+    moveCursorLine: (dir: 1 | -1) => void;
+    jumpToBoundary: (boundary: "top" | "bottom") => void;
+    toggleVisualSelection: (mode: "char" | "line") => void;
+    clearVisualSelection: () => void;
+    hasVisualSelection: () => boolean;
   };
   let editorRef: EditorRef | undefined = $state(undefined);
   let previewRef: { scrollToLine: (line: number) => void } | undefined = $state(undefined);
   let leftDiffEditor: { getView: () => any } | undefined = $state(undefined);
-  let rightDiffEditor: { getView: () => any } | undefined = $state(undefined);
+  let rightDiffEditor: {
+    getView: () => any;
+    moveCursorByLine?: (dir: 1 | -1) => void;
+    jumpCursorToBoundary?: (boundary: "top" | "bottom") => void;
+    toggleVisualMode?: (mode: "char" | "line") => void;
+    clearVisualMode?: () => void;
+    hasVisualMode?: () => boolean;
+  } | undefined = $state(undefined);
   let unifiedDiffEditor: {
     getView: () => any;
     moveCursorByLine: (dir: 1 | -1) => void;
@@ -244,7 +251,7 @@
     clearReviewSession();
   }
 
-  function handleWindowClick(e: MouseEvent) {
+  function handleWindowClick(_e: MouseEvent) {
   }
 
   function handleWindowKeydown(e: KeyboardEvent) {

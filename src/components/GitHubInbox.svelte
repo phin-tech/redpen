@@ -263,7 +263,7 @@
         {#if history.activeSession}
           <div class="github-inbox-history-group">
             <div class="github-inbox-history-label">Resume active session</div>
-            <button class="github-inbox-item" onclick={() => void handleResume(history.activeSession.id)}>
+            <button class="github-inbox-item" onclick={() => void handleResume(history!.activeSession!.id)}>
               <div class="github-inbox-item-main">
                 <div class="github-inbox-item-topline">
                   <span class="github-inbox-item-repo">{history.activeSession.kind === "github_pr" ? "Pull request" : "File review"}</span>

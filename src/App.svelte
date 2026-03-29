@@ -22,7 +22,7 @@
   } from "$lib/stores/workspace.svelte";
   import { createCommandRegistry, findCommand } from "$lib/commands";
   import type { AppCommandContext } from "$lib/commands";
-  import { getDiffState, enterDiff, exitDiff, setDiffMode, computeDiff } from "$lib/stores/diff.svelte";
+  import { getDiffState, enterDiff, exitDiff, setDiffMode, computeDiff, invalidateFile } from "$lib/stores/diff.svelte";
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { listen } from "@tauri-apps/api/event";
@@ -45,7 +45,18 @@
   let savedLeftPanelWidth = $state(240);
 
   // Use ref pattern for Svelte 5 (not bind:this + export function)
-  let editorRef: { scrollToLine: (line: number) => void; openSearch: () => void; closeSearch: () => void; navigateMatch: (dir: 1 | -1) => void } | undefined = $state(undefined);
+  let editorRef: {
+    scrollToLine: (line: number) => void;
+    openSearch: () => void;
+    closeSearch: () => void;
+    navigateMatch: (dir: 1 | -1) => void;
+    getView: () => any;
+    moveCursorLine: (dir: 1 | -1) => void;
+    jumpToBoundary: (boundary: "top" | "bottom") => void;
+    toggleVisualSelection: (mode: "char" | "line") => void;
+    clearVisualSelection: () => void;
+    hasVisualSelection: () => boolean;
+  } | undefined = $state(undefined);
   let showSettings = $state(false);
   let showCommandPalette = $state(false);
   let commandPaletteMode = $state<"default" | "file">("default");
@@ -88,6 +99,13 @@
     );
     const reloadFile = debounce(async () => {
       if (editor.currentFilePath) {
+        const directory = workspace.rootFolders[0];
+        if (directory) {
+          invalidateFile(directory, editor.currentFilePath);
+          if (diff.enabled) {
+            void computeDiff(directory, editor.currentFilePath);
+          }
+        }
         await openFile(editor.currentFilePath);
         await loadAnnotations(editor.currentFilePath);
 

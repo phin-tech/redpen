@@ -1,7 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
 import { getAllAnnotations, getAnnotations, getGitStatus, readFileLines } from "$lib/tauri";
 
-import { getDiffState } from "$lib/stores/diff.svelte";
+import { getDiffState, cachedInvokeDiff } from "$lib/stores/diff.svelte";
 import { getWorkspace } from "$lib/stores/workspace.svelte";
 import { getEditor } from "$lib/stores/editor.svelte";
 import { getReviewSession } from "$lib/stores/review.svelte";
@@ -157,13 +156,7 @@ async function loadReviewChanges() {
     let diff: DiffResult | null = null;
     try {
       console.log("[ReviewPage] calling compute_diff...");
-      diff = await invoke<DiffResult>("compute_diff", {
-        directory,
-        filePath,
-        baseRef,
-        targetRef,
-        algorithm: "patience",
-      });
+      diff = await cachedInvokeDiff(directory, filePath, baseRef, targetRef, "patience");
       console.log("[ReviewPage] compute_diff done, hunks:", diff?.hunks?.length ?? 0);
     } catch (e) {
       console.warn("[ReviewPage] compute_diff failed for", filePath, e);
