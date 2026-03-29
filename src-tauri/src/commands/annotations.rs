@@ -199,6 +199,7 @@ pub fn read_file_lines(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_annotation(
     file_path: String,
     annotation_id: String,
