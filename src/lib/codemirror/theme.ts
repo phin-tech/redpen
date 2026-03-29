@@ -41,8 +41,8 @@ export const redPenTheme = EditorView.theme({
     borderBottom: "2px solid var(--kind-comment-border)",
   },
   ".rp-annotation-orphaned": {
-    backgroundColor: "rgba(217, 107, 95, 0.12)",
-    borderBottom: "2px solid rgba(217, 107, 95, 0.5)",
+    backgroundColor: "var(--orphaned-subtle)",
+    borderBottom: "2px solid var(--orphaned-border)",
   },
   // Kind-specific annotation highlights
   ".rp-annotation-explanation": {
@@ -74,7 +74,7 @@ export const redPenTheme = EditorView.theme({
     backgroundColor: "var(--kind-comment)",
   },
   ".rp-gutter-marker-orphaned": {
-    backgroundColor: "rgba(217, 107, 95, 0.5)",
+    backgroundColor: "var(--orphaned-border)",
   },
   ".rp-gutter-marker-explanation": {
     backgroundColor: "var(--kind-explanation-border)",
@@ -96,12 +96,12 @@ export const redPenTheme = EditorView.theme({
   },
   // Search highlights
   ".rp-search-match": {
-    backgroundColor: "rgba(251, 191, 36, 0.2)",
-    borderBottom: "2px solid rgba(251, 191, 36, 0.45)",
+    backgroundColor: "var(--search-match-bg)",
+    borderBottom: "2px solid var(--search-match-border)",
   },
   ".rp-search-current": {
-    backgroundColor: "rgba(251, 191, 36, 0.45)",
-    borderBottom: "2px solid rgba(251, 191, 36, 0.9)",
+    backgroundColor: "var(--search-current-bg)",
+    borderBottom: "2px solid var(--search-current-border)",
   },
   // Annotation bubbles
   ".rp-bubble-widget": {
@@ -128,9 +128,9 @@ export const redPenTheme = EditorView.theme({
     transform: "translateY(-1px)",
   },
   ".rp-bubble-orphaned": {
-    borderLeftColor: "var(--color-danger, #D96B5F)",
-    borderColor: "rgba(217, 107, 95, 0.35)",
-    background: "color-mix(in srgb, rgba(217, 107, 95, 0.12) 60%, var(--surface-raised))",
+    borderLeftColor: "var(--color-danger)",
+    borderColor: "var(--orphaned-border)",
+    background: "color-mix(in srgb, var(--orphaned-subtle) 60%, var(--surface-raised))",
     opacity: "0.7",
   },
   ".rp-bubble-kind-explanation": {
@@ -217,7 +217,7 @@ export const redPenTheme = EditorView.theme({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
-    color: "var(--color-danger, #D96B5F)",
+    color: "var(--color-danger)",
     flexShrink: "0",
   },
   // Bubble expanded thread
@@ -259,7 +259,7 @@ export const redPenTheme = EditorView.theme({
     opacity: "1",
   },
   ".rp-bubble-delete:hover": {
-    color: "var(--color-danger, #D96B5F)",
+    color: "var(--color-danger)",
   },
   ".rp-bubble-labels": {
     display: "flex",
@@ -303,18 +303,18 @@ export const redPenTheme = EditorView.theme({
   },
   // Diff highlights
   ".rp-diff-added": {
-    backgroundColor: "rgba(63, 185, 80, 0.15)",
+    backgroundColor: "var(--diff-added-bg)",
   },
   ".rp-diff-added .cm-gutterElement": {
-    color: "#7ee787",
+    color: "var(--diff-added-fg)",
   },
   ".rp-diff-removed": {
-    backgroundColor: "rgba(248, 81, 73, 0.15)",
+    backgroundColor: "var(--diff-removed-bg)",
   },
   ".rp-diff-removed .cm-gutterElement": {
-    color: "#ffa198",
+    color: "var(--diff-removed-fg)",
   },
   ".rp-diff-ghost": {
-    backgroundColor: "rgba(110, 118, 129, 0.05)",
+    backgroundColor: "var(--diff-ghost-bg)",
   },
 });

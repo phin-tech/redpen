@@ -15,6 +15,7 @@
   import { openReviewPage } from "$lib/stores/reviewPage.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
+  import { formatShortcut } from "$lib/shortcuts";
   import { invoke } from "@tauri-apps/api/core";
   import AnnotationCard from "./AnnotationCard.svelte";
 
@@ -85,6 +86,7 @@
   let totalProjectAnnotations = $derived(
     annotationsState.projectAnnotations.reduce((sum, f) => sum + f.annotations.length, 0)
   );
+  const addAnnotationShortcut = formatShortcut(["Mod", "Enter"]);
 </script>
 
 <div class="h-full flex flex-col">
@@ -177,9 +179,9 @@
             <p class="text-sm font-medium text-text-primary">No annotations yet</p>
             <p class="text-xs text-text-secondary text-center">Select text in the editor, then</p>
             <div class="flex items-center gap-1 my-1 text-xs text-text-secondary">
-              <Kbd>Cmd</Kbd>
+              <Kbd>{addAnnotationShortcut[0]}</Kbd>
               <span>+</span>
-              <Kbd>Return</Kbd>
+              <Kbd>{addAnnotationShortcut[1]}</Kbd>
             </div>
             <p class="text-xs text-text-secondary text-center">to add a comment</p>
           {/if}

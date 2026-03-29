@@ -44,9 +44,9 @@
 <style>
     .diff-mode-toggle {
         display: flex;
-        background: var(--surface-secondary, #0d1117);
+        background: var(--surface-raised);
         border-radius: 6px;
-        border: 1px solid var(--border-default, #30363d);
+        border: 1px solid var(--border-default);
         overflow: hidden;
     }
     .toggle-btn {
@@ -61,6 +61,6 @@
     .toggle-btn:hover { color: var(--text-secondary); }
     .toggle-btn.active {
         background: var(--accent);
-        color: var(--surface-primary, #0d1117);
+        color: var(--surface-base);
     }
 </style>

@@ -250,7 +250,7 @@
   .exit-btn {
     padding: 4px 12px;
     border-radius: 4px;
-    background: var(--surface-secondary);
+    background: var(--surface-raised);
     border: 1px solid var(--border-default);
     color: var(--text-primary);
     cursor: pointer;

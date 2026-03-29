@@ -11,7 +11,7 @@
     getResolvedCount,
     getCardAtIndex,
   } from "$lib/stores/reviewPage.svelte";
-  import { resolveAnnotation, updateChoices, addAnnotation } from "$lib/stores/annotations.svelte";
+  import { resolveAnnotation, updateChoices, addAnnotation, removeAnnotation } from "$lib/stores/annotations.svelte";
   import ReviewCard from "./ReviewCard.svelte";
   import ReviewCodeSnippet from "./ReviewCodeSnippet.svelte";
   import type { Annotation, DiffHunk } from "$lib/types";
@@ -85,6 +85,7 @@
   });
 
   let pendingG = $state(false);
+  let pendingDelete = $state(false);
 
   function handleKeydown(e: KeyboardEvent) {
     // Don't intercept when typing in an input
@@ -105,6 +106,7 @@
       return;
     }
     pendingG = false;
+    if (e.key !== "d") pendingDelete = false;
 
     if (e.key === "G") {
       e.preventDefault();
@@ -131,6 +133,18 @@
       const card = getCardAtIndex(activeIndex);
       if (card?.annotation) {
         handleResolve(card.annotation.id, !card.annotation.resolved);
+      }
+    } else if (e.key === "d") {
+      e.preventDefault();
+      const card = getCardAtIndex(activeIndex);
+      if (card?.annotation) {
+        if (pendingDelete) {
+          handleDismiss(card.filePath, card.annotation.id);
+          pendingDelete = false;
+        } else {
+          pendingDelete = true;
+          setTimeout(() => { pendingDelete = false; }, 2000);
+        }
       }
     } else if (e.key === "o") {
       e.preventDefault();
@@ -162,7 +176,7 @@
     } else if (e.key >= "1" && e.key <= "9") {
       e.preventDefault();
       const card = getCardAtIndex(activeIndex);
-      if (card && card.annotation.choices) {
+      if (card?.annotation?.choices) {
         const idx = parseInt(e.key) - 1;
         if (idx < card.annotation.choices.length) {
           handleChoiceToggle(card.annotation.id, idx);
@@ -170,7 +184,11 @@
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
-      closeReviewPage();
+      if (pendingDelete) {
+        pendingDelete = false;
+      } else {
+        closeReviewPage();
+      }
     }
   }
 
@@ -184,6 +202,17 @@
   function handleJumpToFile(filePath: string, line: number) {
     closeReviewPage();
     onJumpToFile(filePath, line);
+  }
+
+  async function handleDismiss(filePath: string, annotationId: string) {
+    await removeAnnotation(filePath, annotationId);
+    // Remove from review state
+    for (const file of reviewState.files) {
+      if (file.filePath === filePath) {
+        file.annotations = file.annotations.filter((a) => a.id !== annotationId);
+        break;
+      }
+    }
   }
 
   async function handleReply(annotationId: string, body: string) {
@@ -299,7 +328,10 @@
 
         {#if fileGroup.cards.length > 0}
           {#each fileGroup.cards as entry (entry.annotation.id)}
-            <div data-review-card={entry.flatIndex}>
+            <div data-review-card={entry.flatIndex} class="review-card-wrapper">
+              {#if pendingDelete && activeIndex === entry.flatIndex}
+                <div class="review-delete-confirm"><span>Press <kbd>d</kbd> again to delete</span></div>
+              {/if}
               <ReviewCard
                 annotation={entry.annotation}
                 replies={entry.replies}
@@ -349,6 +381,7 @@
     <span><kbd>s</kbd> scope</span>
     <span><kbd>r</kbd> reply</span>
     <span><kbd>e</kbd> resolve</span>
+    <span><kbd>dd</kbd> delete</span>
     <span><kbd>o</kbd> open</span>
     <span><kbd>Esc</kbd> close</span>
   </div>
@@ -369,7 +402,7 @@
     padding: 10px 20px;
     background: var(--surface-panel);
     border-bottom: 1px solid var(--border-default);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--shadow-xs);
     flex-shrink: 0;
     z-index: 2;
   }
@@ -407,12 +440,13 @@
     font-size: 12px;
     color: var(--text-secondary);
     background: var(--surface-raised);
+    border: 1px solid var(--border-default);
     padding: 2px 8px;
     border-radius: 10px;
   }
   .review-topbar-resolved {
     font-size: 12px;
-    color: var(--success);
+    color: var(--color-success);
   }
   .review-topbar-spacer {
     flex: 1;
@@ -499,6 +533,39 @@
     border: none;
     background: none;
     font-family: inherit;
+  }
+  .review-card-wrapper {
+    position: relative;
+  }
+  .review-delete-confirm {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(2px);
+    border-radius: 8px;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .review-delete-confirm span {
+    background: var(--surface-raised);
+    color: var(--color-danger);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--color-danger) 30%, var(--border-default));
+  }
+  .review-delete-confirm kbd {
+    background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--color-danger);
   }
   .review-diff-group {
     border-radius: 8px;

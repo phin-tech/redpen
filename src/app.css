@@ -3,50 +3,74 @@
 /* ── Semantic design tokens ── */
 :root {
   /* Surfaces */
-  --surface-base: #0E0F11;
-  --surface-panel: #131417;
-  --surface-editor: #1A1C21;
-  --surface-raised: #22252B;
-  --surface-highlight: #2A2D35;
-  --surface-selection: #2A1E1E;
+  --surface-base: #0C0D10;
+  --surface-panel: #121419;
+  --surface-editor: #181B21;
+  --surface-raised: #20242C;
+  --surface-highlight: #2A3039;
+  --surface-selection: #231B1A;
 
   /* Text */
-  --text-primary: #F0F1F3;
-  --text-secondary: #B3B7BF;
-  --text-muted: #6B7280;
+  --text-primary: #F3F4F6;
+  --text-secondary: #C1C7D0;
+  --text-muted: #8B93A1;
 
   /* Borders */
-  --border-default: #2B2E36;
-  --border-subtle: rgba(255, 255, 255, 0.03);
-  --border-emphasis: #3B3F4A;
+  --border-default: #2A3038;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-emphasis: #3B4350;
 
   /* Accent */
-  --accent: #F47A63;
-  --accent-hover: #FF9E87;
-  --accent-subtle: rgba(244, 122, 99, 0.12);
-  --accent-annotation-border: rgba(244, 122, 99, 0.45);
+  --accent: #F28C74;
+  --accent-hover: #FFAF9B;
+  --accent-subtle: rgba(242, 140, 116, 0.16);
+  --accent-annotation-border: rgba(242, 140, 116, 0.58);
 
   /* Annotation kind colors */
-  --kind-comment: #F47A63;
-  --kind-comment-subtle: rgba(244, 122, 99, 0.12);
-  --kind-comment-border: rgba(244, 122, 99, 0.45);
-  --kind-explanation: #5B9BD5;
-  --kind-explanation-subtle: rgba(91, 155, 213, 0.12);
-  --kind-explanation-border: rgba(91, 155, 213, 0.45);
-  --kind-linenote: #74B97A;
-  --kind-linenote-subtle: rgba(116, 185, 122, 0.12);
-  --kind-linenote-border: rgba(116, 185, 122, 0.45);
-  --kind-label: #B07ACC;
-  --kind-label-subtle: rgba(176, 122, 204, 0.12);
-  --kind-label-border: rgba(176, 122, 204, 0.45);
+  --kind-comment: #D9B15F;
+  --kind-comment-subtle: rgba(217, 177, 95, 0.16);
+  --kind-comment-border: rgba(217, 177, 95, 0.6);
+  --kind-explanation: #72AEE6;
+  --kind-explanation-subtle: rgba(114, 174, 230, 0.16);
+  --kind-explanation-border: rgba(114, 174, 230, 0.6);
+  --kind-linenote: #84C68D;
+  --kind-linenote-subtle: rgba(132, 198, 141, 0.16);
+  --kind-linenote-border: rgba(132, 198, 141, 0.6);
+  --kind-label: #C39AE6;
+  --kind-label-subtle: rgba(195, 154, 230, 0.16);
+  --kind-label-border: rgba(195, 154, 230, 0.6);
 
   /* Status */
-  --color-success: #74B97A;
-  --color-warning: #E3B341;
-  --color-danger: #D96B5F;
-  --accent-purple: #B07ACC;
-  --accent-teal: #6FA39B;
-  --accent-blue: #5B9BD5;
+  --color-success: #84C68D;
+  --color-warning: #D9B15F;
+  --color-danger: #E06A5F;
+  --accent-purple: #C39AE6;
+  --accent-teal: #74B8AA;
+  --accent-blue: #72AEE6;
+
+  /* Syntax */
+  --syntax-keyword: #C39AE6;
+  --syntax-operator: #79C0D9;
+  --syntax-number: #D9B15F;
+  --syntax-string: #84C68D;
+  --syntax-comment: #7D8694;
+  --syntax-variable: #E78B7C;
+  --syntax-variable-2: #D6BE86;
+  --syntax-definition: #72AEE6;
+  --syntax-punctuation: #C1C7D0;
+
+  /* Diff / search */
+  --diff-added-bg: rgba(132, 198, 141, 0.14);
+  --diff-added-fg: #9AD5A1;
+  --diff-removed-bg: rgba(224, 106, 95, 0.14);
+  --diff-removed-fg: #F09A90;
+  --diff-ghost-bg: rgba(139, 147, 161, 0.08);
+  --search-match-bg: rgba(217, 177, 95, 0.2);
+  --search-match-border: rgba(217, 177, 95, 0.5);
+  --search-current-bg: rgba(217, 177, 95, 0.34);
+  --search-current-border: rgba(217, 177, 95, 0.8);
+  --orphaned-subtle: rgba(224, 106, 95, 0.14);
+  --orphaned-border: rgba(224, 106, 95, 0.55);
 
   /* Elevation */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);

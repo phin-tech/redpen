@@ -4,6 +4,7 @@
   import { COMMAND_SECTIONS } from "$lib/commands";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
   import { queryWorkspaceFiles } from "$lib/tauri";
+  import { formatShortcut } from "$lib/shortcuts";
   import type {
     AppCommandContext,
     AppCommandDefinition,
@@ -212,7 +213,7 @@
                     <Command.GroupItems>
                       {#each sectionCommands as command (command.id)}
                         <Command.Item
-                          value={command.title}
+                          value={command.id}
                           keywords={command.keywords}
                           disabled={!isCommandEnabled(command)}
                           onSelect={() => {
@@ -223,7 +224,7 @@
                           <span class="flex-1 text-sm text-text-secondary">{command.title}</span>
                           {#if command.shortcut}
                             <div class="flex gap-1">
-                              {#each command.shortcut as key}
+                              {#each formatShortcut(command.shortcut) as key}
                                 <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-surface-raised text-text-muted border border-border-default">
                                   {key}
                                 </kbd>

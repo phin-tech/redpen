@@ -1,6 +1,7 @@
 <script lang="ts">
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
+  import { formatShortcut } from "$lib/shortcuts";
 
   let {
     onSubmit,
@@ -15,6 +16,7 @@
   let body = $state("");
   let labelsInput = $state("");
   let textareaEl: HTMLTextAreaElement;
+  const submitShortcut = formatShortcut(["Mod", "Enter"]);
 
   $effect(() => {
     textareaEl?.focus();
@@ -71,7 +73,11 @@
     <Button variant="secondary" size="sm" onclick={onCancel}>Cancel</Button>
     <Button size="sm" onclick={handleSubmit}>
       Save
-      <kbd class="text-xs opacity-60 font-mono">Cmd+Return</kbd>
+      <span class="flex items-center gap-1 text-xs opacity-60 font-mono">
+        <Kbd class="px-1 py-0 text-[10px]">{submitShortcut[0]}</Kbd>
+        <span>+</span>
+        <Kbd class="px-1 py-0 text-[10px]">{submitShortcut[1]}</Kbd>
+      </span>
     </Button>
   </div>
 </div>

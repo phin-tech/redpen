@@ -110,15 +110,15 @@
     .ref-dropdown { position: relative; }
     .ref-btn {
         padding: 3px 8px;
-        background: var(--surface-secondary, #0d1117);
-        border: 1px solid var(--border-default, #30363d);
+        background: var(--surface-raised);
+        border: 1px solid var(--border-default);
         border-radius: 4px;
         cursor: pointer;
         font-size: 11px;
         font-family: inherit;
     }
-    .ref-btn.base { color: var(--purple, #d2a8ff); }
-    .ref-btn.target { color: var(--green, #7ee787); }
+    .ref-btn.base { color: var(--accent-purple); }
+    .ref-btn.target { color: var(--color-success); }
     .swap-btn {
         background: none;
         border: none;

@@ -7,10 +7,10 @@
   const AGENT_AUTHORS = new Set(["claude", "gpt", "copilot", "gemini", "cursor", "codex", "agent"]);
 
   const KIND_COLORS: Record<AnnotationKind, string> = {
-    comment: "var(--kind-comment-border, #89b4fa)",
-    lineNote: "var(--kind-linenote-border, #f9e2af)",
-    explanation: "var(--kind-explanation-border, #cba6f7)",
-    label: "var(--kind-label-border, #a6e3a1)",
+    comment: "var(--kind-comment-border)",
+    lineNote: "var(--kind-linenote-border)",
+    explanation: "var(--kind-explanation-border)",
+    label: "var(--kind-label-border)",
   };
 
   const KIND_LABELS: Record<AnnotationKind, string> = {
@@ -195,12 +195,12 @@
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .review-card:hover {
-    border-color: color-mix(in srgb, var(--border-default) 80%, white);
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+    border-color: var(--border-emphasis);
+    box-shadow: var(--shadow-xs);
   }
   .review-card-active {
     border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent), 0 2px 12px color-mix(in srgb, var(--accent) 15%, transparent);
+    box-shadow: 0 0 0 1px var(--accent);
   }
   .review-card-resolved {
     opacity: 0.5;
@@ -301,7 +301,7 @@
   .review-card-reply {
     padding: 8px 16px 10px;
     border-top: 1px solid var(--border-default);
-    background: color-mix(in srgb, var(--surface-panel) 95%, white);
+    background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised));
     font-size: 12px;
     color: var(--text-secondary);
     display: flex;
@@ -320,7 +320,7 @@
     gap: 6px;
     padding: 8px 16px;
     border-top: 1px solid var(--border-default);
-    background: color-mix(in srgb, var(--surface-panel) 98%, white);
+    background: color-mix(in srgb, var(--surface-panel) 84%, var(--surface-raised));
   }
   .review-card-reply-input {
     flex: 1;
@@ -356,9 +356,9 @@
     background: var(--surface-raised);
   }
   .review-card-action-resolved {
-    color: var(--success);
-    background: color-mix(in srgb, var(--success) 12%, transparent);
-    border-color: color-mix(in srgb, var(--success) 30%, transparent);
+    color: var(--color-success);
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    border-color: color-mix(in srgb, var(--color-success) 30%, transparent);
   }
   .review-card-action-jump {
     color: var(--accent);

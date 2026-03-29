@@ -218,7 +218,7 @@
 
 <style>
   .review-snippet {
-    background: color-mix(in srgb, var(--surface-base) 70%, black);
+    background: var(--surface-editor);
     font-family: "SF Mono", "Fira Code", Consolas, monospace;
     font-size: 12px;
     line-height: 1.6;
@@ -233,10 +233,10 @@
     background: color-mix(in srgb, var(--kind-highlight) 12%, transparent);
   }
   .snippet-insert {
-    background: color-mix(in srgb, var(--success) 10%, transparent);
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
   }
   .snippet-delete {
-    background: color-mix(in srgb, var(--danger) 10%, transparent);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
     opacity: 0.7;
   }
   .snippet-linenum {
@@ -254,28 +254,27 @@
   .snippet-highlighted .snippet-content {
     color: var(--text-primary);
   }
-  /* Lezer highlight classes — match one-dark token colors */
-  .snippet-content :global(.tok-keyword) { color: #c678dd; }
-  .snippet-content :global(.tok-operator) { color: #56b6c2; }
-  .snippet-content :global(.tok-number) { color: #d19a66; }
-  .snippet-content :global(.tok-string) { color: #98c379; }
-  .snippet-content :global(.tok-string2) { color: #98c379; }
-  .snippet-content :global(.tok-comment) { color: #5c6370; font-style: italic; }
-  .snippet-content :global(.tok-variableName) { color: #e06c75; }
-  .snippet-content :global(.tok-variableName2) { color: #e5c07b; }
-  .snippet-content :global(.tok-definition) { color: #61afef; }
-  .snippet-content :global(.tok-typeName) { color: #e5c07b; }
-  .snippet-content :global(.tok-propertyName) { color: #e06c75; }
-  .snippet-content :global(.tok-function) { color: #61afef; }
-  .snippet-content :global(.tok-bool) { color: #d19a66; }
-  .snippet-content :global(.tok-null) { color: #d19a66; }
-  .snippet-content :global(.tok-punctuation) { color: #abb2bf; }
-  .snippet-content :global(.tok-meta) { color: #e06c75; }
-  .snippet-content :global(.tok-atom) { color: #d19a66; }
-  .snippet-content :global(.tok-tagName) { color: #e06c75; }
-  .snippet-content :global(.tok-attributeName) { color: #d19a66; }
-  .snippet-content :global(.tok-attributeValue) { color: #98c379; }
-  .snippet-content :global(.tok-heading) { color: #e06c75; font-weight: bold; }
+  .snippet-content :global(.tok-keyword) { color: var(--syntax-keyword); }
+  .snippet-content :global(.tok-operator) { color: var(--syntax-operator); }
+  .snippet-content :global(.tok-number) { color: var(--syntax-number); }
+  .snippet-content :global(.tok-string) { color: var(--syntax-string); }
+  .snippet-content :global(.tok-string2) { color: var(--syntax-string); }
+  .snippet-content :global(.tok-comment) { color: var(--syntax-comment); font-style: italic; }
+  .snippet-content :global(.tok-variableName) { color: var(--syntax-variable); }
+  .snippet-content :global(.tok-variableName2) { color: var(--syntax-variable-2); }
+  .snippet-content :global(.tok-definition) { color: var(--syntax-definition); }
+  .snippet-content :global(.tok-typeName) { color: var(--syntax-variable-2); }
+  .snippet-content :global(.tok-propertyName) { color: var(--syntax-variable); }
+  .snippet-content :global(.tok-function) { color: var(--syntax-definition); }
+  .snippet-content :global(.tok-bool) { color: var(--syntax-number); }
+  .snippet-content :global(.tok-null) { color: var(--syntax-number); }
+  .snippet-content :global(.tok-punctuation) { color: var(--syntax-punctuation); }
+  .snippet-content :global(.tok-meta) { color: var(--syntax-variable); }
+  .snippet-content :global(.tok-atom) { color: var(--syntax-number); }
+  .snippet-content :global(.tok-tagName) { color: var(--syntax-variable); }
+  .snippet-content :global(.tok-attributeName) { color: var(--syntax-number); }
+  .snippet-content :global(.tok-attributeValue) { color: var(--syntax-string); }
+  .snippet-content :global(.tok-heading) { color: var(--syntax-variable); font-weight: bold; }
   .snippet-expand {
     display: block;
     width: 100%;

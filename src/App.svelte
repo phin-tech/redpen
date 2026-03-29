@@ -27,6 +27,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { watch } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
+  import { isShortcutInputTarget, matchesShortcut } from "$lib/shortcuts";
 
   import { onMount, onDestroy, untrack } from "svelte";
   import { debounce } from "$lib/utils/debounce";
@@ -41,9 +42,6 @@
   let showSettings = $state(false);
   let showCommandPalette = $state(false);
   let commandPaletteMode = $state<"default" | "file">("default");
-
-  // Double-shift detection
-  let lastShiftKeyup = 0;
 
   // Resizable panel widths
   let leftPanelWidth = $state(240);
@@ -326,6 +324,10 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return;
+
+    const ignoreGlobalShortcuts = isShortcutInputTarget(e.target);
+
     if (e.key === "Escape") {
       if (showCommandPalette) {
         e.preventDefault();
@@ -338,15 +340,25 @@
         return;
       }
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+
+    if (ignoreGlobalShortcuts) return;
+
+    if (matchesShortcut(e, ["Mod", "Enter"])) {
       e.preventDefault();
       void runCommand("annotations.add");
+      return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+    if (matchesShortcut(e, ["Mod", "K"])) {
       e.preventDefault();
       openCommandPalette("default");
+      return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "r") {
+    if (matchesShortcut(e, ["Mod", "P"])) {
+      e.preventDefault();
+      openCommandPalette("file");
+      return;
+    }
+    if (matchesShortcut(e, ["Mod", "Shift", "R"])) {
       e.preventDefault();
       if (isReviewPageOpen()) {
         closeReviewPage();
@@ -355,34 +367,29 @@
       }
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "m") {
+    if (matchesShortcut(e, ["Mod", "Shift", "M"])) {
       e.preventDefault();
       void runCommand("view.toggleMarkdownPreview");
       return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+    if (matchesShortcut(e, ["Mod", ","])) {
       e.preventDefault();
       void runCommand("view.openSettings");
+      return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+    if (matchesShortcut(e, ["Mod", "F"])) {
       e.preventDefault();
       editorRef?.openSearch();
+      return;
     }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "g") {
+    if (matchesShortcut(e, ["Mod", "G"])) {
       e.preventDefault();
-      editorRef?.navigateMatch(e.shiftKey ? -1 : 1);
+      editorRef?.navigateMatch(1);
+      return;
     }
-  }
-
-  function handleKeyup(e: KeyboardEvent) {
-    if (e.key === "Shift") {
-      const now = Date.now();
-      if (now - lastShiftKeyup < 300) {
-        openCommandPalette("file");
-        lastShiftKeyup = 0;
-      } else {
-        lastShiftKeyup = now;
-      }
+    if (matchesShortcut(e, ["Mod", "Shift", "G"])) {
+      e.preventDefault();
+      editorRef?.navigateMatch(-1);
     }
   }
 
@@ -402,7 +409,7 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} onkeyup={handleKeyup} oncontextmenu={(e) => e.preventDefault()} />
+<svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
 
 <div class="app-root">
   <div class="flex flex-1 overflow-hidden">
