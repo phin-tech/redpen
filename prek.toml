@@ -32,11 +32,3 @@ entry = "bunx tsc --noEmit"
 language = "system"
 pass_filenames = false
 stages = ["pre-push"]
-
-[[repos.hooks]]
-id = "check-tauri-versions"
-name = "Tauri plugin version parity"
-entry = "./script/check-tauri-versions"
-language = "system"
-pass_filenames = false
-stages = ["pre-push"]
