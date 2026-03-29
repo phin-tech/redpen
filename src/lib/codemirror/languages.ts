@@ -37,7 +37,7 @@ const languageMap: Record<string, () => LanguageSupport> = {
   sql: () => sql(),
   yaml: () => yaml(),
   yml: () => yaml(),
-  svelte: () => html(),
+  svelte: () => javascript({ jsx: true, typescript: true }),
   swift: () => javascript(), // Reasonable fallback — Swift syntax is close enough for highlighting
 };
 
