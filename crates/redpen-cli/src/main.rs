@@ -461,6 +461,8 @@ fn print_rejection_summary(
     Ok(())
 }
 
+/// List all annotations for every file in a review session as JSON.
+/// Queries the server's `/rpc/session.annotations` endpoint.
 fn cmd_list_session(session_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     ensure_server_available()?;
     match server_client::session_annotations(session_id) {
@@ -637,8 +639,8 @@ fn expand_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Returns true if we should skip the review gate (CI environment or explicit opt-out).
+/// Returns a reason string if the review gate should be skipped, or None to proceed.
+/// Skips when REDPEN_SKIP_GATE is set or a well-known CI environment variable is detected.
 fn should_skip_gate() -> Option<&'static str> {
     if std::env::var("REDPEN_SKIP_GATE").is_ok() {
         return Some("REDPEN_SKIP_GATE is set");
@@ -662,6 +664,8 @@ fn should_skip_gate() -> Option<&'static str> {
     None
 }
 
+/// Dispatch logic for `redpen open`. Resolves files from --pre-push, --diff-remote,
+/// --diff-base, or positional paths, then opens them with or without blocking wait.
 #[allow(clippy::too_many_arguments)]
 fn cmd_open_dispatch(
     paths: Vec<PathBuf>,
@@ -807,8 +811,10 @@ fn git_default_branch() -> Result<String, Box<dyn std::error::Error>> {
     Err("Could not determine default branch".into())
 }
 
-/// Get the sha of the remote tracking branch for the current branch.
-/// Falls back to origin/HEAD if no tracking branch is configured.
+/// Get the sha of the remote tracking branch for the current branch (`@{u}`).
+/// Falls back to `origin/HEAD` if no tracking branch is configured.
+/// Used by `--diff-remote` so hook managers (prek, pre-commit) that don't
+/// forward pre-push stdin can still compute the right diff.
 fn git_remote_tracking_sha() -> Result<String, Box<dyn std::error::Error>> {
     // Try @{u} — the upstream of the current branch
     let output = process::Command::new("git")
