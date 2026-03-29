@@ -621,6 +621,31 @@ fn expand_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::err
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Returns true if we should skip the review gate (CI environment or explicit opt-out).
+fn should_skip_gate() -> Option<&'static str> {
+    if std::env::var("REDPEN_SKIP_GATE").is_ok() {
+        return Some("REDPEN_SKIP_GATE is set");
+    }
+    // Well-known CI environment variables
+    let ci_vars = [
+        ("CI", "CI environment detected"),
+        ("GITHUB_ACTIONS", "GitHub Actions detected"),
+        ("GITLAB_CI", "GitLab CI detected"),
+        ("CIRCLECI", "CircleCI detected"),
+        ("JENKINS_URL", "Jenkins detected"),
+        ("BUILDKITE", "Buildkite detected"),
+        ("TF_BUILD", "Azure Pipelines detected"),
+        ("CODEBUILD_BUILD_ID", "AWS CodeBuild detected"),
+    ];
+    for (var, reason) in &ci_vars {
+        if std::env::var(var).is_ok() {
+            return Some(reason);
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
 fn cmd_open_dispatch(
     paths: Vec<PathBuf>,
     line: Option<u32>,
@@ -630,6 +655,14 @@ fn cmd_open_dispatch(
     diff_base: Option<String>,
     pre_push: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Skip the gate entirely in CI or when explicitly opted out
+    if pre_push || diff_base.is_some() || wait {
+        if let Some(reason) = should_skip_gate() {
+            eprintln!("Red Pen: skipping review gate ({})", reason);
+            return Ok(());
+        }
+    }
+
     let (resolved_paths, effective_wait, effective_timeout) = if pre_push {
         let diff_sha = parse_pre_push_stdin()?;
         let files = git_diff_files(&diff_sha)?;
