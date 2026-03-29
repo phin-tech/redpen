@@ -563,7 +563,9 @@ impl StateDb {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        Ok(Connection::open(&self.path)?)
+        let conn = Connection::open(&self.path)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        Ok(conn)
     }
 
     fn initialize(&self) -> Result<(), StorageError> {
