@@ -1,13 +1,17 @@
+use crate::storage::{
+    app_home_path as storage_app_home_path, settings_path as storage_settings_path,
+    SETTINGS_FILE_NAME,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-pub const APP_HOME_DIRECTORY: &str = ".config/redpen";
-pub const SETTINGS_FILE_NAME: &str = "settings.json";
+#[cfg(test)]
+pub use crate::storage::APP_HOME_DIRECTORY;
 
 fn default_checkout_root() -> Option<String> {
-    app_home_path()
+    storage_app_home_path()
         .ok()
         .map(|home| home.join("checkouts"))
         .map(|path| path.to_string_lossy().to_string())
@@ -149,13 +153,13 @@ impl AppSettings {
     }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn app_home_path() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "could not resolve home directory".to_string())?;
-    Ok(home.join(APP_HOME_DIRECTORY))
+    storage_app_home_path().map_err(|e| e.to_string())
 }
 
 pub fn settings_path() -> Result<PathBuf, String> {
-    Ok(app_home_path()?.join(SETTINGS_FILE_NAME))
+    storage_settings_path().map_err(|e| e.to_string())
 }
 
 pub fn normalize_ignored_folder_names(names: Vec<String>) -> Vec<String> {

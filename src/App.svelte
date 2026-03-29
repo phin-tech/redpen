@@ -11,7 +11,7 @@
   import { readDirectory, sendNotification, getSettings } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
-  import { addReviewFile } from "$lib/stores/review.svelte";
+  import { activateReviewSession, addReviewFile } from "$lib/stores/review.svelte";
   import { openReviewPage, closeReviewPage, isReviewPageOpen } from "$lib/stores/reviewPage.svelte";
   import {
     addRootFolder,
@@ -157,6 +157,7 @@
         const filePath = url.searchParams.get("file");
         const prRef = url.searchParams.get("pr");
         const localPath = url.searchParams.get("localPath");
+        const reviewSession = url.searchParams.get("reviewSession");
 
         if (action === "review-pr" && prRef) {
           await openGitHubPullRequest(prRef, localPath ?? undefined);
@@ -178,7 +179,11 @@
           const gitRoot = await invoke<string | null>("get_git_root", { path: filePath });
           const rootDir = gitRoot ?? filePath.substring(0, filePath.lastIndexOf("/"));
           if (rootDir) await addRootFolder(rootDir);
-          addReviewFile(filePath);
+          if (reviewSession) {
+            activateReviewSession(reviewSession, [filePath]);
+          } else {
+            addReviewFile(filePath);
+          }
           await handleFileSelect(filePath);
           if (line) {
             setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);

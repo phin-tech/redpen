@@ -20,13 +20,24 @@ use tokio::sync::{oneshot, Mutex};
 
 pub trait AppBridge: Send + Sync + 'static {
     /// Tell the GUI to open a file (replaces deep links).
-    fn open_file(&self, file: &str, line: Option<u32>) -> Result<(), String>;
+    fn open_file(
+        &self,
+        file: &str,
+        line: Option<u32>,
+        review_session_id: Option<&str>,
+    ) -> Result<(), String>;
     /// Tell the GUI to refresh annotations for a file.
     fn refresh_file(&self, file: &str) -> Result<(), String>;
     /// Load annotations for a file from the sidecar store.
     fn get_annotations(&self, file: &str) -> Result<Vec<Annotation>, String>;
     /// Open a GitHub PR review and return the managed worktree path.
     fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>) -> Result<String, String>;
+    /// Persist a newly-started review session.
+    fn start_review_session(&self, session_id: &str, file: &str) -> Result<(), String>;
+    /// Persist review completion state.
+    fn complete_review_session(&self, session_id: &str, verdict: &str) -> Result<(), String>;
+    /// Read persisted status for a review session.
+    fn review_session_status(&self, session_id: &str) -> Result<Option<ReviewSessionState>, String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +121,13 @@ pub struct ReviewPrResponse {
     pub worktree_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewSessionState {
+    pub status: String,
+    pub file: Option<String>,
+    pub verdict: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // ReviewSessions — in-memory session tracking (replaces signal files)
 // ---------------------------------------------------------------------------
@@ -181,7 +199,7 @@ async fn rpc_open(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<OpenRequest>,
 ) -> impl IntoResponse {
-    match state.bridge.open_file(&req.file, req.line) {
+    match state.bridge.open_file(&req.file, req.line, None) {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -221,8 +239,12 @@ async fn rpc_review_start(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<ReviewStartRequest>,
 ) -> impl IntoResponse {
-    let _ = state.bridge.open_file(&req.file, req.line);
-    let session_id = state.sessions.create_with_id(req.session_id, req.file).await;
+    let file = req.file.clone();
+    let session_id = state.sessions.create_with_id(req.session_id, file.clone()).await;
+    let _ = state.bridge.start_review_session(&session_id, &file);
+    let _ = state
+        .bridge
+        .open_file(&file, req.line, Some(&session_id));
     (StatusCode::OK, Json(ReviewStartResponse { session_id }))
 }
 
@@ -231,6 +253,9 @@ async fn rpc_review_done(
     Json(req): Json<ReviewDoneRequest>,
 ) -> impl IntoResponse {
     let verdict = req.verdict.as_deref().unwrap_or("approved");
+    let _ = state
+        .bridge
+        .complete_review_session(&req.session_id, verdict);
     match state.sessions.complete(&req.session_id, verdict).await {
         Some(_file) => (StatusCode::OK, Json(OkResponse { ok: true })),
         None => (StatusCode::NOT_FOUND, Json(OkResponse { ok: false })),
@@ -258,18 +283,10 @@ async fn rpc_review_wait(
                     Json(serde_json::json!({"error": "session cancelled"})),
                 )
                     .into_response(),
-                Err(_) => (
-                    StatusCode::GATEWAY_TIMEOUT,
-                    Json(serde_json::json!({"error": "review timed out"})),
-                )
-                    .into_response(),
+                Err(_) => persisted_wait_response(&state.bridge, &req.session_id, timeout_secs).await,
             }
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "session not found or already consumed"})),
-        )
-            .into_response(),
+        None => persisted_wait_response(&state.bridge, &req.session_id, req.timeout.unwrap_or(300)).await,
     }
 }
 
@@ -278,10 +295,12 @@ async fn rpc_review(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<ReviewRequest>,
 ) -> impl IntoResponse {
-    let _ = state.bridge.open_file(&req.file, req.line);
-
     let file = req.file.clone();
-    let session_id = state.sessions.create_with_id(req.session_id, req.file).await;
+    let session_id = state.sessions.create_with_id(req.session_id, file.clone()).await;
+    let _ = state.bridge.start_review_session(&session_id, &file);
+    let _ = state
+        .bridge
+        .open_file(&file, req.line, Some(&session_id));
     let rx = state
         .sessions
         .take_receiver(&session_id)
@@ -371,8 +390,8 @@ pub fn discovery_path() -> std::path::PathBuf {
 
 pub async fn start_server(
     bridge: Arc<dyn AppBridge>,
+    sessions: Arc<ReviewSessions>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let sessions = Arc::new(ReviewSessions::new());
     let router = build_router(bridge, sessions);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -395,6 +414,51 @@ pub async fn start_server(
 
     let _ = std::fs::remove_file(&discovery);
     Ok(())
+}
+
+async fn persisted_wait_response(
+    bridge: &Arc<dyn AppBridge>,
+    session_id: &str,
+    timeout_secs: u64,
+) -> axum::response::Response {
+    let started = std::time::Instant::now();
+    loop {
+        match bridge.review_session_status(session_id) {
+            Ok(Some(state)) => {
+                if let Some(verdict) = state.verdict {
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!(ReviewWaitResponse { verdict })),
+                    )
+                        .into_response();
+                }
+            }
+            Ok(None) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "session not found"})),
+                )
+                    .into_response();
+            }
+            Err(error) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": error})),
+                )
+                    .into_response();
+            }
+        }
+
+        if started.elapsed() >= std::time::Duration::from_secs(timeout_secs) {
+            return (
+                StatusCode::GATEWAY_TIMEOUT,
+                Json(serde_json::json!({"error": "review timed out"})),
+            )
+                .into_response();
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -425,7 +489,12 @@ mod tests {
     }
 
     impl AppBridge for MockBridge {
-        fn open_file(&self, file: &str, line: Option<u32>) -> Result<(), String> {
+        fn open_file(
+            &self,
+            file: &str,
+            line: Option<u32>,
+            _review_session_id: Option<&str>,
+        ) -> Result<(), String> {
             if self.fail_open.load(Ordering::Relaxed) {
                 return Err("open failed".to_string());
             }
@@ -452,6 +521,18 @@ mod tests {
             _local_path_hint: Option<&str>,
         ) -> Result<String, String> {
             Ok(format!("/tmp/{}", pr_ref.replace('/', "-")))
+        }
+
+        fn start_review_session(&self, _session_id: &str, _file: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn complete_review_session(&self, _session_id: &str, _verdict: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn review_session_status(&self, _session_id: &str) -> Result<Option<ReviewSessionState>, String> {
+            Ok(None)
         }
     }
 

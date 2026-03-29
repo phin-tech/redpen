@@ -14,6 +14,9 @@ import type {
   GitHubReviewEvent,
   GitHubReviewQueueItem,
   SubmitGitHubReviewResult,
+  ReviewHistory,
+  ResumeReviewSessionResult,
+  CleanupReviewSessionsResult,
 } from "./types";
 
 export async function readDirectory(path: string): Promise<FileEntry[]> {
@@ -143,6 +146,20 @@ export async function discardPendingGithubReviewChanges(
   sessionId: string,
 ): Promise<GitHubPrSession> {
   return invoke("discard_pending_github_review_changes", { sessionId });
+}
+
+export async function getReviewHistory(): Promise<ReviewHistory> {
+  return invoke("get_review_history");
+}
+
+export async function resumeReviewSession(
+  sessionId: string,
+): Promise<ResumeReviewSessionResult> {
+  return invoke("resume_review_session", { sessionId });
+}
+
+export async function cleanupStaleReviewSessions(): Promise<CleanupReviewSessionsResult> {
+  return invoke("cleanup_stale_review_sessions");
 }
 
 export async function sendNotification(

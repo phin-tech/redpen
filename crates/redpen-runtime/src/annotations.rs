@@ -4,7 +4,6 @@ use std::path::Path;
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, FileAnnotations};
 use redpen_core::hash::hash_file;
-use redpen_core::session::{GitSnapshot, SessionFile};
 use redpen_core::sidecar::SidecarFile;
 
 use crate::error::RuntimeError;
@@ -171,27 +170,14 @@ impl<E: EventBus> AnnotationService<E> {
         source_path: &Path,
         project_root: &Path,
     ) -> Result<SidecarFile, RuntimeError> {
-        let session = load_active_session(project_root)?;
-        let relative = relative_path_str(source_path, project_root);
-        let mut sidecar = session.to_sidecar(&relative);
-        // Reanchor if file hash changed
-        if source_path.exists() {
-            let current_hash = hash_file(source_path)?;
-            if !sidecar.source_file_hash.is_empty() && sidecar.source_file_hash != current_hash {
-                let content = fs::read_to_string(source_path)?;
-                reanchor_annotations(&mut sidecar.annotations, &content);
-                sidecar.source_file_hash = current_hash;
-            }
-        }
-        Ok(sidecar)
+        load_sidecar_for_file(project_root, source_path)
     }
 
     pub fn get_all_annotations_from_session(
         &self,
         project_root: &Path,
     ) -> Result<Vec<FileAnnotations>, RuntimeError> {
-        let session = load_active_session(project_root)?;
-        Ok(session.to_file_annotations())
+        self.get_all_annotations(project_root, project_root)
     }
 
     pub fn create_annotation_in_session(
@@ -205,21 +191,15 @@ impl<E: EventBus> AnnotationService<E> {
         anchor: Anchor,
         reply_to: Option<String>,
     ) -> Result<Annotation, RuntimeError> {
-        let mut session = load_active_session(project_root)?;
-        let relative = relative_path_str(source_path, project_root);
-        let hash = if source_path.exists() {
-            hash_file(source_path)?
-        } else {
-            String::new()
-        };
         let annotation = if let Some(parent_id) = reply_to {
             Annotation::new_reply(body.to_string(), author.to_string(), parent_id, anchor)
         } else {
             Annotation::new(kind, body.to_string(), labels, author.to_string(), anchor)
         };
         let result = annotation.clone();
-        session.add_annotation(&relative, &hash, annotation);
-        session.save(project_root)?;
+        let mut sidecar = load_sidecar_for_file(project_root, source_path)?;
+        sidecar.add_annotation(annotation);
+        save_sidecar(&sidecar, project_root, source_path)?;
         self.event_bus.emit(AppEvent::AnnotationsChanged {
             file_path: source_path.to_string_lossy().to_string(),
         });
@@ -236,8 +216,8 @@ impl<E: EventBus> AnnotationService<E> {
         choices: Option<Vec<Choice>>,
         resolved: Option<bool>,
     ) -> Result<Annotation, RuntimeError> {
-        let mut session = load_active_session(project_root)?;
-        let annotation = session
+        let mut sidecar = load_sidecar_for_file(project_root, source_path)?;
+        let annotation = sidecar
             .get_annotation_mut(id)
             .ok_or_else(|| RuntimeError::NotFound(format!("annotation {}", id)))?;
         if let Some(body) = body {
@@ -254,7 +234,7 @@ impl<E: EventBus> AnnotationService<E> {
         }
         annotation.updated_at = Some(chrono::Utc::now());
         let result = annotation.clone();
-        session.save(project_root)?;
+        save_sidecar(&sidecar, project_root, source_path)?;
         self.event_bus.emit(AppEvent::AnnotationsChanged {
             file_path: source_path.to_string_lossy().to_string(),
         });
@@ -267,11 +247,11 @@ impl<E: EventBus> AnnotationService<E> {
         source_path: &Path,
         id: &str,
     ) -> Result<(), RuntimeError> {
-        let mut session = load_active_session(project_root)?;
-        session
+        let mut sidecar = load_sidecar_for_file(project_root, source_path)?;
+        sidecar
             .remove_annotation(id)
             .ok_or_else(|| RuntimeError::NotFound(format!("annotation {}", id)))?;
-        session.save(project_root)?;
+        save_sidecar(&sidecar, project_root, source_path)?;
         self.event_bus.emit(AppEvent::AnnotationsChanged {
             file_path: source_path.to_string_lossy().to_string(),
         });
@@ -283,38 +263,14 @@ impl<E: EventBus> AnnotationService<E> {
         project_root: &Path,
         source_path: &Path,
     ) -> Result<(), RuntimeError> {
-        let mut session = load_active_session(project_root)?;
-        let relative = relative_path_str(source_path, project_root);
-        if let Some(entry) = session.get_entry_mut(&relative) {
-            entry.annotations.clear();
-        }
-        session.save(project_root)?;
+        let mut sidecar = load_sidecar_for_file(project_root, source_path)?;
+        sidecar.annotations.clear();
+        save_sidecar(&sidecar, project_root, source_path)?;
         self.event_bus.emit(AppEvent::AnnotationsChanged {
             file_path: source_path.to_string_lossy().to_string(),
         });
         Ok(())
     }
-}
-
-/// Load the active session for a project, creating one if needed.
-pub fn load_active_session(project_root: &Path) -> Result<SessionFile, RuntimeError> {
-    Ok(SessionFile::load_or_create_active(project_root, None)?)
-}
-
-/// Load the active session with git context.
-pub fn load_active_session_with_git(
-    project_root: &Path,
-    git: Option<GitSnapshot>,
-) -> Result<SessionFile, RuntimeError> {
-    Ok(SessionFile::load_or_create_active(project_root, git)?)
-}
-
-fn relative_path_str(source_path: &Path, project_root: &Path) -> String {
-    source_path
-        .strip_prefix(project_root)
-        .unwrap_or(source_path)
-        .to_string_lossy()
-        .to_string()
 }
 
 fn load_sidecar_for_file(

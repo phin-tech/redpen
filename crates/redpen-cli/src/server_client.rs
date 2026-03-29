@@ -4,7 +4,7 @@
 //! and the caller should fall back to deep links / signal files.
 
 use redpen_server::{
-    OkResponse, ReviewPrResponse, ReviewResponse, ReviewStartResponse, ReviewWaitResponse,
+    OkResponse, ReviewPrResponse, ReviewStartResponse, ReviewWaitResponse,
 };
 use serde::de::DeserializeOwned;
 use serde_json::json;
@@ -88,27 +88,10 @@ pub fn refresh_file(file: &str) -> bool {
     rpc_post::<OkResponse>("refresh", &body).is_some_and(|r| r.ok)
 }
 
-/// Combined open + wait via the server. Blocks until review is done.
-pub fn review(
-    file: &str,
-    line: Option<u32>,
-    timeout: Option<u64>,
-    session_id: Option<&str>,
-) -> Option<ReviewResponse> {
-    let timeout_secs = timeout.unwrap_or(86400);
-    let body = json!({
-        "file": file,
-        "line": line,
-        "timeout": timeout_secs,
-        "session_id": session_id,
-    });
-    rpc_post_with_timeout("review", &body, timeout_secs)
-}
-
 /// Start a review session (non-blocking). Returns session_id.
 #[allow(dead_code)]
-pub fn review_start(file: &str, line: Option<u32>) -> Option<String> {
-    let body = json!({"file": file, "line": line});
+pub fn review_start(file: &str, line: Option<u32>, session_id: Option<&str>) -> Option<String> {
+    let body = json!({"file": file, "line": line, "session_id": session_id});
     rpc_post::<ReviewStartResponse>("review.start", &body).map(|r| r.session_id)
 }
 

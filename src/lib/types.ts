@@ -49,5 +49,36 @@ export interface GitHubAnnotationMetadata {
   publishableReason?: string | null;
 }
 
+export interface ReviewHistoryItem {
+  id: string;
+  kind: string;
+  status: string;
+  title: string;
+  subtitle: string;
+  updatedAt: string;
+  primaryFilePath?: string | null;
+  fileCount: number;
+  verdict?: string | null;
+}
+
+export interface ReviewHistory {
+  activeSession?: ReviewHistoryItem | null;
+  recentPullRequests: ReviewHistoryItem[];
+  recentFiles: ReviewHistoryItem[];
+  staleSessions: ReviewHistoryItem[];
+}
+
+export interface ResumeReviewSessionResult {
+  kind: string;
+  sessionId: string;
+  projectRoot?: string | null;
+  files: string[];
+  githubSession?: GitHubPrSession | null;
+}
+
+export interface CleanupReviewSessionsResult {
+  removedSessions: number;
+}
+
 import type { Annotation as GeneratedAnnotation } from "./bindings/Annotation";
 export type Annotation = GeneratedAnnotation & { github?: GitHubAnnotationMetadata | null };

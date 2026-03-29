@@ -308,29 +308,20 @@ pub fn update_settings(
 pub fn signal_review_done(
     file_path: String,
     verdict: Option<String>,
+    session_id: Option<String>,
     state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
     app_handle: tauri::AppHandle,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-
-    // Read session ID (written by `redpen wait`) and include it in the signal
-    let session_file = SidecarFile::session_file_path(&project_root);
-    let session_id = fs::read_to_string(&session_file).unwrap_or_default();
     let verdict_str = verdict.as_deref().unwrap_or("approved");
-    let signal_content = format!("{}\n{}", session_id.trim(), verdict_str);
 
-    let signal_path = SidecarFile::session_signal_path(&project_root);
-    if let Some(parent) = signal_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&signal_path, signal_content)?;
-
-    // Write verdict into the active session file
-    if let Ok(mut session) = redpen_runtime::annotations::load_active_session(&project_root) {
-        session.verdict = Some(verdict_str.to_string());
-        let _ = session.save(&project_root);
+    if let Some(session_id) = session_id.as_deref() {
+        let _ = tauri::async_runtime::block_on(
+            state.review_sessions.complete(session_id, verdict_str),
+        );
+        let _ = state.storage.complete_review_session(session_id, verdict_str);
     }
 
     // Fire OS notification for review complete
