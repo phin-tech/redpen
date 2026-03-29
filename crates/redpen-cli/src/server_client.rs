@@ -53,30 +53,15 @@ fn rpc_post<T: DeserializeOwned>(endpoint: &str, body: &serde_json::Value) -> Op
     serde_json::from_str(&resp).ok()
 }
 
-fn rpc_post_with_timeout<T: DeserializeOwned>(
-    endpoint: &str,
-    body: &serde_json::Value,
-    timeout_secs: u64,
-) -> Option<T> {
-    let base = server_url()?;
-    let url = format!("{}/rpc/{}", base, endpoint);
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(std::time::Duration::from_secs(timeout_secs + 5)))
-        .build();
-    let agent = ureq::Agent::new_with_config(config);
-    let resp: String = agent
-        .post(&url)
-        .send_json(body)
-        .ok()?
-        .into_body()
-        .read_to_string()
-        .ok()?;
-    serde_json::from_str(&resp).ok()
-}
-
 /// Open a file in the GUI via the server. Returns true if successful.
 pub fn open_file(file: &str, line: Option<u32>) -> bool {
     let body = json!({"file": file, "line": line});
+    rpc_post::<OkResponse>("open", &body).is_some_and(|r| r.ok)
+}
+
+/// Open a file and associate it with an existing review session.
+pub fn open_file_in_session(file: &str, line: Option<u32>, session_id: &str) -> bool {
+    let body = json!({"file": file, "line": line, "session_id": session_id});
     rpc_post::<OkResponse>("open", &body).is_some_and(|r| r.ok)
 }
 
@@ -93,15 +78,54 @@ pub fn review_start(file: &str, line: Option<u32>, session_id: Option<&str>) -> 
     rpc_post::<ReviewStartResponse>("review.start", &body).map(|r| r.session_id)
 }
 
+/// Result of waiting for a review, distinguishing error causes.
+pub enum ReviewWaitResult {
+    /// Review completed with a verdict.
+    Ok(ReviewWaitResponse),
+    /// The server timed out waiting for a verdict.
+    Timeout,
+    /// Could not connect to the server.
+    ServerUnavailable,
+}
+
 /// Wait for a review session to complete. Blocks.
 #[allow(dead_code)]
-pub fn review_wait(session_id: &str, timeout: Option<u64>) -> Option<ReviewWaitResponse> {
+pub fn review_wait(session_id: &str, timeout: Option<u64>) -> ReviewWaitResult {
     let timeout_secs = timeout.unwrap_or(86400);
     let body = json!({
         "session_id": session_id,
         "timeout": timeout_secs,
     });
-    rpc_post_with_timeout("review.wait", &body, timeout_secs)
+    let base = match server_url() {
+        Some(url) => url,
+        None => return ReviewWaitResult::ServerUnavailable,
+    };
+    let url = format!("{}/rpc/review.wait", base);
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(timeout_secs + 5)))
+        .build();
+    let agent = ureq::Agent::new_with_config(config);
+    match agent.post(&url).send_json(&body) {
+        Ok(resp) => {
+            let status = resp.status();
+            if let Ok(body_str) = resp.into_body().read_to_string() {
+                if status == 504 {
+                    return ReviewWaitResult::Timeout;
+                }
+                if let Ok(parsed) = serde_json::from_str(&body_str) {
+                    return ReviewWaitResult::Ok(parsed);
+                }
+            }
+            ReviewWaitResult::ServerUnavailable
+        }
+        Err(_) => ReviewWaitResult::Timeout,
+    }
+}
+
+/// Get all annotations for a review session.
+pub fn session_annotations(session_id: &str) -> Option<serde_json::Value> {
+    let body = json!({"session_id": session_id});
+    rpc_post::<serde_json::Value>("session.annotations", &body)
 }
 
 pub fn review_pr(pr_ref: &str, local_path_hint: Option<&str>) -> Option<ReviewPrResponse> {

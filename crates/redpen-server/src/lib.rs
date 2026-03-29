@@ -50,6 +50,8 @@ pub trait AppBridge: Send + Sync + 'static {
 pub struct OpenRequest {
     pub file: String,
     pub line: Option<u32>,
+    /// If provided, associates this file with the given review session.
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +98,11 @@ pub struct ReviewPrRequest {
     pub local_path_hint: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SessionAnnotationsRequest {
+    pub session_id: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OkResponse {
     pub ok: bool,
@@ -137,6 +144,8 @@ pub struct ReviewSessionState {
 pub struct ReviewSessions {
     senders: Mutex<HashMap<String, (String, oneshot::Sender<String>)>>,
     receivers: Mutex<HashMap<String, oneshot::Receiver<String>>>,
+    /// Track all files associated with each session (for session-wide annotation queries).
+    session_files: Mutex<HashMap<String, Vec<String>>>,
 }
 
 impl Default for ReviewSessions {
@@ -144,6 +153,7 @@ impl Default for ReviewSessions {
         Self {
             senders: Mutex::new(HashMap::new()),
             receivers: Mutex::new(HashMap::new()),
+            session_files: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -163,9 +173,35 @@ impl ReviewSessions {
         self.senders
             .lock()
             .await
-            .insert(session_id.clone(), (file, tx));
+            .insert(session_id.clone(), (file.clone(), tx));
         self.receivers.lock().await.insert(session_id.clone(), rx);
+        self.session_files
+            .lock()
+            .await
+            .entry(session_id.clone())
+            .or_default()
+            .push(file);
         session_id
+    }
+
+    /// Add an additional file to a session's file list.
+    pub async fn add_file(&self, session_id: &str, file: String) {
+        self.session_files
+            .lock()
+            .await
+            .entry(session_id.to_string())
+            .or_default()
+            .push(file);
+    }
+
+    /// Get all files associated with a session.
+    pub async fn get_files(&self, session_id: &str) -> Vec<String> {
+        self.session_files
+            .lock()
+            .await
+            .get(session_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub async fn take_receiver(&self, session_id: &str) -> Option<oneshot::Receiver<String>> {
@@ -201,7 +237,14 @@ async fn rpc_open(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<OpenRequest>,
 ) -> impl IntoResponse {
-    match state.bridge.open_file(&req.file, req.line, None) {
+    // If a session_id is provided, track this file in the session
+    if let Some(ref sid) = req.session_id {
+        state.sessions.add_file(sid, req.file.clone()).await;
+    }
+    match state
+        .bridge
+        .open_file(&req.file, req.line, req.session_id.as_deref())
+    {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -347,6 +390,31 @@ async fn rpc_review(
     }
 }
 
+/// Return all annotations for all files in a session.
+async fn rpc_session_annotations(
+    AxumState(state): AxumState<ServerState>,
+    Json(req): Json<SessionAnnotationsRequest>,
+) -> impl IntoResponse {
+    let files = state.sessions.get_files(&req.session_id).await;
+    if files.is_empty() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "session not found or has no files"})),
+        )
+            .into_response();
+    }
+
+    let mut result = Vec::new();
+    for file in &files {
+        let annotations = state.bridge.get_annotations(file).unwrap_or_default();
+        result.push(serde_json::json!({
+            "file": file,
+            "annotations": annotations,
+        }));
+    }
+    (StatusCode::OK, Json(serde_json::json!(result))).into_response()
+}
+
 async fn rpc_review_pr(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<ReviewPrRequest>,
@@ -384,6 +452,7 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/review.wait", post(rpc_review_wait))
         .route("/rpc/review", post(rpc_review))
         .route("/rpc/review.pr", post(rpc_review_pr))
+        .route("/rpc/session.annotations", post(rpc_session_annotations))
         .with_state(state)
 }
 
@@ -989,6 +1058,77 @@ mod tests {
         let id = sessions.create("test.rs".to_string()).await;
         assert!(sessions.take_receiver(&id).await.is_some());
         assert!(sessions.take_receiver(&id).await.is_none());
+    }
+
+    // =======================================================================
+    // session.annotations
+    // =======================================================================
+
+    #[tokio::test]
+    async fn test_session_annotations_returns_files() {
+        let bridge = Arc::new(MockBridge::new());
+        bridge.annotations.lock().unwrap().insert(
+            "/src/a.rs".to_string(),
+            vec![make_test_annotation("fix this", 10)],
+        );
+        let (base, _, sessions) = spawn_test_server_with_bridge(bridge).await;
+        let client = reqwest::Client::new();
+
+        // Create a session with two files
+        let session_id = sessions.create("session-test".to_string()).await;
+        sessions
+            .add_file(&session_id, "/src/a.rs".to_string())
+            .await;
+        sessions
+            .add_file(&session_id, "/src/b.rs".to_string())
+            .await;
+
+        let resp = post(&client, &format!("{}/rpc/session.annotations", base))
+            .json(&serde_json::json!({"session_id": session_id}))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), 200);
+        let body: serde_json::Value = resp.json().await.unwrap();
+        let arr = body.as_array().unwrap();
+        assert_eq!(arr.len(), 3); // "session-test" + a.rs + b.rs
+        let a_entry = arr.iter().find(|e| e["file"] == "/src/a.rs").unwrap();
+        assert_eq!(a_entry["annotations"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_session_annotations_unknown_session_returns_404() {
+        let (base, _, _) = spawn_test_server().await;
+        let client = reqwest::Client::new();
+
+        let resp = post(&client, &format!("{}/rpc/session.annotations", base))
+            .json(&serde_json::json!({"session_id": "does-not-exist"}))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), 404);
+    }
+
+    #[tokio::test]
+    async fn test_open_with_session_tracks_file() {
+        let (base, _, sessions) = spawn_test_server().await;
+        let client = reqwest::Client::new();
+
+        let session_id = sessions.create("primary.rs".to_string()).await;
+
+        post(&client, &format!("{}/rpc/open", base))
+            .json(&serde_json::json!({
+                "file": "/src/extra.rs",
+                "session_id": session_id
+            }))
+            .send()
+            .await
+            .unwrap();
+
+        let files = sessions.get_files(&session_id).await;
+        assert!(files.contains(&"/src/extra.rs".to_string()));
     }
 
     // =======================================================================
