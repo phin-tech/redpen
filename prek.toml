@@ -47,4 +47,5 @@ name = "Red Pen review gate"
 entry = "redpen open --diff-remote --wait --timeout 600"
 language = "system"
 pass_filenames = false
+always_run = true
 stages = ["pre-push"]
