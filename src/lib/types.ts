@@ -81,4 +81,6 @@ export interface CleanupReviewSessionsResult {
 }
 
 import type { Annotation as GeneratedAnnotation } from "./bindings/Annotation";
+import type { GitHubPrSession as GeneratedGitHubPrSession } from "./bindings/GitHubPrSession";
 export type Annotation = GeneratedAnnotation & { github?: GitHubAnnotationMetadata | null };
+type GitHubPrSession = GeneratedGitHubPrSession;

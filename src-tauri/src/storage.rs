@@ -104,6 +104,12 @@ pub struct CleanupResult {
     pub removed_sessions: usize,
 }
 
+pub type ReviewSessionStatusRow = (
+    ReviewSessionStatus,
+    Option<String>,
+    Option<String>,
+);
+
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     #[error("{0}")]
@@ -419,7 +425,7 @@ impl StateDb {
     pub fn review_session_status(
         &self,
         session_id: &str,
-    ) -> Result<Option<(ReviewSessionStatus, Option<String>, Option<String>)>, StorageError> {
+    ) -> Result<Option<ReviewSessionStatusRow>, StorageError> {
         let conn = self.connect()?;
         conn.query_row(
             "SELECT status, verdict, primary_file_path FROM review_sessions WHERE id = ?1",

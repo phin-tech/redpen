@@ -60,6 +60,7 @@ impl<E: EventBus> AnnotationService<E> {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_annotation_full(
         &self,
         project_root: &Path,
@@ -97,6 +98,7 @@ impl<E: EventBus> AnnotationService<E> {
         self.update_annotation_full(project_root, source_path, id, body, labels, None, None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_annotation_full(
         &self,
         project_root: &Path,
@@ -180,6 +182,7 @@ impl<E: EventBus> AnnotationService<E> {
         self.get_all_annotations(project_root, project_root)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_annotation_in_session(
         &self,
         project_root: &Path,
@@ -206,6 +209,7 @@ impl<E: EventBus> AnnotationService<E> {
         Ok(result)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_annotation_in_session(
         &self,
         project_root: &Path,

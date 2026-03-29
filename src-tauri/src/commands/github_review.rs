@@ -308,7 +308,7 @@ pub fn submit_github_pr_review(
         let mut sidecar = SidecarFile::load(sidecar_path)?;
         let relative_path = file_path
             .strip_prefix(&session.worktree_path)
-            .unwrap_or(&file_path)
+            .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
 
@@ -342,7 +342,7 @@ pub fn submit_github_pr_review(
             }
         }
 
-        sidecar.save(&sidecar_path)?;
+        sidecar.save(sidecar_path)?;
     }
 
     let comments_payload: Vec<Value> = pending_roots
