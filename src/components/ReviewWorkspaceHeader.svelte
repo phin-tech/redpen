@@ -1,13 +1,14 @@
 <script lang="ts">
   import { open as openUrl } from "@tauri-apps/plugin-shell";
   import type { SubmitGitHubReviewResult } from "$lib/types";
-  import { getReviewSession } from "$lib/stores/review.svelte";
+  import { getReviewSession, clearReviewSession } from "$lib/stores/review.svelte";
   import {
     getGitHubReviewState,
     resyncActiveGitHubReview,
     discardActiveGitHubReviewChanges,
     submitActiveGitHubReview,
   } from "$lib/stores/githubReview.svelte";
+  import { submitReviewVerdict, type ReviewVerdict } from "$lib/review";
 
   let { onOpenHelp }: { onOpenHelp: () => void } = $props();
 
@@ -95,6 +96,13 @@
     }
   }
 
+  async function handleLocalReviewVerdict(verdict: ReviewVerdict) {
+    const file = reviewSession.files[0];
+    if (!file) return;
+    await submitReviewVerdict(file, verdict);
+    clearReviewSession();
+  }
+
   function handleWindowKeydown(e: KeyboardEvent) {
     if (e.key === "Escape" && showSubmitMenu) {
       showSubmitMenu = false;
@@ -151,11 +159,6 @@
 
 {#if hasReviewContext}
   <div class="review-summary">
-    <button type="button" class="review-summary-help" onclick={onOpenHelp}>
-      Help
-      <kbd>?</kbd>
-    </button>
-
     <div class="review-summary-main">
       <div class="review-summary-line">
         <div class="review-summary-kicker">{reviewContextLabel}</div>
@@ -222,7 +225,21 @@
           {/if}
         </div>
       </div>
+    {:else if reviewSession.active}
+      <div class="review-summary-actions">
+        <button type="button" class="review-summary-btn review-summary-btn-success" onclick={() => void handleLocalReviewVerdict("approved")}>
+          Approve
+        </button>
+        <button type="button" class="review-summary-btn review-summary-btn-danger" onclick={() => void handleLocalReviewVerdict("changes_requested")}>
+          Request changes
+        </button>
+      </div>
     {/if}
+
+    <button type="button" class="review-summary-help" onclick={onOpenHelp}>
+      Help
+      <kbd>?</kbd>
+    </button>
   </div>
 {/if}
 
@@ -396,6 +413,26 @@
     color: var(--surface-base);
     background: var(--accent-hover);
     border-color: color-mix(in srgb, var(--accent-hover) 75%, black 25%);
+  }
+  .review-summary-btn-success {
+    color: var(--color-success);
+    border-color: color-mix(in srgb, var(--color-success) 35%, var(--border-default));
+    background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  }
+  .review-summary-btn-success:hover {
+    color: var(--color-success);
+    border-color: color-mix(in srgb, var(--color-success) 60%, var(--border-default));
+    background: color-mix(in srgb, var(--color-success) 22%, transparent);
+  }
+  .review-summary-btn-danger {
+    color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--color-danger) 35%, var(--border-default));
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+  }
+  .review-summary-btn-danger:hover {
+    color: var(--color-danger);
+    border-color: color-mix(in srgb, var(--color-danger) 60%, var(--border-default));
+    background: color-mix(in srgb, var(--color-danger) 22%, transparent);
   }
   .review-header-submit-menu {
     position: relative;
