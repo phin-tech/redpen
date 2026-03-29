@@ -79,7 +79,11 @@ pub fn run() {
                 .build(app)?;
 
             let app_submenu = SubmenuBuilder::new(app, "Red Pen")
-                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
+                .item(&PredefinedMenuItem::about(
+                    app,
+                    Some("About Red Pen"),
+                    None,
+                )?)
                 .separator()
                 .item(&settings_item)
                 .separator()
@@ -143,11 +147,10 @@ pub fn run() {
                 .build()?;
 
             // ── Annotations menu ──────────────────────────────────────────────
-            let add_annotation =
-                IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
-                    .accelerator("Cmd+Return")
-                    .native_icon(NativeIcon::Add)
-                    .build(app)?;
+            let add_annotation = IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
+                .accelerator("Cmd+Enter")
+                .native_icon(NativeIcon::Add)
+                .build(app)?;
 
             let reload_annotations =
                 IconMenuItemBuilder::with_id("annotations.reload", "Reload Annotations")

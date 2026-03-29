@@ -150,31 +150,35 @@
 
     // Native menu bar event listeners
     unlistenMenuItems = await Promise.all([
-      listen("menu-open-folder", () => openFolderPicker()),
+      listen("menu-open-folder", () => void openFolderPicker()),
       listen("menu-go-to-file", () => openCommandPalette("file")),
       listen("menu-command-palette", () => openCommandPalette("default")),
       listen("menu-export-annotations", async () => {
-        if (!editor.currentFilePath) return;
-        const markdown = await invoke<string>("export_annotations", { filePath: editor.currentFilePath });
-        if (!markdown) return;
-        const destPath = await saveDialog({
-          defaultPath: "annotations.md",
-          filters: [{ name: "Markdown", extensions: ["md"] }],
-        });
-        if (destPath) await writeTextFile(destPath, markdown);
+        try {
+          if (!editor.currentFilePath) return;
+          const markdown = await invoke<string>("export_annotations", { filePath: editor.currentFilePath });
+          if (!markdown) return;
+          const destPath = await saveDialog({
+            defaultPath: "annotations.md",
+            filters: [{ name: "Markdown", extensions: ["md"] }],
+          });
+          if (destPath) await writeTextFile(destPath, markdown);
+        } catch (err) {
+          console.error("Failed to export annotations:", err);
+        }
       }),
-      listen("menu-add-annotation", () => runCommand("annotations.add")),
-      listen("menu-reload-annotations", () => runCommand("annotations.reload")),
-      listen("menu-clear-annotations", () => runCommand("annotations.clear")),
-      listen("menu-toggle-markdown-preview", () => runCommand("view.toggleMarkdownPreview")),
-      listen("menu-diff-split", () => runCommand("diff.split")),
-      listen("menu-diff-unified", () => runCommand("diff.unified")),
-      listen("menu-diff-highlights", () => runCommand("diff.highlights")),
-      listen("menu-diff-exit", () => runCommand("diff.exit")),
-      listen("menu-review-changes", () => runCommand("review.changes")),
-      listen("menu-agent-feedback", () => runCommand("review.feedback")),
-      listen("menu-approve-review", () => runCommand("review.approve")),
-      listen("menu-request-changes", () => runCommand("review.requestChanges")),
+      listen("menu-add-annotation", () => void runCommand("annotations.add")),
+      listen("menu-reload-annotations", () => void runCommand("annotations.reload")),
+      listen("menu-clear-annotations", () => void runCommand("annotations.clear")),
+      listen("menu-toggle-markdown-preview", () => void runCommand("view.toggleMarkdownPreview")),
+      listen("menu-diff-split", () => void runCommand("diff.split")),
+      listen("menu-diff-unified", () => void runCommand("diff.unified")),
+      listen("menu-diff-highlights", () => void runCommand("diff.highlights")),
+      listen("menu-diff-exit", () => void runCommand("diff.exit")),
+      listen("menu-review-changes", () => void runCommand("review.changes")),
+      listen("menu-agent-feedback", () => void runCommand("review.feedback")),
+      listen("menu-approve-review", () => void runCommand("review.approve")),
+      listen("menu-request-changes", () => void runCommand("review.requestChanges")),
       listen("menu-find", () => editorRef?.openSearch()),
       listen("menu-find-next", () => editorRef?.navigateMatch(1)),
       listen("menu-find-previous", () => editorRef?.navigateMatch(-1)),
