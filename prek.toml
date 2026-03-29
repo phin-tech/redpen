@@ -2,6 +2,14 @@
 repo = "local"
 
 [[repos.hooks]]
+id = "check-up-to-date"
+name = "Branch is up to date with remote"
+entry = "./script/check-up-to-date"
+language = "system"
+pass_filenames = false
+stages = ["pre-push"]
+
+[[repos.hooks]]
 id = "check-markdown"
 name = "Check AGENTS.md == CLAUDE.md"
 entry = "task --taskfile .ai/Taskfile.dist.yml check-markdown"
