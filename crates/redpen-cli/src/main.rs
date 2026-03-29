@@ -543,9 +543,7 @@ fn cmd_wait_via_server(
             println!("{}", serde_json::to_string_pretty(&output)?);
             Ok(())
         }
-        server_client::ReviewWaitResult::Timeout => {
-            Err("Review wait timed out".into())
-        }
+        server_client::ReviewWaitResult::Timeout => Err("Review wait timed out".into()),
         server_client::ReviewWaitResult::ServerUnavailable => {
             Err("Review wait failed — Red Pen server unavailable".into())
         }
@@ -781,7 +779,12 @@ fn git_default_branch() -> Result<String, Box<dyn std::error::Error>> {
 /// Excludes deleted files and uses new paths for renames.
 fn git_diff_files(base: &str) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let output = process::Command::new("git")
-        .args(["diff", "--name-only", "--diff-filter=d", &format!("{}..HEAD", base)])
+        .args([
+            "diff",
+            "--name-only",
+            "--diff-filter=d",
+            &format!("{}..HEAD", base),
+        ])
         .output()?;
     if !output.status.success() {
         return Err(format!(

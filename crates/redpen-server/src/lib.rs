@@ -452,10 +452,7 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/review.wait", post(rpc_review_wait))
         .route("/rpc/review", post(rpc_review))
         .route("/rpc/review.pr", post(rpc_review_pr))
-        .route(
-            "/rpc/session.annotations",
-            post(rpc_session_annotations),
-        )
+        .route("/rpc/session.annotations", post(rpc_session_annotations))
         .with_state(state)
 }
 
@@ -1079,17 +1076,18 @@ mod tests {
 
         // Create a session with two files
         let session_id = sessions.create("session-test".to_string()).await;
-        sessions.add_file(&session_id, "/src/a.rs".to_string()).await;
-        sessions.add_file(&session_id, "/src/b.rs".to_string()).await;
+        sessions
+            .add_file(&session_id, "/src/a.rs".to_string())
+            .await;
+        sessions
+            .add_file(&session_id, "/src/b.rs".to_string())
+            .await;
 
-        let resp = post(
-            &client,
-            &format!("{}/rpc/session.annotations", base),
-        )
-        .json(&serde_json::json!({"session_id": session_id}))
-        .send()
-        .await
-        .unwrap();
+        let resp = post(&client, &format!("{}/rpc/session.annotations", base))
+            .json(&serde_json::json!({"session_id": session_id}))
+            .send()
+            .await
+            .unwrap();
 
         assert_eq!(resp.status(), 200);
         let body: serde_json::Value = resp.json().await.unwrap();
@@ -1104,14 +1102,11 @@ mod tests {
         let (base, _, _) = spawn_test_server().await;
         let client = reqwest::Client::new();
 
-        let resp = post(
-            &client,
-            &format!("{}/rpc/session.annotations", base),
-        )
-        .json(&serde_json::json!({"session_id": "does-not-exist"}))
-        .send()
-        .await
-        .unwrap();
+        let resp = post(&client, &format!("{}/rpc/session.annotations", base))
+            .json(&serde_json::json!({"session_id": "does-not-exist"}))
+            .send()
+            .await
+            .unwrap();
 
         assert_eq!(resp.status(), 404);
     }

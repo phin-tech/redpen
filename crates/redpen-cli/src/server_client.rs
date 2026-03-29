@@ -53,7 +53,6 @@ fn rpc_post<T: DeserializeOwned>(endpoint: &str, body: &serde_json::Value) -> Op
     serde_json::from_str(&resp).ok()
 }
 
-
 /// Open a file in the GUI via the server. Returns true if successful.
 pub fn open_file(file: &str, line: Option<u32>) -> bool {
     let body = json!({"file": file, "line": line});
