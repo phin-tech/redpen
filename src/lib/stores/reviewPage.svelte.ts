@@ -300,3 +300,29 @@ export function getCardAtIndex(index: number): { filePath: string; annotation: A
   }
   return null;
 }
+
+export function setReviewPageStateForTests(
+  mode: ReviewMode | null,
+  options?: {
+    scope?: ReviewScope;
+    files?: ReviewFileData[];
+    loading?: boolean;
+    error?: string | null;
+  },
+) {
+  state.mode = mode;
+  state.scope = options?.scope ?? "session";
+  state.activeCardIndex = 0;
+  state.files = options?.files ?? [];
+  state.loading = options?.loading ?? false;
+  state.error = options?.error ?? null;
+}
+
+export function resetReviewPageForTests() {
+  state.mode = null;
+  state.scope = "session";
+  state.activeCardIndex = 0;
+  state.files = [];
+  state.loading = false;
+  state.error = null;
+}

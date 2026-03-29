@@ -182,3 +182,14 @@ export async function clearAllAnnotations(filePath: string) {
     state.sidecar.annotations = [];
   }
 }
+
+export function resetAnnotationsForTests() {
+  state.sidecar = null;
+  state.selectedAnnotationId = null;
+  state.filter = "all";
+  state.sidebarView = "file";
+  state.projectAnnotations = [];
+  state.projectAnnotationsLoading = false;
+  state.bubblesEnabled = true;
+  state.bubbleKindFilter = new Set<AnnotationKind>(ALL_KINDS);
+}

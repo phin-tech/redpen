@@ -32,3 +32,7 @@ export function clearReviewSession() {
   state.files = [];
   state.active = false;
 }
+
+export function resetReviewSessionForTests() {
+  clearReviewSession();
+}

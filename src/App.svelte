@@ -1,70 +1,29 @@
 <script lang="ts">
-  import FileTree from "./components/FileTree.svelte";
-  import EditorPane from "./components/EditorPane.svelte";
-  import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
+
   import AnnotationPopover from "./components/AnnotationPopover.svelte";
-  import SettingsDialog from "./components/SettingsDialog.svelte";
+  import AnnotationSidebar from "./components/AnnotationSidebar.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
+  import EditorPane from "./components/EditorPane.svelte";
+  import FileTree from "./components/FileTree.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import ReviewWorkspaceHeader from "./components/ReviewWorkspaceHeader.svelte";
-  import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-  import { readDirectory, sendNotification, getSettings } from "$lib/tauri";
-  import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
-  import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
-  import { activateReviewSession, addReviewFile } from "$lib/stores/review.svelte";
-  import { openReviewPage, closeReviewPage, isReviewPageOpen } from "$lib/stores/reviewPage.svelte";
-  import {
-    addRootFolder,
-    getWorkspace,
-    expandAllFolders,
-    collapseAllFolders,
-    toggleShowChangedOnly,
-  } from "$lib/stores/workspace.svelte";
-  import { createCommandRegistry, findCommand } from "$lib/commands";
-  import type { AppCommandContext } from "$lib/commands";
-  import { getDiffState, enterDiff, exitDiff, setDiffMode, computeDiff, invalidateFile } from "$lib/stores/diff.svelte";
-  import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-  import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
-  import { listen } from "@tauri-apps/api/event";
-  import { watch, writeTextFile } from "@tauri-apps/plugin-fs";
-  import { invoke } from "@tauri-apps/api/core";
-  import { submitReviewVerdict } from "$lib/review";
-  import {
-    activateGitHubReviewSession,
-    openGitHubPullRequest,
-  } from "$lib/stores/githubReview.svelte";
-  import type { GitHubPrSession } from "$lib/types";
-  import { isShortcutInputTarget, matchesShortcut } from "$lib/shortcuts";
+  import SettingsDialog from "./components/SettingsDialog.svelte";
+  import { createAppShellController, type AppEditorRef } from "$lib/controllers/appShell.svelte";
+  import { getDiffState } from "$lib/stores/diff.svelte";
+  import { getEditor } from "$lib/stores/editor.svelte";
 
-  import { onMount, onDestroy, untrack } from "svelte";
-  import { debounce } from "$lib/utils/debounce";
-  const editor = getEditor();
-  const workspace = getWorkspace();
-  const commands = createCommandRegistry();
   const diff = getDiffState();
+  const editor = getEditor();
+
+  let editorRef: AppEditorRef | undefined = $state(undefined);
   let savedLeftPanelWidth = $state(240);
-
-  // Use ref pattern for Svelte 5 (not bind:this + export function)
-  let editorRef: {
-    scrollToLine: (line: number) => void;
-    openSearch: () => void;
-    closeSearch: () => void;
-    navigateMatch: (dir: 1 | -1) => void;
-    getView: () => any;
-    moveCursorLine: (dir: 1 | -1) => void;
-    jumpToBoundary: (boundary: "top" | "bottom") => void;
-    toggleVisualSelection: (mode: "char" | "line") => void;
-    clearVisualSelection: () => void;
-    hasVisualSelection: () => boolean;
-  } | undefined = $state(undefined);
-  let showSettings = $state(false);
-  let showCommandPalette = $state(false);
-  let commandPaletteMode = $state<"default" | "file">("default");
-  let showReviewShortcutHelp = $state(false);
-
-  // Resizable panel widths
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
+
+  const appShell = createAppShellController({
+    getEditorRef: () => editorRef,
+  });
 
   function resizeLeft(delta: number) {
     leftPanelWidth = Math.max(140, Math.min(500, leftPanelWidth + delta));
@@ -74,311 +33,23 @@
     rightPanelWidth = Math.max(160, Math.min(600, rightPanelWidth - delta));
   }
 
-  // File watcher cleanup
-  let stopWatcher: (() => void) | null = null;
-  let lastDiffedFileKey: string | null = null;
-
-  // Selection state for annotation creation
-  let selection: {
-    fromLine: number;
-    fromCol: number;
-    toLine: number;
-    toCol: number;
-  } | null = $state(null);
-  let showPopover = $state(false);
-  let popoverPosition = $state({ x: 0, y: 0 });
-
-  async function handleFileSelect(path: string) {
-    await openFile(path);
-    await loadAnnotations(path);
-
-    // Set up file watcher for source change detection
-    stopWatcher?.();
-    let lastAnnotationIds = new Set(
-      getAnnotationsState().sidecar?.annotations.map(a => a.id) ?? []
-    );
-    const reloadFile = debounce(async () => {
-      if (editor.currentFilePath) {
-        const directory = workspace.rootFolders[0];
-        if (directory) {
-          invalidateFile(directory, editor.currentFilePath);
-          if (diff.enabled) {
-            void computeDiff(directory, editor.currentFilePath);
-          }
-        }
-        await openFile(editor.currentFilePath);
-        await loadAnnotations(editor.currentFilePath);
-
-        // Detect new annotations from other authors
-        const state = getAnnotationsState();
-        const currentSettings = await getSettings();
-        const currentAuthor = currentSettings.author;
-        const newAnnotations = (state.sidecar?.annotations ?? []).filter(
-          a => !lastAnnotationIds.has(a.id) && a.author !== currentAuthor
-        );
-        lastAnnotationIds = new Set(
-          state.sidecar?.annotations.map(a => a.id) ?? []
-        );
-
-        // No extra debounce needed — reloadFile is already debounced at 500ms,
-        // so burst file-watch events are collapsed into a single detection pass.
-        if (newAnnotations.length > 0) {
-          const fileName = editor.currentFilePath.split("/").pop() ?? "unknown";
-          for (const ann of newAnnotations) {
-            const kind = ann.replyTo ? "annotation_reply" : "new_annotation";
-            const line = ann.anchor?.range?.startLine;
-            sendNotification(kind, fileName, line).catch(() => {});
-          }
-        }
-      }
-    }, 500);
-    stopWatcher = await watch(path, reloadFile, { recursive: false });
-  }
-
-  // Deep link cleanup functions
-  let unlistenDeepLink: (() => void) | undefined;
-  let unlistenDeepLinkEvent: (() => void) | undefined;
-  let unlistenSettings: (() => void) | undefined;
-  let unlistenGitHubReviewSession: (() => void) | undefined;
-  let unlistenMenuItems: (() => void)[] = [];
-
   onMount(async () => {
-    // Listen for settings menu event from native menu bar
-    unlistenSettings = await listen("open-settings", () => {
-      showSettings = true;
-    });
-
-    // Native menu bar event listeners
-    unlistenMenuItems = await Promise.all([
-      listen("menu-open-folder", () => openFolderPicker()),
-      listen("menu-go-to-file", () => openCommandPalette("file")),
-      listen("menu-command-palette", () => openCommandPalette("default")),
-      listen("menu-export-annotations", async () => {
-        if (!editor.currentFilePath) return;
-        const markdown = await invoke<string>("export_annotations", { filePath: editor.currentFilePath });
-        if (!markdown) return;
-        const destPath = await saveDialog({
-          defaultPath: "annotations.md",
-          filters: [{ name: "Markdown", extensions: ["md"] }],
-        });
-        if (destPath) await writeTextFile(destPath, markdown);
-      }),
-      listen("menu-add-annotation", () => runCommand("annotations.add")),
-      listen("menu-reload-annotations", () => runCommand("annotations.reload")),
-      listen("menu-clear-annotations", () => runCommand("annotations.clear")),
-      listen("menu-toggle-markdown-preview", () => runCommand("view.toggleMarkdownPreview")),
-      listen("menu-diff-split", () => runCommand("diff.split")),
-      listen("menu-diff-unified", () => runCommand("diff.unified")),
-      listen("menu-diff-highlights", () => runCommand("diff.highlights")),
-      listen("menu-diff-exit", () => runCommand("diff.exit")),
-      listen("menu-review-changes", () => runCommand("review.changes")),
-      listen("menu-agent-feedback", () => runCommand("review.feedback")),
-      listen("menu-approve-review", () => runCommand("review.approve")),
-      listen("menu-request-changes", () => runCommand("review.requestChanges")),
-      listen("menu-find", () => editorRef?.openSearch()),
-      listen("menu-find-next", () => editorRef?.navigateMatch(1)),
-      listen("menu-find-previous", () => editorRef?.navigateMatch(-1)),
-    ]);
-
-    // Drag-and-drop handling
-    const appWindow = getCurrentWebviewWindow();
-    await appWindow.onDragDropEvent(async (event) => {
-      if (event.payload.type === "drop") {
-        for (const path of event.payload.paths) {
-          try {
-            await readDirectory(path);
-            // If readDirectory succeeds, it's a directory — add as root
-            await addRootFolder(path);
-          } catch {
-            // It's a file — open it directly
-            // Add its parent directory as a root folder, then open the file
-            const parentDir = path.substring(0, path.lastIndexOf("/"));
-            if (parentDir) await addRootFolder(parentDir);
-            await handleFileSelect(path);
-          }
-        }
-      }
-    });
-
-    // Deep link handling
-    async function handleDeepLinkUrl(rawUrl: string) {
-      try {
-        const url = new URL(rawUrl);
-        const action = url.hostname || "open";
-        const filePath = url.searchParams.get("file");
-        const prRef = url.searchParams.get("pr");
-        const localPath = url.searchParams.get("localPath");
-        const reviewSession = url.searchParams.get("reviewSession");
-
-        if (action === "review-pr" && prRef) {
-          await openGitHubPullRequest(prRef, localPath ?? undefined);
-          return;
-        }
-
-        if (action === "refresh" && filePath) {
-          // Reload annotations for the file (e.g., after CLI writes a reply)
-          if (editor.currentFilePath === filePath) {
-            await loadAnnotations(filePath);
-          }
-          return;
-        }
-
-        const line = url.searchParams.get("line");
-
-        if (filePath) {
-          // Use git repo root if available, otherwise fall back to parent directory
-          const gitRoot = await invoke<string | null>("get_git_root", { path: filePath });
-          const rootDir = gitRoot ?? filePath.substring(0, filePath.lastIndexOf("/"));
-          if (rootDir) await addRootFolder(rootDir);
-          if (reviewSession) {
-            activateReviewSession(reviewSession, [filePath]);
-          } else {
-            addReviewFile(filePath);
-          }
-          await handleFileSelect(filePath);
-          if (line) {
-            setTimeout(() => editorRef?.scrollToLine(parseInt(line)), 100);
-          }
-        }
-      } catch (e) {
-        console.error("Invalid deep link URL:", rawUrl, e);
-      }
-    }
-
-    // Listen for deep links while app is running (warm start)
-    unlistenDeepLink = await onOpenUrl(async (urls: string[]) => {
-      for (const rawUrl of urls) {
-        await handleDeepLinkUrl(rawUrl);
-      }
-    });
-
-    unlistenDeepLinkEvent = await listen<string>("deep-link-open", async (event) => {
-      await handleDeepLinkUrl(event.payload);
-    });
-
-    unlistenGitHubReviewSession = await listen<GitHubPrSession>("open-github-review-session", async (event) => {
-      await activateGitHubReviewSession(event.payload, {
-        refreshQueue: true,
-        replaceRoots: true,
-      });
-    });
-
-    // Check for cold-start deep links stored in Rust state
-    const pendingUrls = await invoke<string[]>("get_pending_deep_links");
-    for (const rawUrl of pendingUrls) {
-      await handleDeepLinkUrl(rawUrl);
-    }
+    await appShell.mount();
   });
 
   onDestroy(() => {
-    unlistenDeepLink?.();
-    unlistenDeepLinkEvent?.();
-    unlistenSettings?.();
-    unlistenGitHubReviewSession?.();
-    stopWatcher?.();
-    unlistenMenuItems.forEach((fn) => fn());
+    appShell.destroy();
   });
 
-  function handleSelectionChange(
-    fromLine: number,
-    fromCol: number,
-    toLine: number,
-    toCol: number
-  ) {
-    selection = { fromLine, fromCol, toLine, toCol };
-  }
-
-  function handleAnnotationClick(line: number) {
-    editorRef?.scrollToLine(line);
-  }
-
-  function openAnnotationPopover() {
-    if (selection && editor.currentFilePath) {
-      popoverPosition = { x: window.innerWidth / 2 - 160, y: window.innerHeight / 3 };
-      showPopover = true;
-    }
-  }
-
-  function openCommandPalette(mode: "default" | "file") {
-    commandPaletteMode = mode;
-    showCommandPalette = true;
-  }
-
-  function openSettingsPanel() {
-    showCommandPalette = false;
-    showSettings = true;
-  }
-
-  function openAnnotationCommand() {
-    showCommandPalette = false;
-    openAnnotationPopover();
-  }
-
-  async function submitCurrentReviewVerdict(verdict: "approved" | "changes_requested") {
-    if (!editor.currentFilePath) return;
-    await submitReviewVerdict(editor.currentFilePath, verdict);
-  }
-
-  async function openFolderPicker() {
-    const selected = await openDialog({ directory: true, multiple: true });
-    if (!selected) return;
-    for (const path of Array.isArray(selected) ? selected : [selected]) {
-      if (path) await addRootFolder(path);
-    }
-  }
-
-  const commandContext: AppCommandContext = {
-    openCommandPalette,
-    openFolder: openFolderPicker,
-    openSettings: openSettingsPanel,
-    openAddAnnotation: openAnnotationCommand,
-    expandAllFolders,
-    collapseAllFolders,
-    toggleShowChangedOnly,
-    hasRoots: () => workspace.rootFolders.length > 0,
-    canAddAnnotation: () => Boolean(selection && editor.currentFilePath),
-    hasAnnotations: () => {
-      const annotationsState = getAnnotationsState();
-      return Boolean(editor.currentFilePath && annotationsState.sidecar && annotationsState.sidecar.annotations.length > 0);
-    },
-    reloadAnnotations: async () => {
-      if (editor.currentFilePath) {
-        await loadAnnotations(editor.currentFilePath);
-      }
-    },
-    clearAnnotations: async () => {
-      if (editor.currentFilePath) {
-        await clearAllAnnotations(editor.currentFilePath);
-      }
-    },
-    isMarkdownFile,
-    toggleMarkdownPreview: togglePreview,
-    enterDiffMode: (mode) => {
-      if (editor.currentFilePath && workspace.rootFolders.length > 0) {
-        setDiffMode(mode);
-        if (!diff.enabled) {
-          enterDiff(workspace.rootFolders[0], editor.currentFilePath);
-        }
-      }
-    },
-    exitDiffMode: () => exitDiff(),
-    hasDiffMode: () => diff.enabled,
-    hasOpenFile: () => Boolean(editor.currentFilePath),
-    openReviewChanges: () => openReviewPage("changes"),
-    openAgentFeedback: () => openReviewPage("feedback"),
-    isReviewPageOpen: () => isReviewPageOpen(),
-    canSubmitReviewVerdict: () => Boolean(editor.currentFilePath),
-    approveReview: () => submitCurrentReviewVerdict("approved"),
-    requestReviewChanges: () => submitCurrentReviewVerdict("changes_requested"),
-  };
-
-  // Auto-collapse file tree in split mode
   $effect(() => {
     if (diff.enabled && diff.mode === "split") {
-      // Save current width without tracking it (avoids infinite loop)
       const current = untrack(() => leftPanelWidth);
-      if (current > 0) savedLeftPanelWidth = current;
-      if (current !== 0) leftPanelWidth = 0;
+      if (current > 0) {
+        savedLeftPanelWidth = current;
+      }
+      if (current !== 0) {
+        leftPanelWidth = 0;
+      }
     } else {
       const saved = untrack(() => savedLeftPanelWidth);
       if (untrack(() => leftPanelWidth) === 0 && saved > 0) {
@@ -386,194 +57,111 @@
       }
     }
   });
-
-  // Re-diff when switching files while diff mode is active
-  $effect(() => {
-    const filePath = editor.currentFilePath;
-    const directory = workspace.rootFolders[0];
-    if (diff.enabled && filePath && directory) {
-      const key = `${directory}::${filePath}`;
-      if (key === lastDiffedFileKey) return;
-      lastDiffedFileKey = key;
-      // Keep this effect dependent on file/diff toggle only; computeDiff mutates
-      // diff store fields (loading/error/result) and must not become a feedback edge.
-      untrack(() => {
-        void computeDiff(directory, filePath);
-      });
-    } else {
-      lastDiffedFileKey = null;
-    }
-  });
-
-  async function runCommand(id: string) {
-    const command = findCommand(commands, id);
-    if (!command) return;
-    if (command.isEnabled && !command.isEnabled(commandContext)) return;
-    await command.run(commandContext);
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.defaultPrevented || e.isComposing) return;
-
-    const ignoreGlobalShortcuts = isShortcutInputTarget(e.target);
-
-    if (e.key === "Escape") {
-      if (showCommandPalette) {
-        e.preventDefault();
-        showCommandPalette = false;
-        return;
-      }
-      if (isReviewPageOpen()) {
-        e.preventDefault();
-        closeReviewPage();
-        return;
-      }
-    }
-
-    if (ignoreGlobalShortcuts) return;
-
-    const isEditorTarget = e.target instanceof HTMLElement && e.target.closest(".cm-editor");
-
-    if (!isEditorTarget && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (e.key === "[") {
-        if (isReviewPageOpen()) {
-          e.preventDefault();
-          closeReviewPage();
-        }
-        return;
-      }
-      if (e.key === "]") {
-        if (!isReviewPageOpen()) {
-          e.preventDefault();
-          void runCommand("review.changes");
-        }
-        return;
-      }
-    }
-
-    if (matchesShortcut(e, ["Mod", "Enter"])) {
-      e.preventDefault();
-      void runCommand("annotations.add");
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "K"])) {
-      e.preventDefault();
-      openCommandPalette("default");
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "P"])) {
-      e.preventDefault();
-      openCommandPalette("file");
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "Shift", "R"])) {
-      e.preventDefault();
-      if (isReviewPageOpen()) {
-        closeReviewPage();
-      } else {
-        void runCommand("review.changes");
-      }
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "Shift", "M"])) {
-      e.preventDefault();
-      void runCommand("view.toggleMarkdownPreview");
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", ","])) {
-      e.preventDefault();
-      void runCommand("view.openSettings");
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "F"])) {
-      e.preventDefault();
-      editorRef?.openSearch();
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "G"])) {
-      e.preventDefault();
-      editorRef?.navigateMatch(1);
-      return;
-    }
-    if (matchesShortcut(e, ["Mod", "Shift", "G"])) {
-      e.preventDefault();
-      editorRef?.navigateMatch(-1);
-    }
-  }
-
-  async function handleAnnotationSubmit(body: string, labels: string[]) {
-    if (!selection || !editor.currentFilePath) return;
-    await addAnnotation(
-      editor.currentFilePath,
-      body,
-      labels,
-      selection.fromLine,
-      selection.fromCol,
-      selection.toLine,
-      selection.toCol
-    );
-    showPopover = false;
-    selection = null;
-  }
 </script>
 
-<svelte:window onkeydown={handleKeydown} oncontextmenu={(e) => e.preventDefault()} />
+<svelte:window
+  onkeydown={appShell.handleKeydown}
+  oncontextmenu={appShell.handleContextMenu}
+/>
 
 <div class="app-root">
-  <ReviewWorkspaceHeader onOpenHelp={() => (showReviewShortcutHelp = true)} />
-  <div class="flex flex-1 overflow-hidden">
-    <div class="shrink-0 border-r border-border-default/50 overflow-hidden" style="width: {leftPanelWidth}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: inset -1px 0 0 var(--border-subtle)">
+  <ReviewWorkspaceHeader onOpenHelp={appShell.openReviewShortcutHelp} />
+
+  <div class="workspace-shell">
+    <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
       <FileTree
-        onFileSelect={handleFileSelect}
+        onFileSelect={appShell.handleFileSelect}
         selectedPath={editor.currentFilePath}
-        onOpenFolder={openFolderPicker}
-        onExpandAll={expandAllFolders}
-        onCollapseAll={collapseAllFolders}
-        onToggleShowChangedOnly={toggleShowChangedOnly}
+        onOpenFolder={appShell.openFolderPicker}
+        onExpandAll={appShell.commandContext.expandAllFolders}
+        onCollapseAll={appShell.commandContext.collapseAllFolders}
+        onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
       />
-    </div>
+    </section>
 
     <ResizeHandle onResize={resizeLeft} />
 
-    <div class="flex-1 min-w-[200px] overflow-hidden" style="box-shadow: var(--shadow-xs)">
+    <section class="app-panel app-panel-workspace">
       <EditorPane
         bind:ref={editorRef}
-        bind:showShortcutHelp={showReviewShortcutHelp}
-        onSelectionChange={handleSelectionChange}
-        onOpenFolder={openFolderPicker}
-        onJumpToFile={async (path, line) => {
-          await handleFileSelect(path);
-          setTimeout(() => editorRef?.scrollToLine(line), 100);
-        }}
+        bind:showShortcutHelp={appShell.state.showReviewShortcutHelp}
+        onSelectionChange={appShell.handleSelectionChange}
+        onOpenFolder={appShell.openFolderPicker}
+        onJumpToFile={appShell.handleJumpToFile}
       />
-    </div>
+    </section>
 
     <ResizeHandle onResize={resizeRight} />
 
-    <div class="shrink-0 border-l border-border-default/50 overflow-hidden" style="width: {rightPanelWidth}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: inset 1px 0 0 var(--border-subtle)">
-      <AnnotationSidebar onAnnotationClick={handleAnnotationClick} onFileSelect={handleFileSelect} />
-    </div>
+    <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
+      <AnnotationSidebar
+        onAnnotationClick={appShell.handleAnnotationClick}
+        onFileSelect={appShell.handleFileSelect}
+      />
+    </section>
   </div>
 
-  {#if showPopover}
+  {#if appShell.state.showPopover}
     <AnnotationPopover
-      position={popoverPosition}
-      onSubmit={handleAnnotationSubmit}
-      onCancel={() => (showPopover = false)}
+      position={appShell.state.popoverPosition}
+      onSubmit={appShell.handleAnnotationSubmit}
+      onCancel={appShell.closeAnnotationPopover}
     />
   {/if}
 
-  {#if showSettings}
-    <SettingsDialog onClose={() => (showSettings = false)} />
+  {#if appShell.state.showSettings}
+    <SettingsDialog onClose={appShell.closeSettingsPanel} />
   {/if}
 
   <CommandPalette
-    open={showCommandPalette}
-    mode={commandPaletteMode}
-    onModeChange={openCommandPalette}
-    onClose={() => (showCommandPalette = false)}
-    commands={commands}
-    commandContext={commandContext}
-    onSelectFile={handleFileSelect}
+    open={appShell.state.showCommandPalette}
+    mode={appShell.state.commandPaletteMode}
+    onModeChange={appShell.openCommandPalette}
+    onClose={appShell.closeCommandPalette}
+    commands={appShell.commands}
+    commandContext={appShell.commandContext}
+    onSelectFile={appShell.handleFileSelect}
   />
 </div>
+
+<style>
+  .app-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 45%),
+      var(--surface-base);
+  }
+  .workspace-shell {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    padding: 10px;
+    gap: 0;
+  }
+  .app-panel {
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--border-default) 75%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 96%, white 4%), transparent 100%),
+      var(--gradient-panel),
+      var(--surface-panel);
+    box-shadow: var(--shadow-xs);
+  }
+  .app-panel-nav,
+  .app-panel-sidebar {
+    flex: 0 0 auto;
+  }
+  .app-panel-workspace {
+    flex: 1;
+    min-width: 200px;
+    border-left: 0;
+    border-right: 0;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 94%, white 6%), transparent 100%),
+      var(--surface-base);
+  }
+</style>

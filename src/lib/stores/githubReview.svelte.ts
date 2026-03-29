@@ -114,3 +114,17 @@ export function clearGitHubReviewSession() {
   state.actionError = null;
   clearDiffCache();
 }
+
+export function setActiveGitHubReviewSessionForTests(session: GitHubPrSession | null) {
+  state.activeSession = session;
+  state.actionError = null;
+}
+
+export function resetGitHubReviewForTests() {
+  state.queue = [];
+  state.loadingQueue = false;
+  state.queueError = null;
+  state.activeSession = null;
+  state.opening = false;
+  state.actionError = null;
+}
