@@ -1,14 +1,23 @@
 <script lang="ts">
-  import { getSettings } from "$lib/tauri";
-  import type { AppSettings } from "$lib/types";
+  import {
+    cleanupStaleReviewSessions,
+    getReviewHistory,
+    getSettings,
+    resumeReviewSession,
+  } from "$lib/tauri";
+  import type { AppSettings, ReviewHistory } from "$lib/types";
   import { onMount } from "svelte";
   import Button from "./ui/Button.svelte";
   import {
+    activateGitHubReviewSession,
     getGitHubReviewState,
     loadGitHubReviewQueue,
     openGitHubPullRequest,
   } from "$lib/stores/githubReview.svelte";
-  import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { activateReviewSession } from "$lib/stores/review.svelte";
+  import { loadAnnotations } from "$lib/stores/annotations.svelte";
+  import { openFile } from "$lib/stores/editor.svelte";
+  import { getWorkspace, replaceRootFolders } from "$lib/stores/workspace.svelte";
 
   let { onOpenFolder }: { onOpenFolder: () => Promise<void> } = $props();
 
@@ -24,11 +33,15 @@
     checkoutPath: string;
   } | null>(null);
   let suggestedLocalPath = $derived(workspace.rootFolders[0] ?? "");
+  let history = $state<ReviewHistory | null>(null);
+  let historyError = $state<string | null>(null);
+  let cleaningHistory = $state(false);
 
   onMount(() => {
     void initialize();
     const poll = window.setInterval(() => {
       void loadGitHubReviewQueue();
+      void refreshHistory();
     }, 30000);
 
     return () => {
@@ -67,6 +80,7 @@
     }
     manualLocalPath = suggestedLocalPath;
     await loadGitHubReviewQueue();
+    await refreshHistory();
   }
 
   async function confirmAutoCheckout() {
@@ -82,6 +96,7 @@
 
   async function performOpen(prRef: string, localPathOverride?: string) {
     await openGitHubPullRequest(prRef, localPathOverride);
+    await refreshHistory();
   }
 
   function parseRepoFromPrRef(prRef: string): string | null {
@@ -98,6 +113,47 @@
     }
 
     return null;
+  }
+
+  async function refreshHistory() {
+    try {
+      history = await getReviewHistory();
+      historyError = null;
+    } catch (error) {
+      historyError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async function handleResume(sessionId: string) {
+    const session = await resumeReviewSession(sessionId);
+    if (session.kind === "github_pr" && session.githubSession) {
+      await activateGitHubReviewSession(session.githubSession, {
+        refreshQueue: true,
+        replaceRoots: true,
+      });
+      await refreshHistory();
+      return;
+    }
+
+    if (session.projectRoot) {
+      await replaceRootFolders([session.projectRoot]);
+    }
+    if (session.files.length > 0) {
+      activateReviewSession(session.sessionId, session.files);
+      await openFile(session.files[0]);
+      await loadAnnotations(session.files[0]);
+    }
+    await refreshHistory();
+  }
+
+  async function handleCleanup() {
+    cleaningHistory = true;
+    try {
+      await cleanupStaleReviewSessions();
+      await refreshHistory();
+    } finally {
+      cleaningHistory = false;
+    }
   }
 </script>
 
@@ -183,6 +239,116 @@
             </button>
           {/each}
         </div>
+      {/if}
+    </div>
+
+    <div class="github-inbox-section">
+      <div class="github-inbox-section-header">
+        <h3>History</h3>
+        <div class="github-inbox-history-actions">
+          <Button variant="secondary" size="sm" onclick={() => void refreshHistory()}>
+            Refresh
+          </Button>
+          <Button variant="secondary" size="sm" onclick={() => void handleCleanup()} disabled={cleaningHistory}>
+            {cleaningHistory ? "Cleaning..." : "Clean stale"}
+          </Button>
+        </div>
+      </div>
+
+      {#if historyError}
+        <div class="github-inbox-empty">{historyError}</div>
+      {:else if !history}
+        <div class="github-inbox-empty">Loading review history...</div>
+      {:else}
+        {#if history.activeSession}
+          <div class="github-inbox-history-group">
+            <div class="github-inbox-history-label">Resume active session</div>
+            <button class="github-inbox-item" onclick={() => void handleResume(history!.activeSession!.id)}>
+              <div class="github-inbox-item-main">
+                <div class="github-inbox-item-topline">
+                  <span class="github-inbox-item-repo">{history.activeSession.kind === "github_pr" ? "Pull request" : "File review"}</span>
+                  <span class="github-inbox-item-pr">{history.activeSession.status}</span>
+                </div>
+                <div class="github-inbox-item-title">{history.activeSession.title}</div>
+                <div class="github-inbox-item-meta">
+                  <span>{history.activeSession.subtitle}</span>
+                  <span>{history.activeSession.fileCount} files</span>
+                </div>
+              </div>
+              <div class="github-inbox-item-arrow">Resume</div>
+            </button>
+          </div>
+        {/if}
+
+        {#if history.recentPullRequests.length > 0}
+          <div class="github-inbox-history-group">
+            <div class="github-inbox-history-label">Recent PRs</div>
+            <div class="github-inbox-list">
+              {#each history.recentPullRequests as item (item.id)}
+                <button class="github-inbox-item" onclick={() => void handleResume(item.id)}>
+                  <div class="github-inbox-item-main">
+                    <div class="github-inbox-item-topline">
+                      <span class="github-inbox-item-repo">{item.subtitle}</span>
+                      <span class="github-inbox-item-pr">{item.status}</span>
+                    </div>
+                    <div class="github-inbox-item-title">{item.title}</div>
+                    <div class="github-inbox-item-meta">
+                      <span>{item.fileCount} files</span>
+                      {#if item.verdict}<span>{item.verdict}</span>{/if}
+                    </div>
+                  </div>
+                  <div class="github-inbox-item-arrow">Open</div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if history.recentFiles.length > 0}
+          <div class="github-inbox-history-group">
+            <div class="github-inbox-history-label">Recent file reviews</div>
+            <div class="github-inbox-list">
+              {#each history.recentFiles as item (item.id)}
+                <button class="github-inbox-item" onclick={() => void handleResume(item.id)}>
+                  <div class="github-inbox-item-main">
+                    <div class="github-inbox-item-topline">
+                      <span class="github-inbox-item-repo">File review</span>
+                      <span class="github-inbox-item-pr">{item.status}</span>
+                    </div>
+                    <div class="github-inbox-item-title">{item.title}</div>
+                    <div class="github-inbox-item-meta">
+                      <span>{item.subtitle}</span>
+                      {#if item.verdict}<span>{item.verdict}</span>{/if}
+                    </div>
+                  </div>
+                  <div class="github-inbox-item-arrow">Resume</div>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if history.staleSessions.length > 0}
+          <div class="github-inbox-history-group">
+            <div class="github-inbox-history-label">Stale sessions</div>
+            <div class="github-inbox-list">
+              {#each history.staleSessions as item (item.id)}
+                <div class="github-inbox-item github-inbox-item-stale">
+                  <div class="github-inbox-item-main">
+                    <div class="github-inbox-item-topline">
+                      <span class="github-inbox-item-repo">{item.kind === "github_pr" ? "Pull request" : "File review"}</span>
+                      <span class="github-inbox-item-pr">stale</span>
+                    </div>
+                    <div class="github-inbox-item-title">{item.title}</div>
+                    <div class="github-inbox-item-meta">
+                      <span>{item.subtitle}</span>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -373,6 +539,26 @@
     font-size: 12px;
     color: var(--text-muted);
   }
+  .github-inbox-history-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .github-inbox-history-group {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .github-inbox-history-group:first-child {
+    border-top: 0;
+  }
+  .github-inbox-history-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
   .github-inbox-list {
     display: flex;
     flex-direction: column;
@@ -417,6 +603,10 @@
     font-size: 12px;
     font-weight: 600;
     flex-shrink: 0;
+  }
+  .github-inbox-item-stale {
+    cursor: default;
+    opacity: 0.72;
   }
   .github-inbox-empty {
     padding: 20px;

@@ -38,33 +38,6 @@ impl SidecarFile {
             .join(relative.with_file_name(format!("{}.json", file_name)))
     }
 
-    pub fn signal_path(project_root: &Path, source_path: &Path) -> PathBuf {
-        let relative = source_path
-            .strip_prefix(project_root)
-            .unwrap_or(source_path);
-        let file_name = relative.file_name().unwrap_or_default().to_string_lossy();
-        project_root
-            .join(".redpen")
-            .join("signals")
-            .join(relative.with_file_name(format!("{}.signal", file_name)))
-    }
-
-    /// Session-level signal path — one signal for the whole review session
-    pub fn session_signal_path(project_root: &Path) -> PathBuf {
-        project_root
-            .join(".redpen")
-            .join("signals")
-            .join("review.signal")
-    }
-
-    /// Session file path — contains the current session ID so the GUI knows which session to signal
-    pub fn session_file_path(project_root: &Path) -> PathBuf {
-        project_root
-            .join(".redpen")
-            .join("signals")
-            .join("review.session")
-    }
-
     pub fn load(path: &Path) -> Result<Self, SidecarError> {
         let content = fs::read_to_string(path)?;
         let sidecar: SidecarFile = serde_json::from_str(&content)?;
@@ -162,16 +135,6 @@ mod tests {
         assert_eq!(
             SidecarFile::annotation_path(root, source),
             PathBuf::from("/code/.redpen/comments/src/app.swift.json")
-        );
-    }
-
-    #[test]
-    fn test_signal_path() {
-        let root = Path::new("/code");
-        let source = Path::new("/code/src/app.swift");
-        assert_eq!(
-            SidecarFile::signal_path(root, source),
-            PathBuf::from("/code/.redpen/signals/src/app.swift.signal")
         );
     }
 

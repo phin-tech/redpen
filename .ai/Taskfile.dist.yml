@@ -1,0 +1,22 @@
+version: "3"
+
+tasks:
+  check-markdown:
+    desc: Check that AGENTS.md and CLAUDE.md are identical
+    dir: "{{.TASKFILE_DIR}}/.."
+    cmds:
+      - |
+        if diff -q AGENTS.md CLAUDE.md > /dev/null 2>&1; then
+          echo "OK: AGENTS.md and CLAUDE.md are identical"
+        else
+          echo "MISMATCH: AGENTS.md and CLAUDE.md differ"
+          diff AGENTS.md CLAUDE.md
+          exit 1
+        fi
+
+  sync-markdown:
+    desc: Sync CLAUDE.md from AGENTS.md (AGENTS.md is the master)
+    dir: "{{.TASKFILE_DIR}}/.."
+    cmds:
+      - cp AGENTS.md CLAUDE.md
+      - echo "Synced CLAUDE.md from AGENTS.md"

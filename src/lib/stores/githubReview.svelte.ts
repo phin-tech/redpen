@@ -12,6 +12,7 @@ import type {
   SubmitGitHubReviewResult,
 } from "$lib/types";
 import { replaceRootFolders } from "./workspace.svelte";
+import { clearDiffCache } from "./diff.svelte";
 
 interface GitHubReviewState {
   queue: GitHubReviewQueueItem[];
@@ -41,6 +42,7 @@ export async function activateGitHubReviewSession(
 ) {
   state.activeSession = session;
   state.actionError = null;
+  clearDiffCache();
 
   if (options?.refreshQueue) {
     await loadGitHubReviewQueue();
@@ -110,4 +112,5 @@ export async function submitActiveGitHubReview(
 export function clearGitHubReviewSession() {
   state.activeSession = null;
   state.actionError = null;
+  clearDiffCache();
 }

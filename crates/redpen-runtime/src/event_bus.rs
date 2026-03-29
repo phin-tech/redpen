@@ -1,8 +1,13 @@
 #[derive(Debug, Clone)]
 pub enum AppEvent {
-    AnnotationsChanged { file_path: String },
+    AnnotationsChanged {
+        file_path: String,
+    },
     SettingsChanged,
-    ReviewDone { file_path: String, verdict: Option<String> },
+    ReviewDone {
+        file_path: String,
+        verdict: Option<String>,
+    },
 }
 
 pub trait EventBus: Send + Sync {

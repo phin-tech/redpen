@@ -23,7 +23,9 @@ pub fn export_annotations(file_path: String) -> CommandResult<String> {
     let content = fs::read_to_string(source_path)?;
     let file_name = source_path
         .file_name()
-        .ok_or(CommandError::InvalidArgument("path has no file name".into()))?
+        .ok_or(CommandError::InvalidArgument(
+            "path has no file name".into(),
+        ))?
         .to_string_lossy()
         .to_string();
     Ok(export_markdown(&sidecar, &content, &file_name))

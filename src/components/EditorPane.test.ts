@@ -23,6 +23,19 @@ vi.mock("$lib/tauri", () => ({
   getSettings: vi.fn(async () => ({ author: "", defaultLabels: [], ignoredFolderNames: [] })),
   updateSettings: vi.fn(),
   exportAnnotations: vi.fn(),
+  listGithubReviewQueue: vi.fn(async () => []),
+  openGithubPrReview: vi.fn(),
+  resyncGithubPrReview: vi.fn(),
+  submitGithubPrReview: vi.fn(),
+  discardPendingGithubReviewChanges: vi.fn(),
+  getReviewHistory: vi.fn(async () => ({
+    activeSession: null,
+    recentPullRequests: [],
+    recentFiles: [],
+    staleSessions: [],
+  })),
+  resumeReviewSession: vi.fn(),
+  cleanupStaleReviewSessions: vi.fn(async () => ({ removedSessions: 0 })),
 }));
 
 // Mock mermaid to avoid DOM rendering issues in jsdom
@@ -34,15 +47,18 @@ vi.mock("mermaid", () => ({
 }));
 
 import { openFile } from "$lib/stores/editor.svelte";
+import { addRootFolder, resetWorkspaceForTests } from "$lib/stores/workspace.svelte";
 
 describe("EditorPane", () => {
   beforeEach(() => {
     readFileMock.mockReset();
+    resetWorkspaceForTests();
   });
 
   it("does not show toggle bar for non-markdown files", async () => {
     readFileMock.mockResolvedValue("const x = 1;");
     await openFile("/project/file.ts");
+    await addRootFolder("/project");
 
     render(EditorPane, {
       onSelectionChange: vi.fn(),
@@ -55,6 +71,7 @@ describe("EditorPane", () => {
   it("shows toggle bar for markdown files", async () => {
     readFileMock.mockResolvedValue("# Hello");
     await openFile("/project/readme.md");
+    await addRootFolder("/project");
 
     render(EditorPane, {
       onSelectionChange: vi.fn(),
@@ -67,6 +84,7 @@ describe("EditorPane", () => {
   it("defaults to source view for markdown files", async () => {
     readFileMock.mockResolvedValue("# Hello");
     await openFile("/project/readme.md");
+    await addRootFolder("/project");
 
     render(EditorPane, {
       onSelectionChange: vi.fn(),
@@ -79,6 +97,7 @@ describe("EditorPane", () => {
   it("switches to preview when Preview button is clicked", async () => {
     readFileMock.mockResolvedValue("# Hello World\n\nSome text.");
     await openFile("/project/readme.md");
+    await addRootFolder("/project");
 
     render(EditorPane, {
       onSelectionChange: vi.fn(),
@@ -98,6 +117,7 @@ describe("EditorPane", () => {
   it("renders mermaid code blocks as pre.mermaid in preview", async () => {
     readFileMock.mockResolvedValue("```mermaid\ngraph TD;\n  A-->B;\n```");
     await openFile("/project/diagram.md");
+    await addRootFolder("/project");
 
     const { container } = render(EditorPane, {
       onSelectionChange: vi.fn(),
@@ -113,6 +133,7 @@ describe("EditorPane", () => {
   it("switches back to source view when Source button is clicked", async () => {
     readFileMock.mockResolvedValue("# Hello");
     await openFile("/project/readme.md");
+    await addRootFolder("/project");
 
     render(EditorPane, {
       onSelectionChange: vi.fn(),

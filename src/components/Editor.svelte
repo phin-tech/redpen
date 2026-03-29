@@ -161,7 +161,7 @@
       extension: getFileExtension(),
       parent: container,
       onSelectionChange: onSelectionChange
-        ? (from, to, fromLine, fromCol, toLine, toCol) => {
+        ? (_from, _to, fromLine, fromCol, toLine, toCol) => {
             onSelectionChange!(fromLine, fromCol, toLine, toCol);
           }
         : undefined,
@@ -238,12 +238,13 @@
   // Highlights mode: add/remove diff decorations
   $effect(() => {
     if (!view) return;
+    const currentView = view;
     const diffResult = diff.enabled && diff.mode === "highlights"
       ? diff.diffResult
       : null;
     // Reconfiguration dispatch is imperative; keep it out of dependency tracking.
     untrack(() => {
-      view.dispatch({
+      currentView.dispatch({
         effects: diffCompartment.reconfigure(
           diffResult ? highlightsModeExtensions(diffResult) : []
         ),

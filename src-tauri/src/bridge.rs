@@ -1,11 +1,15 @@
+use crate::commands::github_review::open_github_pr_review_impl;
+use crate::commands::github_review::GitHubPrSession;
+use crate::state::AppState;
+use crate::storage::{
+    IndexedSessionFile, ReviewSessionKind, ReviewSessionStatus, StoredReviewSession,
+};
 use redpen_core::anchor::reanchor_annotations;
 use redpen_core::annotation::Annotation;
 use redpen_core::hash::hash_file;
 use redpen_core::sidecar::SidecarFile;
-use crate::commands::github_review::open_github_pr_review_impl;
-use crate::commands::github_review::GitHubPrSession;
-use crate::state::AppState;
 use redpen_server::AppBridge;
+use redpen_server::ReviewSessionState;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -23,10 +27,21 @@ impl TauriBridge {
 }
 
 impl AppBridge for TauriBridge {
-    fn open_file(&self, file: &str, line: Option<u32>) -> Result<(), String> {
+    fn open_file(
+        &self,
+        file: &str,
+        line: Option<u32>,
+        review_session_id: Option<&str>,
+    ) -> Result<(), String> {
         let mut url = format!("redpen://open?file={}", urlencoding::encode(file));
         if let Some(l) = line {
             url.push_str(&format!("&line={}", l));
+        }
+        if let Some(session_id) = review_session_id {
+            url.push_str(&format!(
+                "&reviewSession={}",
+                urlencoding::encode(session_id)
+            ));
         }
         self.handle
             .emit("deep-link-open", &url)
@@ -48,7 +63,11 @@ impl AppBridge for TauriBridge {
         Ok(sidecar.annotations)
     }
 
-    fn open_pr_review(&self, pr_ref: &str, local_path_hint: Option<&str>) -> Result<String, String> {
+    fn open_pr_review(
+        &self,
+        pr_ref: &str,
+        local_path_hint: Option<&str>,
+    ) -> Result<String, String> {
         let state = self.handle.state::<AppState>();
         let session = open_github_pr_review_impl(
             &state,
@@ -57,9 +76,131 @@ impl AppBridge for TauriBridge {
         )
         .map_err(|e| e.to_string())?;
         self.handle
-            .emit("open-github-review-session", SerializableGitHubPrSession::from(&session))
+            .emit(
+                "open-github-review-session",
+                SerializableGitHubPrSession::from(&session),
+            )
             .map_err(|e| e.to_string())?;
         Ok(session.worktree_path)
+    }
+
+    fn start_review_session(&self, session_id: &str, file: &str) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        let source_path = Path::new(file);
+        let project_root = resolve_project_root(source_path);
+        let sidecar = load_sidecar_for_file(&project_root, source_path)?;
+        let relative_path = source_path
+            .strip_prefix(&project_root)
+            .ok()
+            .map(|path| path.to_string_lossy().to_string());
+        let now = chrono::Utc::now().to_rfc3339();
+        let record = StoredReviewSession {
+            id: session_id.to_string(),
+            kind: ReviewSessionKind::LocalReview,
+            status: ReviewSessionStatus::Active,
+            repo: None,
+            pr_number: None,
+            title: source_path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string()),
+            body: None,
+            url: None,
+            local_repo_path: None,
+            worktree_path: None,
+            primary_file_path: Some(file.to_string()),
+            project_root: Some(project_root.to_string_lossy().to_string()),
+            author_login: None,
+            viewer_login: None,
+            base_ref: None,
+            base_sha: None,
+            head_ref: None,
+            head_sha: None,
+            changed_files: Vec::new(),
+            verdict: None,
+            created_at: now.clone(),
+            updated_at: now,
+            completed_at: None,
+            file_count: 1,
+        };
+        state
+            .storage
+            .upsert_review_session(&record)
+            .map_err(|e| e.to_string())?;
+        state
+            .storage
+            .replace_session_files(
+                session_id,
+                &[IndexedSessionFile {
+                    file_path: file.to_string(),
+                    relative_path,
+                    annotation_count: sidecar.annotations.len(),
+                    pending_count: 0,
+                    resolved_count: sidecar
+                        .annotations
+                        .iter()
+                        .filter(|annotation| annotation.resolved)
+                        .count(),
+                }],
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    fn complete_review_session(&self, session_id: &str, verdict: &str) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        if let Some(session) = state
+            .storage
+            .complete_review_session(session_id, verdict)
+            .map_err(|e| e.to_string())?
+        {
+            if let (Some(project_root), Some(file_path)) =
+                (session.project_root, session.primary_file_path)
+            {
+                let source_path = Path::new(&file_path);
+                if source_path.exists() {
+                    let sidecar = load_sidecar_for_file(Path::new(&project_root), source_path)?;
+                    let relative_path = source_path
+                        .strip_prefix(Path::new(&project_root))
+                        .ok()
+                        .map(|path| path.to_string_lossy().to_string());
+                    state
+                        .storage
+                        .replace_session_files(
+                            session_id,
+                            &[IndexedSessionFile {
+                                file_path,
+                                relative_path,
+                                annotation_count: sidecar.annotations.len(),
+                                pending_count: 0,
+                                resolved_count: sidecar
+                                    .annotations
+                                    .iter()
+                                    .filter(|annotation| annotation.resolved)
+                                    .count(),
+                            }],
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn review_session_status(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<ReviewSessionState>, String> {
+        let state = self.handle.state::<AppState>();
+        state
+            .storage
+            .review_session_status(session_id)
+            .map_err(|e| e.to_string())
+            .map(|status| {
+                status.map(|(session_status, verdict, file)| ReviewSessionState {
+                    status: session_status.as_str().to_string(),
+                    file,
+                    verdict,
+                })
+            })
     }
 }
 

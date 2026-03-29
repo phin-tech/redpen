@@ -29,6 +29,65 @@ let state = $state<DiffState>({
 
 let refs = $state<RefList | null>(null);
 
+// --- Diff cache ---
+const diffCache = new Map<string, DiffResult>();
+const requestCounters = new Map<string, number>();
+
+function cacheKey(
+    directory: string,
+    filePath: string,
+    baseRef: string,
+    targetRef: string,
+    algorithm: string,
+): string {
+    return `${directory}::${filePath}::${baseRef}::${targetRef}::${algorithm}`;
+}
+
+export async function cachedInvokeDiff(
+    directory: string,
+    filePath: string,
+    baseRef: string,
+    targetRef: string,
+    algorithm: "patience" | "myers",
+): Promise<DiffResult> {
+    const key = cacheKey(directory, filePath, baseRef, targetRef, algorithm);
+
+    const cached = diffCache.get(key);
+    if (cached) return cached;
+
+    const counter = (requestCounters.get(key) ?? 0) + 1;
+    requestCounters.set(key, counter);
+
+    const result = await invoke<DiffResult>("compute_diff", {
+        directory,
+        filePath,
+        baseRef,
+        targetRef,
+        algorithm,
+    });
+
+    if (requestCounters.get(key) === counter) {
+        diffCache.set(key, result);
+    }
+
+    return result;
+}
+
+export function invalidateFile(directory: string, filePath: string) {
+    const prefix = `${directory}::${filePath}::`;
+    for (const key of diffCache.keys()) {
+        if (key.startsWith(prefix)) {
+            diffCache.delete(key);
+            requestCounters.delete(key);
+        }
+    }
+}
+
+export function clearDiffCache() {
+    diffCache.clear();
+    requestCounters.clear();
+}
+
 export function getDiffState() {
     return state;
 }
@@ -49,6 +108,7 @@ export function exitDiff() {
     state.diffResult = null;
     state.error = null;
     state.loading = false;
+    clearDiffCache();
 }
 
 export function setDiffMode(mode: DiffMode) {
@@ -100,13 +160,13 @@ export async function computeDiff(directory: string, filePath: string) {
     state.loading = true;
     state.error = null;
     try {
-        const result = await invoke<DiffResult>("compute_diff", {
+        const result = await cachedInvokeDiff(
             directory,
             filePath,
-            baseRef: state.baseRef,
-            targetRef: state.targetRef,
-            algorithm: state.algorithm,
-        });
+            state.baseRef,
+            state.targetRef,
+            state.algorithm,
+        );
         state.diffResult = result;
     } catch (e) {
         state.error = e instanceof Error ? e.message : String(e);

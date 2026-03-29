@@ -4,7 +4,6 @@ use clap::{Parser, Subcommand};
 use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, Range, SelectionMode};
 use redpen_core::export::export_markdown;
 use redpen_core::hash::{hash_file, hash_string};
-use redpen_core::session::SessionFile;
 use redpen_core::sidecar::SidecarFile;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -139,9 +138,7 @@ fn main() {
             timeout,
             session,
         } => cmd_wait(&paths, timeout, session.as_deref()),
-        Commands::ReviewPr { pr_ref, local_path } => {
-            cmd_review_pr(&pr_ref, local_path.as_deref())
-        }
+        Commands::ReviewPr { pr_ref, local_path } => cmd_review_pr(&pr_ref, local_path.as_deref()),
         Commands::Agents => {
             print!("{}", AGENT_PROMPT);
             Ok(())
@@ -212,6 +209,42 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
     }
 }
 
+fn load_sidecar_for_file(
+    project_root: &Path,
+    source_path: &Path,
+) -> Result<SidecarFile, Box<dyn std::error::Error>> {
+    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
+    if annotation_path.exists() {
+        let mut sidecar = SidecarFile::load(&annotation_path)?;
+        let current_hash = hash_file(source_path)?;
+        if sidecar.source_file_hash != current_hash {
+            let content = fs::read_to_string(source_path)?;
+            redpen_core::anchor::reanchor_annotations(&mut sidecar.annotations, &content);
+            sidecar.source_file_hash = current_hash;
+        }
+        Ok(sidecar)
+    } else {
+        Ok(SidecarFile::new(hash_file(source_path)?))
+    }
+}
+
+fn save_sidecar_for_file(
+    project_root: &Path,
+    source_path: &Path,
+    sidecar: &SidecarFile,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let annotation_path = SidecarFile::annotation_path(project_root, source_path);
+    if sidecar.annotations.is_empty() {
+        if annotation_path.exists() {
+            fs::remove_file(annotation_path)?;
+        }
+        return Ok(());
+    }
+
+    sidecar.save(&annotation_path)?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_annotate(
     file: &Path,
@@ -230,14 +263,8 @@ fn cmd_annotate(
 
     // If replying, clone parent's anchor instead of building a new one
     if let Some(parent_id) = reply_to {
-        let mut session = SessionFile::load_or_create_active(&project_root, None)?;
-        let relative = abs_path
-            .strip_prefix(&project_root)
-            .unwrap_or(&abs_path)
-            .to_string_lossy()
-            .to_string();
-        let hash = hash_file(&abs_path)?;
-        let parent = session
+        let mut sidecar = load_sidecar_for_file(&project_root, &abs_path)?;
+        let parent = sidecar
             .get_annotation(parent_id)
             .ok_or_else(|| format!("Annotation {} not found", parent_id))?;
         let parent_anchor = parent.anchor.clone();
@@ -250,8 +277,8 @@ fn cmd_annotate(
             parent_anchor,
         );
         let id = reply.id.clone();
-        session.add_annotation(&relative, &hash, reply);
-        session.save(&project_root)?;
+        sidecar.add_annotation(reply);
+        save_sidecar_for_file(&project_root, &abs_path, &sidecar)?;
         notify_app("annotation_reply", &abs_path, Some(start_line));
         println!(
             "Created reply {} to {} on line {}",
@@ -320,16 +347,10 @@ fn cmd_annotate(
         annotation = annotation.with_choices(choice_list, mode);
     }
 
-    let mut session = SessionFile::load_or_create_active(&project_root, None)?;
-    let relative = abs_path
-        .strip_prefix(&project_root)
-        .unwrap_or(&abs_path)
-        .to_string_lossy()
-        .to_string();
-    let hash = hash_file(&abs_path)?;
+    let mut sidecar = load_sidecar_for_file(&project_root, &abs_path)?;
     let id = annotation.id.clone();
-    session.add_annotation(&relative, &hash, annotation);
-    session.save(&project_root)?;
+    sidecar.add_annotation(annotation);
+    save_sidecar_for_file(&project_root, &abs_path, &sidecar)?;
     notify_app_refresh(&abs_path);
 
     println!("Created annotation {} on line {}", id, start_line);
@@ -375,13 +396,7 @@ fn notify_app(kind: &str, file_path: &Path, line: Option<u32>) {
 fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let project_root = resolve_project_root(&abs_path);
-    let session = SessionFile::load_or_create_active(&project_root, None)?;
-    let relative = abs_path
-        .strip_prefix(&project_root)
-        .unwrap_or(&abs_path)
-        .to_string_lossy()
-        .to_string();
-    let sidecar = session.to_sidecar(&relative);
+    let sidecar = load_sidecar_for_file(&project_root, &abs_path)?;
     let json = serde_json::to_string_pretty(&sidecar.annotations)?;
     println!("{}", json);
     Ok(())
@@ -390,13 +405,7 @@ fn cmd_list(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
 fn cmd_export(file: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let project_root = resolve_project_root(&abs_path);
-    let session = SessionFile::load_or_create_active(&project_root, None)?;
-    let relative = abs_path
-        .strip_prefix(&project_root)
-        .unwrap_or(&abs_path)
-        .to_string_lossy()
-        .to_string();
-    let sidecar = session.to_sidecar(&relative);
+    let sidecar = load_sidecar_for_file(&project_root, &abs_path)?;
     let content = fs::read_to_string(&abs_path)?;
     let file_name = abs_path
         .file_name()
@@ -416,13 +425,7 @@ fn cmd_export(file: &Path, output: Option<&Path>) -> Result<(), Box<dyn std::err
 fn cmd_status(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let project_root = resolve_project_root(&abs_path);
-    let session = SessionFile::load_or_create_active(&project_root, None)?;
-    let relative = abs_path
-        .strip_prefix(&project_root)
-        .unwrap_or(&abs_path)
-        .to_string_lossy()
-        .to_string();
-    let sidecar = session.to_sidecar(&relative);
+    let sidecar = load_sidecar_for_file(&project_root, &abs_path)?;
     let total = sidecar.annotations.len();
     if total == 0 {
         println!("{}: no annotations", file.display());
@@ -453,13 +456,8 @@ fn cmd_wait(
         return Ok(());
     }
 
-    // Try the HTTP server first — no signal files, no polling
-    if server_client::is_available() {
-        return cmd_wait_via_server(&files, timeout, session);
-    }
-
-    // Fallback: signal file polling
-    cmd_wait_via_signals(&files, timeout, session)
+    ensure_server_available()?;
+    cmd_wait_via_server(&files, timeout, session)
 }
 
 fn cmd_wait_via_server(
@@ -473,107 +471,19 @@ fn cmd_wait_via_server(
         files.len()
     );
 
-    match server_client::review(&file_str, None, timeout, session) {
+    let session_id = match session {
+        Some(existing) => existing.to_string(),
+        None => server_client::review_start(&file_str, None, None)
+            .ok_or("Could not start review session via Red Pen server")?,
+    };
+
+    match server_client::review_wait(&session_id, timeout) {
         Some(resp) => {
-            let output = serde_json::json!({
-                "verdict": resp.verdict,
-                "session": resp.session_id,
-                "annotations": resp.annotations,
-            });
+            let output = review_output(files, resp.verdict, &session_id)?;
             println!("{}", serde_json::to_string_pretty(&output)?);
             Ok(())
         }
-        None => {
-            eprintln!("Server review failed, falling back to signal files...");
-            cmd_wait_via_signals(files, timeout, session)
-        }
-    }
-}
-
-fn cmd_wait_via_signals(
-    files: &[PathBuf],
-    timeout: Option<u64>,
-    reuse_session_id: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let project_root = resolve_project_root(&files[0]);
-    let session_signal = SidecarFile::session_signal_path(&project_root);
-    let session_file = SidecarFile::session_file_path(&project_root);
-
-    let session_id = reuse_session_id
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    // Write session ID to legacy signal path (GUI reads this)
-    if let Some(parent) = session_file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&session_file, &session_id)?;
-
-    // Also write to new sessions/active pointer
-    SessionFile::write_active_session_id(&project_root, &session_id)?;
-
-    let _ = fs::remove_file(&session_signal);
-
-    let start = std::time::Instant::now();
-    let timeout_duration = timeout.map(std::time::Duration::from_secs);
-
-    eprintln!(
-        "Waiting for review of {} file(s)... [session {}]",
-        files.len(),
-        &session_id[..8]
-    );
-
-    loop {
-        if session_signal.exists() {
-            let content = fs::read_to_string(&session_signal).unwrap_or_default();
-            let mut lines = content.lines();
-            let signal_session = lines.next().unwrap_or("");
-            let verdict = lines.next().unwrap_or("approved");
-
-            if signal_session != session_id {
-                let _ = fs::remove_file(&session_signal);
-                continue;
-            }
-
-            let _ = fs::remove_file(&session_signal);
-            let _ = fs::remove_file(&session_file);
-
-            // Read annotations from session file
-            let session = SessionFile::load_or_create_active(&project_root, None)?;
-            let file_annotations = session.to_file_annotations();
-            let mut all_annotations: Vec<serde_json::Value> = Vec::new();
-            for fa in &file_annotations {
-                let mut file_obj = serde_json::Map::new();
-                file_obj.insert(
-                    "file".to_string(),
-                    serde_json::Value::String(fa.file_path.clone()),
-                );
-                file_obj.insert(
-                    "annotations".to_string(),
-                    serde_json::to_value(&fa.annotations)?,
-                );
-                all_annotations.push(serde_json::Value::Object(file_obj));
-            }
-
-            let output = serde_json::json!({
-                "verdict": verdict.trim(),
-                "session": session_id,
-                "files": all_annotations,
-            });
-
-            println!("{}", serde_json::to_string_pretty(&output)?);
-            return Ok(());
-        }
-
-        if let Some(dur) = timeout_duration {
-            if start.elapsed() > dur {
-                let _ = fs::remove_file(&session_file);
-                eprintln!("Timed out waiting for review");
-                process::exit(2);
-            }
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        None => Err("Review wait failed via Red Pen server".into()),
     }
 }
 
@@ -656,24 +566,21 @@ fn cmd_open_and_wait(
         return Ok(());
     }
 
-    // Try the server's combined review endpoint (opens + blocks in one call)
     let file_str = files[0].to_string_lossy();
-    if let Some(resp) = server_client::review(&file_str, line, timeout, None) {
-        let output = serde_json::json!({
-            "verdict": resp.verdict,
-            "session": resp.session_id,
-            "annotations": resp.annotations,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
-        return Ok(());
+    ensure_server_available()?;
+
+    let session_id = server_client::review_start(&file_str, line, None)
+        .ok_or("Could not start review session via Red Pen server")?;
+
+    for file in files.iter().skip(1) {
+        let _ = server_client::open_file(&file.to_string_lossy(), line);
     }
 
-    // Fallback: open via deep link, then wait via signal files
-    cmd_open(
-        &files.iter().map(|f| f.to_path_buf()).collect::<Vec<_>>(),
-        line,
-    )?;
-    cmd_wait_via_signals(&files, timeout, None)
+    let wait = server_client::review_wait(&session_id, timeout)
+        .ok_or("Review wait failed via Red Pen server")?;
+    let output = review_output(&files, wait.verdict, &session_id)?;
+    println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
 }
 
 fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
@@ -683,7 +590,6 @@ fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
-    // Try the HTTP server first
     if server_client::is_available() {
         for file in &files {
             let path_str = file.to_string_lossy();
@@ -745,6 +651,60 @@ fn cmd_review_pr(
 
     #[allow(unreachable_code)]
     Err("Red Pen app server is not available. Start the app first.".into())
+}
+
+fn review_output(
+    files: &[PathBuf],
+    verdict: String,
+    session_id: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let mut all_annotations = Vec::new();
+    for file in files {
+        let project_root = resolve_project_root(file);
+        let sidecar = load_sidecar_for_file(&project_root, file)?;
+        let mut file_obj = serde_json::Map::new();
+        file_obj.insert(
+            "file".to_string(),
+            serde_json::Value::String(file.to_string_lossy().to_string()),
+        );
+        file_obj.insert(
+            "annotations".to_string(),
+            serde_json::to_value(&sidecar.annotations)?,
+        );
+        all_annotations.push(serde_json::Value::Object(file_obj));
+    }
+
+    Ok(serde_json::json!({
+        "verdict": verdict,
+        "session": session_id,
+        "files": all_annotations,
+    }))
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_server_available() -> Result<(), Box<dyn std::error::Error>> {
+    if server_client::is_available() {
+        return Ok(());
+    }
+
+    ensure_app_running()?;
+    for _ in 0..25 {
+        if server_client::is_available() {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+
+    Err("Red Pen server did not become available after launching the app".into())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn ensure_server_available() -> Result<(), Box<dyn std::error::Error>> {
+    if server_client::is_available() {
+        Ok(())
+    } else {
+        Err("Red Pen server is not available. Start the app first.".into())
+    }
 }
 
 const AGENT_PROMPT: &str = r#"# Red Pen — Agent Integration Guide

@@ -12,6 +12,7 @@
   import { getEditor } from "$lib/stores/editor.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
   import Kbd from "./ui/Kbd.svelte";
+  import Button from "./ui/Button.svelte";
   import { formatShortcut } from "$lib/shortcuts";
   import AnnotationCard from "./AnnotationCard.svelte";
 

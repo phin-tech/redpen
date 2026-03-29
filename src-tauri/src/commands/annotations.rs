@@ -52,10 +52,11 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
 #[tauri::command]
 pub fn get_annotations(
     file_path: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<SidecarFile> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         return load_session_sidecar_for_file(&session, source_path);
     }
     let project_root = resolve_project_root(source_path);
@@ -66,10 +67,11 @@ pub fn get_annotations(
 #[tauri::command]
 pub fn get_all_annotations(
     root_folder: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
-    if let Some(session) = resolve_github_session_for_file(root)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, root)? {
         return collect_session_annotations(&session);
     }
     let project_root = resolve_project_root(root);
@@ -120,7 +122,7 @@ pub fn create_annotation(
         .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         let mut annotation = if let Some(reply_to) = reply_to.clone() {
             Annotation::new_reply(request.body.clone(), author, reply_to, anchor)
@@ -140,7 +142,7 @@ pub fn create_annotation(
             publishable_reason: None,
         });
         sidecar.add_annotation(annotation.clone());
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(annotation);
     }
     let project_root = resolve_project_root(source_path);
@@ -172,8 +174,8 @@ pub fn read_file_lines(
     center_line: u32,
     context: u32,
 ) -> Result<FileSnippet, String> {
-    let content = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
     let all_lines: Vec<&str> = content.lines().collect();
     let total_lines = all_lines.len() as u32;
 
@@ -197,6 +199,7 @@ pub fn read_file_lines(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_annotation(
     file_path: String,
     annotation_id: String,
@@ -204,10 +207,11 @@ pub fn update_annotation(
     labels: Option<Vec<String>>,
     choices: Option<Vec<Choice>>,
     resolved: Option<bool>,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         let annotation = sidecar
             .get_annotation_mut(&annotation_id)
@@ -231,27 +235,36 @@ pub fn update_annotation(
         }
         annotation.updated_at = Some(chrono::Utc::now());
         let updated = annotation.clone();
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(updated);
     }
     let project_root = resolve_project_root(source_path);
-    svc.update_annotation_in_session(&project_root, source_path, &annotation_id, body.as_deref(), labels, choices, resolved)
-        .map_err(CommandError::from)
+    svc.update_annotation_in_session(
+        &project_root,
+        source_path,
+        &annotation_id,
+        body.as_deref(),
+        labels,
+        choices,
+        resolved,
+    )
+    .map_err(CommandError::from)
 }
 
 #[tauri::command]
 pub fn delete_annotation(
     file_path: String,
     annotation_id: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         sidecar
             .remove_annotation(&annotation_id)
             .ok_or_else(|| CommandError::NotFound(format!("annotation {}", annotation_id)))?;
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(());
     }
     let project_root = resolve_project_root(source_path);
@@ -262,11 +275,17 @@ pub fn delete_annotation(
 #[tauri::command]
 pub fn clear_annotations(
     file_path: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
-        save_session_sidecar_for_file(&session, source_path, &SidecarFile::new(hash_file(source_path)?))?;
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
+        save_session_sidecar_for_file(
+            &state.storage,
+            &session,
+            source_path,
+            &SidecarFile::new(hash_file(source_path)?),
+        )?;
         return Ok(());
     }
     let project_root = resolve_project_root(source_path);
@@ -308,29 +327,21 @@ pub fn update_settings(
 pub fn signal_review_done(
     file_path: String,
     verdict: Option<String>,
+    session_id: Option<String>,
     state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
     app_handle: tauri::AppHandle,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
     let project_root = resolve_project_root(source_path);
-
-    // Read session ID (written by `redpen wait`) and include it in the signal
-    let session_file = SidecarFile::session_file_path(&project_root);
-    let session_id = fs::read_to_string(&session_file).unwrap_or_default();
     let verdict_str = verdict.as_deref().unwrap_or("approved");
-    let signal_content = format!("{}\n{}", session_id.trim(), verdict_str);
 
-    let signal_path = SidecarFile::session_signal_path(&project_root);
-    if let Some(parent) = signal_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&signal_path, signal_content)?;
-
-    // Write verdict into the active session file
-    if let Ok(mut session) = redpen_runtime::annotations::load_active_session(&project_root) {
-        session.verdict = Some(verdict_str.to_string());
-        let _ = session.save(&project_root);
+    if let Some(session_id) = session_id.as_deref() {
+        let _ =
+            tauri::async_runtime::block_on(state.review_sessions.complete(session_id, verdict_str));
+        let _ = state
+            .storage
+            .complete_review_session(session_id, verdict_str);
     }
 
     // Fire OS notification for review complete
@@ -345,7 +356,8 @@ pub fn signal_review_done(
     drop(settings);
 
     // Also POST annotations from session
-    let sidecar = svc.get_annotations_from_session(source_path, &project_root)
+    let sidecar = svc
+        .get_annotations_from_session(source_path, &project_root)
         .map_err(CommandError::from)?;
     let json = serde_json::to_string(&sidecar.annotations)?;
     let port = std::env::var("REDPEN_CHANNEL_PORT").unwrap_or_else(|_| "8789".to_string());

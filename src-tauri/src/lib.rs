@@ -4,6 +4,7 @@ mod event_bus;
 mod notification;
 mod settings;
 mod state;
+mod storage;
 mod workspace_index;
 
 use notification::{NotificationKind, NotificationService};
@@ -55,6 +56,9 @@ pub fn run() {
             commands::github_review::resync_github_pr_review,
             commands::github_review::submit_github_pr_review,
             commands::github_review::discard_pending_github_review_changes,
+            commands::review_history::get_review_history,
+            commands::review_history::resume_review_session,
+            commands::review_history::cleanup_stale_review_sessions,
             commands::diff::compute_diff,
             commands::diff::list_refs,
             commands::export::export_annotations,
@@ -220,8 +224,9 @@ pub fn run() {
 
             // Start optional local HTTP server for CLI/agent communication
             let bridge = bridge::TauriBridge::new(app.handle().clone());
+            let review_sessions = app.state::<AppState>().review_sessions.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = redpen_server::start_server(bridge).await {
+                if let Err(e) = redpen_server::start_server(bridge, review_sessions).await {
                     eprintln!("Red Pen server failed to start: {}", e);
                 }
             });

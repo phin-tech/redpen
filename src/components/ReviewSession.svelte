@@ -27,10 +27,6 @@
     githubReview.activeSession ? "PR files to review" : "Files to review"
   );
 
-  function fileName(path: string): string {
-    return path.split("/").pop() ?? path;
-  }
-
   function relativePath(path: string): string {
     // Show last 2-3 path segments for context
     const parts = path.split("/");

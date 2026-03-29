@@ -1,6 +1,10 @@
 use crate::commands::error::{CommandError, CommandResult};
-use crate::settings::{app_home_path, normalize_optional_path, normalize_tracked_repos, TrackedRepo};
+use crate::settings::{normalize_optional_path, normalize_tracked_repos, TrackedRepo};
 use crate::state::AppState;
+use crate::storage::{
+    checkouts_root, sessions_root, IndexedSessionFile, ReviewSessionKind, ReviewSessionStatus,
+    StateDb, StoredReviewSession,
+};
 use chrono::Utc;
 use git2::Repository;
 use redpen_core::annotation::{
@@ -222,6 +226,7 @@ pub fn open_github_pr_review_impl(
     pr_ref: String,
     local_path_hint: Option<String>,
 ) -> CommandResult<GitHubPrSession> {
+    let db = &state.storage;
     let settings = state
         .settings
         .lock()
@@ -238,17 +243,18 @@ pub fn open_github_pr_review_impl(
     )?;
     let pr_json = load_pr_view(&parsed, &local_repo_path)?;
     ensure_repo_is_tracked(state, &parsed.repo, &local_repo_path)?;
-    let session = ensure_worktree_and_session(&parsed, &pr_json, &local_repo_path)?;
-    write_imported_review_state(&session)?;
+    let session = ensure_worktree_and_session(db, &parsed, &pr_json, &local_repo_path)?;
+    write_imported_review_state(db, &session)?;
     Ok(session)
 }
 
 #[tauri::command]
 pub fn resync_github_pr_review(
     session_id: String,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<GitHubPrSession> {
-    let session = load_session_by_id(&session_id)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
     let pr = PrRef {
         repo: session.repo.clone(),
         number: session.number,
@@ -260,18 +266,19 @@ pub fn resync_github_pr_review(
         ));
     }
 
-    let next_session = ensure_worktree_and_session(&pr, &pr_json, &session.local_repo_path)?;
-    write_imported_review_state(&next_session)?;
+    let next_session = ensure_worktree_and_session(db, &pr, &pr_json, &session.local_repo_path)?;
+    write_imported_review_state(db, &next_session)?;
     Ok(next_session)
 }
 
 #[tauri::command]
 pub fn discard_pending_github_review_changes(
     session_id: String,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<GitHubPrSession> {
-    let session = load_session_by_id(&session_id)?;
-    discard_pending_annotations(&session)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
+    discard_pending_annotations(db, &session)?;
     Ok(session)
 }
 
@@ -280,13 +287,18 @@ pub fn submit_github_pr_review(
     session_id: String,
     event: GitHubReviewEvent,
     summary: Option<String>,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<SubmitGitHubReviewResult> {
-    let session = load_session_by_id(&session_id)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
 
-    if matches!(event, GitHubReviewEvent::Approve | GitHubReviewEvent::RequestChanges)
-        && !session.author_login.is_empty()
-        && session.author_login.eq_ignore_ascii_case(&session.viewer_login)
+    if matches!(
+        event,
+        GitHubReviewEvent::Approve | GitHubReviewEvent::RequestChanges
+    ) && !session.author_login.is_empty()
+        && session
+            .author_login
+            .eq_ignore_ascii_case(&session.viewer_login)
     {
         return Err(CommandError::InvalidArgument(
             "GitHub does not allow approving or requesting changes on your own pull request. Use Submit comments instead."
@@ -300,7 +312,7 @@ pub fn submit_github_pr_review(
         let mut sidecar = SidecarFile::load(sidecar_path)?;
         let relative_path = file_path
             .strip_prefix(&session.worktree_path)
-            .unwrap_or(&file_path)
+            .unwrap_or(file_path)
             .to_string_lossy()
             .to_string();
 
@@ -310,15 +322,22 @@ pub fn submit_github_pr_review(
                 .as_ref()
                 .and_then(|metadata| metadata.sync_state.clone());
 
-            if annotation.reply_to.is_none() && sync_state == Some(GitHubSyncState::PendingPublish) {
+            if annotation.reply_to.is_none() && sync_state == Some(GitHubSyncState::PendingPublish)
+            {
                 if is_publishable(&session, &relative_path, annotation.anchor_line())? {
-                    pending_roots.push((relative_path.clone(), annotation.clone(), sidecar_path.clone()));
+                    pending_roots.push((
+                        relative_path.clone(),
+                        annotation.clone(),
+                        sidecar_path.clone(),
+                    ));
                 } else {
                     let metadata = annotation.github.get_or_insert(GitHubAnnotationMetadata {
                         sync_state: Some(GitHubSyncState::LocalOnly),
                         external_comment_id: None,
                         external_thread_id: None,
-                        publishable_reason: Some("Line is not part of the PR head-side diff".into()),
+                        publishable_reason: Some(
+                            "Line is not part of the PR head-side diff".into(),
+                        ),
                     });
                     metadata.sync_state = Some(GitHubSyncState::LocalOnly);
                     metadata.publishable_reason =
@@ -327,7 +346,7 @@ pub fn submit_github_pr_review(
             }
         }
 
-        sidecar.save(&sidecar_path)?;
+        sidecar.save(sidecar_path)?;
     }
 
     let comments_payload: Vec<Value> = pending_roots
@@ -406,7 +425,10 @@ pub fn submit_github_pr_review(
                 "api",
                 "-X",
                 "POST",
-                &format!("repos/{}/pulls/comments/{}/replies", session.repo, parent_id),
+                &format!(
+                    "repos/{}/pulls/comments/{}/replies",
+                    session.repo, parent_id
+                ),
                 "-f",
                 &format!("body={}", reply.body),
             ],
@@ -428,7 +450,17 @@ pub fn submit_github_pr_review(
         reply_count += 1;
     }
 
-    let refreshed = load_session_by_id(&session_id)?;
+    db.complete_review_session(
+        &session_id,
+        match event {
+            GitHubReviewEvent::Comment => "commented",
+            GitHubReviewEvent::Approve => "approved",
+            GitHubReviewEvent::RequestChanges => "changes_requested",
+        },
+    )
+    .map_err(storage_error)?;
+
+    let refreshed = load_session_by_id(db, &session_id)?;
     Ok(SubmitGitHubReviewResult {
         session: refreshed,
         published_count: review_body
@@ -440,23 +472,20 @@ pub fn submit_github_pr_review(
     })
 }
 
-pub fn resolve_github_session_for_file(file_path: &Path) -> CommandResult<Option<GitHubPrSession>> {
-    let base = sessions_root()?;
-    if !base.exists() {
-        return Ok(None);
-    }
-
-    for session_path in collect_session_files(&base)? {
-        let session = load_session(&session_path)?;
-        if file_path.starts_with(&session.worktree_path) {
-            return Ok(Some(session));
-        }
-    }
-
-    Ok(None)
+pub fn resolve_github_session_for_file(
+    db: &StateDb,
+    file_path: &Path,
+) -> CommandResult<Option<GitHubPrSession>> {
+    db.find_github_session_for_file(file_path)
+        .map_err(storage_error)?
+        .map(github_session_from_stored)
+        .transpose()
 }
 
-pub fn load_session_sidecar_for_file(session: &GitHubPrSession, file_path: &Path) -> CommandResult<SidecarFile> {
+pub fn load_session_sidecar_for_file(
+    session: &GitHubPrSession,
+    file_path: &Path,
+) -> CommandResult<SidecarFile> {
     let path = session_sidecar_path(session, file_path)?;
     if path.exists() {
         let mut sidecar = SidecarFile::load(&path)?;
@@ -468,6 +497,7 @@ pub fn load_session_sidecar_for_file(session: &GitHubPrSession, file_path: &Path
 }
 
 pub fn save_session_sidecar_for_file(
+    db: &StateDb,
     session: &GitHubPrSession,
     file_path: &Path,
     sidecar: &SidecarFile,
@@ -477,13 +507,22 @@ pub fn save_session_sidecar_for_file(
         if path.exists() {
             fs::remove_file(path)?;
         }
+        db.delete_session_file(&session.id, &file_path.to_string_lossy())
+            .map_err(storage_error)?;
         return Ok(());
     }
     sidecar.save(&path)?;
+    db.upsert_session_file(
+        &session.id,
+        &indexed_session_file(session, file_path, sidecar),
+    )
+    .map_err(storage_error)?;
     Ok(())
 }
 
-pub fn collect_session_annotations(session: &GitHubPrSession) -> CommandResult<Vec<redpen_core::annotation::FileAnnotations>> {
+pub fn collect_session_annotations(
+    session: &GitHubPrSession,
+) -> CommandResult<Vec<redpen_core::annotation::FileAnnotations>> {
     let mut results = Vec::new();
     for (file_path, sidecar_path) in list_session_sidecars(session)? {
         let sidecar = SidecarFile::load(&sidecar_path)?;
@@ -504,7 +543,10 @@ pub fn collect_session_annotations(session: &GitHubPrSession) -> CommandResult<V
 }
 
 fn parse_pr_ref(pr_ref: &str, tracked: &[TrackedRepo]) -> CommandResult<PrRef> {
-    if let Some(number) = pr_ref.strip_prefix('#').and_then(|value| value.parse::<u32>().ok()) {
+    if let Some(number) = pr_ref
+        .strip_prefix('#')
+        .and_then(|value| value.parse::<u32>().ok())
+    {
         let repo = tracked
             .first()
             .map(|tracked_repo| tracked_repo.repo.clone())
@@ -591,7 +633,8 @@ fn ensure_repo_is_tracked(state: &AppState, repo: &str, local_path: &str) -> Com
             repo: repo.to_string(),
             local_path: local_path.to_string(),
         });
-        next_settings.tracked_github_repos = normalize_tracked_repos(next_settings.tracked_github_repos);
+        next_settings.tracked_github_repos =
+            normalize_tracked_repos(next_settings.tracked_github_repos);
         next_settings
     };
 
@@ -673,15 +716,18 @@ fn load_viewer_login(local_repo_path: &str) -> CommandResult<String> {
         .get("login")
         .and_then(Value::as_str)
         .map(|value| value.to_string())
-        .ok_or_else(|| CommandError::InvalidArgument("Could not determine current GitHub user".into()))
+        .ok_or_else(|| {
+            CommandError::InvalidArgument("Could not determine current GitHub user".into())
+        })
 }
 
 fn ensure_worktree_and_session(
+    db: &StateDb,
     pr: &PrRef,
     pr_json: &PrViewJson,
     local_repo_path: &str,
 ) -> CommandResult<GitHubPrSession> {
-    let worktree_path = worktrees_root()?.join(format!(
+    let worktree_path = checkouts_root().map_err(storage_error)?.join(format!(
         "{}-pr-{}-{}",
         pr.repo.replace('/', "-"),
         pr.number,
@@ -732,14 +778,18 @@ fn ensure_worktree_and_session(
         head_sha: pr_json.head_ref_oid.clone(),
         local_repo_path: local_repo_path.to_string(),
         worktree_path: worktree_path.to_string_lossy().to_string(),
-        changed_files: list_changed_files(local_repo_path, &pr_json.base_ref_oid, &pr_json.head_ref_oid)?,
+        changed_files: list_changed_files(
+            local_repo_path,
+            &pr_json.base_ref_oid,
+            &pr_json.head_ref_oid,
+        )?,
         updated_at: Utc::now().to_rfc3339(),
     };
-    save_session(&session)?;
+    save_session(db, &session, ReviewSessionStatus::Active)?;
     Ok(session)
 }
 
-fn write_imported_review_state(session: &GitHubPrSession) -> CommandResult<()> {
+fn write_imported_review_state(db: &StateDb, session: &GitHubPrSession) -> CommandResult<()> {
     let imported = import_review_threads(session)?;
     let existing_sidecars = list_session_sidecars(session)?;
     let mut by_file: HashMap<PathBuf, Vec<Annotation>> = HashMap::new();
@@ -749,7 +799,9 @@ fn write_imported_review_state(session: &GitHubPrSession) -> CommandResult<()> {
             .as_ref()
             .and_then(|metadata| metadata.publishable_reason.clone())
             .map(PathBuf::from)
-            .ok_or_else(|| CommandError::InvalidArgument("Imported annotation missing path".into()))?;
+            .ok_or_else(|| {
+                CommandError::InvalidArgument("Imported annotation missing path".into())
+            })?;
         let absolute_path = Path::new(&session.worktree_path).join(relative_path);
         by_file.entry(absolute_path).or_default().push(annotation);
     }
@@ -803,7 +855,7 @@ fn write_imported_review_state(session: &GitHubPrSession) -> CommandResult<()> {
             kept.annotations.push(annotation);
         }
 
-        save_session_sidecar_for_file(session, &file_path, &kept)?;
+        save_session_sidecar_for_file(db, session, &file_path, &kept)?;
     }
 
     Ok(())
@@ -852,7 +904,10 @@ fn import_review_threads(session: &GitHubPrSession) -> CommandResult<Vec<Annotat
 
         let mut github_to_local_id = HashMap::new();
         for comment in comments {
-            let path = comment.get("path").and_then(Value::as_str).unwrap_or_default();
+            let path = comment
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let line = comment
                 .get("line")
                 .and_then(Value::as_u64)
@@ -932,7 +987,7 @@ fn has_pending_local_annotations(session: &GitHubPrSession) -> CommandResult<boo
     Ok(false)
 }
 
-fn discard_pending_annotations(session: &GitHubPrSession) -> CommandResult<()> {
+fn discard_pending_annotations(db: &StateDb, session: &GitHubPrSession) -> CommandResult<()> {
     for (file_path, sidecar_path) in list_session_sidecars(session)? {
         let mut sidecar = SidecarFile::load(&sidecar_path)?;
         sidecar.annotations.retain(|annotation| {
@@ -947,7 +1002,7 @@ fn discard_pending_annotations(session: &GitHubPrSession) -> CommandResult<()> {
                     .and_then(|metadata| metadata.sync_state.clone())
                     != Some(GitHubSyncState::LocalOnly)
         });
-        save_session_sidecar_for_file(session, &file_path, &sidecar)?;
+        save_session_sidecar_for_file(db, session, &file_path, &sidecar)?;
     }
     Ok(())
 }
@@ -972,7 +1027,8 @@ fn collect_pending_replies(
                 .github
                 .as_ref()
                 .and_then(|metadata| metadata.sync_state.clone());
-            if annotation.reply_to.is_none() || sync_state != Some(GitHubSyncState::PendingPublish) {
+            if annotation.reply_to.is_none() || sync_state != Some(GitHubSyncState::PendingPublish)
+            {
                 continue;
             }
 
@@ -985,7 +1041,8 @@ fn collect_pending_replies(
 
             let root_metadata = root_annotation.github.as_ref();
             let root_state = root_metadata.and_then(|metadata| metadata.sync_state.clone());
-            let root_comment_id = root_metadata.and_then(|metadata| metadata.external_comment_id.clone());
+            let root_comment_id =
+                root_metadata.and_then(|metadata| metadata.external_comment_id.clone());
 
             if root_comment_id.is_some()
                 && matches!(
@@ -1024,7 +1081,9 @@ fn find_parent_external_comment_id(
     reply: &Annotation,
 ) -> CommandResult<String> {
     let Some(parent_id) = &reply.reply_to else {
-        return Err(CommandError::InvalidArgument("Reply is missing reply_to".into()));
+        return Err(CommandError::InvalidArgument(
+            "Reply is missing reply_to".into(),
+        ));
     };
     for (_, sidecar_path) in sidecars {
         let sidecar = SidecarFile::load(sidecar_path)?;
@@ -1044,17 +1103,19 @@ fn find_parent_external_comment_id(
 }
 
 fn extract_comment_id(value: &Value) -> Option<String> {
-    value
-        .get("id")
-        .and_then(|id| {
-            id.as_str()
-                .map(ToString::to_string)
-                .or_else(|| id.as_i64().map(|id| id.to_string()))
-                .or_else(|| id.as_u64().map(|id| id.to_string()))
-        })
+    value.get("id").and_then(|id| {
+        id.as_str()
+            .map(ToString::to_string)
+            .or_else(|| id.as_i64().map(|id| id.to_string()))
+            .or_else(|| id.as_u64().map(|id| id.to_string()))
+    })
 }
 
-fn is_publishable(session: &GitHubPrSession, relative_path: &str, line: u32) -> CommandResult<bool> {
+fn is_publishable(
+    session: &GitHubPrSession,
+    relative_path: &str,
+    line: u32,
+) -> CommandResult<bool> {
     let output = run_git(
         [
             "diff",
@@ -1089,8 +1150,15 @@ fn short_sha(sha: &str) -> String {
     sha.chars().take(7).collect()
 }
 
-fn list_changed_files(local_repo_path: &str, base_sha: &str, head_sha: &str) -> CommandResult<Vec<String>> {
-    let output = run_git(["diff", "--name-only", base_sha, head_sha], Some(local_repo_path))?;
+fn list_changed_files(
+    local_repo_path: &str,
+    base_sha: &str,
+    head_sha: &str,
+) -> CommandResult<Vec<String>> {
+    let output = run_git(
+        ["diff", "--name-only", base_sha, head_sha],
+        Some(local_repo_path),
+    )?;
     Ok(output
         .lines()
         .map(str::trim)
@@ -1108,7 +1176,11 @@ fn run_git<const N: usize>(args: [&str; N], cwd: Option<&str>) -> CommandResult<
     run_process("git", &args, cwd)
 }
 
-fn run_process<const N: usize>(program: &str, args: &[&str; N], cwd: Option<&str>) -> CommandResult<String> {
+fn run_process<const N: usize>(
+    program: &str,
+    args: &[&str; N],
+    cwd: Option<&str>,
+) -> CommandResult<String> {
     let mut command = Command::new(program);
     command.args(args);
     if let Some(cwd) = cwd {
@@ -1149,20 +1221,8 @@ fn build_anchor_for_file(file_path: &Path, line: u32) -> CommandResult<Anchor> {
     })
 }
 
-fn app_home() -> CommandResult<PathBuf> {
-    app_home_path().map_err(CommandError::InvalidArgument)
-}
-
-fn sessions_root() -> CommandResult<PathBuf> {
-    Ok(app_home()?.join("sessions"))
-}
-
-fn worktrees_root() -> CommandResult<PathBuf> {
-    Ok(app_home()?.join("worktrees"))
-}
-
 fn session_directory(session: &GitHubPrSession) -> CommandResult<PathBuf> {
-    Ok(sessions_root()?.join(&session.id))
+    Ok(sessions_root().map_err(storage_error)?.join(&session.id))
 }
 
 fn session_sidecar_path(session: &GitHubPrSession, file_path: &Path) -> CommandResult<PathBuf> {
@@ -1175,30 +1235,41 @@ fn session_sidecar_path(session: &GitHubPrSession, file_path: &Path) -> CommandR
         .join(relative.with_file_name(format!("{file_name}.json"))))
 }
 
-fn save_session(session: &GitHubPrSession) -> CommandResult<()> {
-    let path = session_directory(session)?.join("session.json");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, serde_json::to_string_pretty(session).map_err(CommandError::Json)?)?;
+fn save_session(
+    db: &StateDb,
+    session: &GitHubPrSession,
+    status: ReviewSessionStatus,
+) -> CommandResult<()> {
+    fs::create_dir_all(session_directory(session)?)?;
+    db.upsert_review_session(&stored_session_from_github(session, status))
+        .map_err(storage_error)?;
+    let indexed_files = session
+        .changed_files
+        .iter()
+        .map(|relative_path| IndexedSessionFile {
+            file_path: Path::new(&session.worktree_path)
+                .join(relative_path)
+                .to_string_lossy()
+                .to_string(),
+            relative_path: Some(relative_path.clone()),
+            annotation_count: 0,
+            pending_count: 0,
+            resolved_count: 0,
+        })
+        .collect::<Vec<_>>();
+    db.replace_session_files(&session.id, &indexed_files)
+        .map_err(storage_error)?;
     Ok(())
 }
 
-fn load_session(path: &Path) -> CommandResult<GitHubPrSession> {
-    let content = fs::read_to_string(path)?;
-    serde_json::from_str(&content).map_err(CommandError::Json)
-}
-
-fn load_session_by_id(session_id: &str) -> CommandResult<GitHubPrSession> {
-    let path = sessions_root()?.join(session_id).join("session.json");
-    if path.exists() {
-        return load_session(&path);
-    }
-
-    Err(CommandError::NotFound(format!(
-        "GitHub review session {} not found",
-        session_id
-    )))
+fn load_session_by_id(db: &StateDb, session_id: &str) -> CommandResult<GitHubPrSession> {
+    let stored = db
+        .get_review_session(session_id)
+        .map_err(storage_error)?
+        .ok_or_else(|| {
+            CommandError::NotFound(format!("GitHub review session {} not found", session_id))
+        })?;
+    github_session_from_stored(stored)
 }
 
 fn list_session_sidecars(session: &GitHubPrSession) -> CommandResult<Vec<(PathBuf, PathBuf)>> {
@@ -1209,10 +1280,13 @@ fn list_session_sidecars(session: &GitHubPrSession) -> CommandResult<Vec<(PathBu
 
     let mut sidecars = Vec::new();
     for entry in walk_dir_files(&comments_dir)? {
-        if entry.extension().is_some_and(|extension| extension == "json") {
-            let relative = entry
-                .strip_prefix(&comments_dir)
-                .map_err(|_| CommandError::InvalidArgument("Invalid session sidecar path".into()))?;
+        if entry
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            let relative = entry.strip_prefix(&comments_dir).map_err(|_| {
+                CommandError::InvalidArgument("Invalid session sidecar path".into())
+            })?;
             let source_relative = relative.with_file_name(
                 relative
                     .file_name()
@@ -1220,20 +1294,13 @@ fn list_session_sidecars(session: &GitHubPrSession) -> CommandResult<Vec<(PathBu
                     .to_string_lossy()
                     .trim_end_matches(".json"),
             );
-            sidecars.push((Path::new(&session.worktree_path).join(source_relative), entry));
+            sidecars.push((
+                Path::new(&session.worktree_path).join(source_relative),
+                entry,
+            ));
         }
     }
     Ok(sidecars)
-}
-
-fn collect_session_files(base: &Path) -> CommandResult<Vec<PathBuf>> {
-    let mut sessions = Vec::new();
-    for entry in walk_dir_files(base)? {
-        if entry.file_name().is_some_and(|file_name| file_name == "session.json") {
-            sessions.push(entry);
-        }
-    }
-    Ok(sessions)
 }
 
 fn walk_dir_files(base: &Path) -> CommandResult<Vec<PathBuf>> {
@@ -1251,6 +1318,110 @@ fn walk_dir_files(base: &Path) -> CommandResult<Vec<PathBuf>> {
         }
     }
     Ok(files)
+}
+
+fn storage_error(error: crate::storage::StorageError) -> CommandError {
+    CommandError::InvalidArgument(error.to_string())
+}
+
+fn stored_session_from_github(
+    session: &GitHubPrSession,
+    status: ReviewSessionStatus,
+) -> StoredReviewSession {
+    StoredReviewSession {
+        id: session.id.clone(),
+        kind: ReviewSessionKind::GitHubPr,
+        status,
+        repo: Some(session.repo.clone()),
+        pr_number: Some(session.number),
+        title: Some(session.title.clone()),
+        body: Some(session.body.clone()),
+        url: Some(session.url.clone()),
+        local_repo_path: Some(session.local_repo_path.clone()),
+        worktree_path: Some(session.worktree_path.clone()),
+        primary_file_path: session.changed_files.first().map(|path| {
+            Path::new(&session.worktree_path)
+                .join(path)
+                .to_string_lossy()
+                .to_string()
+        }),
+        project_root: Some(session.worktree_path.clone()),
+        author_login: Some(session.author_login.clone()),
+        viewer_login: Some(session.viewer_login.clone()),
+        base_ref: Some(session.base_ref.clone()),
+        base_sha: Some(session.base_sha.clone()),
+        head_ref: Some(session.head_ref.clone()),
+        head_sha: Some(session.head_sha.clone()),
+        changed_files: session.changed_files.clone(),
+        verdict: None,
+        created_at: session.updated_at.clone(),
+        updated_at: session.updated_at.clone(),
+        completed_at: None,
+        file_count: session.changed_files.len(),
+    }
+}
+
+fn github_session_from_stored(stored: StoredReviewSession) -> CommandResult<GitHubPrSession> {
+    if stored.kind != ReviewSessionKind::GitHubPr {
+        return Err(CommandError::InvalidArgument(format!(
+            "Review session {} is not a GitHub PR session",
+            stored.id
+        )));
+    }
+    Ok(GitHubPrSession {
+        id: stored.id,
+        repo: stored.repo.ok_or_else(|| {
+            CommandError::InvalidArgument("Stored review session is missing repo".into())
+        })?,
+        number: stored.pr_number.ok_or_else(|| {
+            CommandError::InvalidArgument("Stored review session is missing PR number".into())
+        })?,
+        title: stored.title.unwrap_or_default(),
+        author_login: stored.author_login.unwrap_or_default(),
+        viewer_login: stored.viewer_login.unwrap_or_default(),
+        body: stored.body.unwrap_or_default(),
+        url: stored.url.unwrap_or_default(),
+        base_ref: stored.base_ref.unwrap_or_default(),
+        base_sha: stored.base_sha.unwrap_or_default(),
+        head_ref: stored.head_ref.unwrap_or_default(),
+        head_sha: stored.head_sha.unwrap_or_default(),
+        local_repo_path: stored.local_repo_path.unwrap_or_default(),
+        worktree_path: stored.worktree_path.unwrap_or_default(),
+        changed_files: stored.changed_files,
+        updated_at: stored.updated_at,
+    })
+}
+
+fn indexed_session_file(
+    session: &GitHubPrSession,
+    file_path: &Path,
+    sidecar: &SidecarFile,
+) -> IndexedSessionFile {
+    let relative_path = file_path
+        .strip_prefix(&session.worktree_path)
+        .ok()
+        .map(|path| path.to_string_lossy().to_string());
+    IndexedSessionFile {
+        file_path: file_path.to_string_lossy().to_string(),
+        relative_path,
+        annotation_count: sidecar.annotations.len(),
+        pending_count: sidecar
+            .annotations
+            .iter()
+            .filter(|annotation| {
+                annotation
+                    .github
+                    .as_ref()
+                    .and_then(|metadata| metadata.sync_state.clone())
+                    == Some(GitHubSyncState::PendingPublish)
+            })
+            .count(),
+        resolved_count: sidecar
+            .annotations
+            .iter()
+            .filter(|annotation| annotation.resolved)
+            .count(),
+    }
 }
 
 trait AnchorLine {
