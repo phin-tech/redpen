@@ -9,7 +9,10 @@ mod workspace_index;
 
 use notification::{NotificationKind, NotificationService};
 use state::AppState;
-use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    IconMenuItemBuilder, MenuBuilder, MenuItemBuilder, NativeIcon, PredefinedMenuItem,
+    SubmenuBuilder,
+};
 use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
@@ -69,17 +72,14 @@ pub fn run() {
             let annotation_service = redpen_runtime::annotations::AnnotationService::new(event_bus);
             app.manage(annotation_service);
 
-            // Build native menu bar
-            let settings_item = MenuItemBuilder::with_id("settings", "Settings...")
+            // ── Red Pen app menu ──────────────────────────────────────────────
+            let settings_item = IconMenuItemBuilder::with_id("settings", "Settings…")
                 .accelerator("Cmd+,")
+                .native_icon(NativeIcon::PreferencesGeneral)
                 .build(app)?;
 
             let app_submenu = SubmenuBuilder::new(app, "Red Pen")
-                .item(&PredefinedMenuItem::about(
-                    app,
-                    Some("About Red Pen"),
-                    None,
-                )?)
+                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
                 .separator()
                 .item(&settings_item)
                 .separator()
@@ -92,6 +92,42 @@ pub fn run() {
                 .quit()
                 .build()?;
 
+            // ── File menu ─────────────────────────────────────────────────────
+            let open_folder = IconMenuItemBuilder::with_id("file.open_folder", "Open Folder…")
+                .accelerator("Cmd+O")
+                .native_icon(NativeIcon::Folder)
+                .build(app)?;
+
+            let go_to_file = IconMenuItemBuilder::with_id("file.go_to_file", "Go to File…")
+                .accelerator("Cmd+P")
+                .native_icon(NativeIcon::QuickLook)
+                .build(app)?;
+
+            let export_annotations =
+                IconMenuItemBuilder::with_id("file.export_annotations", "Export Annotations…")
+                    .native_icon(NativeIcon::Share)
+                    .build(app)?;
+
+            let file_submenu = SubmenuBuilder::new(app, "File")
+                .item(&open_folder)
+                .item(&go_to_file)
+                .separator()
+                .item(&export_annotations)
+                .build()?;
+
+            // ── Edit menu ─────────────────────────────────────────────────────
+            let find = MenuItemBuilder::with_id("edit.find", "Find…")
+                .accelerator("Cmd+F")
+                .build(app)?;
+
+            let find_next = MenuItemBuilder::with_id("edit.find_next", "Find Next")
+                .accelerator("Cmd+G")
+                .build(app)?;
+
+            let find_previous = MenuItemBuilder::with_id("edit.find_previous", "Find Previous")
+                .accelerator("Cmd+Shift+G")
+                .build(app)?;
+
             let edit_submenu = SubmenuBuilder::new(app, "Edit")
                 .undo()
                 .redo()
@@ -100,30 +136,143 @@ pub fn run() {
                 .copy()
                 .paste()
                 .select_all()
+                .separator()
+                .item(&find)
+                .item(&find_next)
+                .item(&find_previous)
                 .build()?;
 
-            let view_submenu = SubmenuBuilder::new(app, "View").fullscreen().build()?;
+            // ── Annotations menu ──────────────────────────────────────────────
+            let add_annotation =
+                IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
+                    .accelerator("Cmd+Return")
+                    .native_icon(NativeIcon::Add)
+                    .build(app)?;
 
+            let reload_annotations =
+                IconMenuItemBuilder::with_id("annotations.reload", "Reload Annotations")
+                    .native_icon(NativeIcon::Refresh)
+                    .build(app)?;
+
+            let clear_annotations =
+                IconMenuItemBuilder::with_id("annotations.clear", "Clear All Annotations…")
+                    .native_icon(NativeIcon::TrashEmpty)
+                    .build(app)?;
+
+            let annotations_submenu = SubmenuBuilder::new(app, "Annotations")
+                .item(&add_annotation)
+                .item(&reload_annotations)
+                .separator()
+                .item(&clear_annotations)
+                .build()?;
+
+            // ── View → Diff submenu ───────────────────────────────────────────
+            let diff_split = MenuItemBuilder::with_id("diff.split", "Split View").build(app)?;
+            let diff_unified =
+                MenuItemBuilder::with_id("diff.unified", "Unified View").build(app)?;
+            let diff_highlights =
+                MenuItemBuilder::with_id("diff.highlights", "Highlights Only").build(app)?;
+            let diff_exit = MenuItemBuilder::with_id("diff.exit", "Exit Diff").build(app)?;
+
+            let diff_submenu = SubmenuBuilder::new(app, "Diff")
+                .item(&diff_split)
+                .item(&diff_unified)
+                .item(&diff_highlights)
+                .separator()
+                .item(&diff_exit)
+                .build()?;
+
+            // ── View menu ─────────────────────────────────────────────────────
+            let toggle_markdown =
+                MenuItemBuilder::with_id("view.toggle_markdown", "Toggle Markdown Preview")
+                    .accelerator("Cmd+Shift+M")
+                    .build(app)?;
+
+            let command_palette =
+                MenuItemBuilder::with_id("view.command_palette", "Command Palette")
+                    .accelerator("Cmd+K")
+                    .build(app)?;
+
+            let view_submenu = SubmenuBuilder::new(app, "View")
+                .item(&command_palette)
+                .item(&toggle_markdown)
+                .separator()
+                .item(&diff_submenu)
+                .separator()
+                .fullscreen()
+                .build()?;
+
+            // ── Review menu ───────────────────────────────────────────────────
+            let review_changes = MenuItemBuilder::with_id("review.changes", "Review Changes")
+                .accelerator("Cmd+Shift+R")
+                .build(app)?;
+
+            let agent_feedback =
+                MenuItemBuilder::with_id("review.feedback", "Agent Feedback").build(app)?;
+
+            let approve_review = IconMenuItemBuilder::with_id("review.approve", "Approve")
+                .native_icon(NativeIcon::StatusAvailable)
+                .build(app)?;
+
+            let request_changes =
+                IconMenuItemBuilder::with_id("review.request_changes", "Request Changes")
+                    .native_icon(NativeIcon::StatusUnavailable)
+                    .build(app)?;
+
+            let review_submenu = SubmenuBuilder::new(app, "Review")
+                .item(&review_changes)
+                .item(&agent_feedback)
+                .separator()
+                .item(&approve_review)
+                .item(&request_changes)
+                .build()?;
+
+            // ── Window menu ───────────────────────────────────────────────────
             let window_submenu = SubmenuBuilder::new(app, "Window")
                 .minimize()
                 .close_window()
                 .build()?;
 
+            // ── Assemble ──────────────────────────────────────────────────────
             let menu = MenuBuilder::new(app)
                 .item(&app_submenu)
+                .item(&file_submenu)
                 .item(&edit_submenu)
+                .item(&annotations_submenu)
                 .item(&view_submenu)
+                .item(&review_submenu)
                 .item(&window_submenu)
                 .build()?;
 
             app.set_menu(menu)?;
 
-            // Handle menu events
+            // ── Handle menu events ────────────────────────────────────────────
             let handle_menu = app.handle().clone();
             app.on_menu_event(move |_app, event| {
-                if event.id().0 == "settings" {
-                    let _ = handle_menu.emit("open-settings", ());
-                }
+                let name = match event.id().0.as_str() {
+                    "settings" => "open-settings",
+                    "file.open_folder" => "menu-open-folder",
+                    "file.go_to_file" => "menu-go-to-file",
+                    "file.export_annotations" => "menu-export-annotations",
+                    "annotations.add" => "menu-add-annotation",
+                    "annotations.reload" => "menu-reload-annotations",
+                    "annotations.clear" => "menu-clear-annotations",
+                    "view.toggle_markdown" => "menu-toggle-markdown-preview",
+                    "view.command_palette" => "menu-command-palette",
+                    "diff.split" => "menu-diff-split",
+                    "diff.unified" => "menu-diff-unified",
+                    "diff.highlights" => "menu-diff-highlights",
+                    "diff.exit" => "menu-diff-exit",
+                    "review.changes" => "menu-review-changes",
+                    "review.feedback" => "menu-agent-feedback",
+                    "review.approve" => "menu-approve-review",
+                    "review.request_changes" => "menu-request-changes",
+                    "edit.find" => "menu-find",
+                    "edit.find_next" => "menu-find-next",
+                    "edit.find_previous" => "menu-find-previous",
+                    _ => return,
+                };
+                let _ = handle_menu.emit(name, ());
             });
 
             let notification_service = NotificationService::new(app.handle().clone());

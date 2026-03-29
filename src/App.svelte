@@ -7,7 +7,7 @@
   import CommandPalette from "./components/CommandPalette.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import ReviewWorkspaceHeader from "./components/ReviewWorkspaceHeader.svelte";
-  import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
   import { readDirectory, sendNotification, getSettings } from "$lib/tauri";
   import { openFile, getEditor, isMarkdownFile, togglePreview } from "$lib/stores/editor.svelte";
   import { loadAnnotations, addAnnotation, clearAllAnnotations, getAnnotationsState } from "$lib/stores/annotations.svelte";
@@ -26,7 +26,7 @@
   import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
   import { onOpenUrl } from "@tauri-apps/plugin-deep-link";
   import { listen } from "@tauri-apps/api/event";
-  import { watch } from "@tauri-apps/plugin-fs";
+  import { watch, writeTextFile } from "@tauri-apps/plugin-fs";
   import { invoke } from "@tauri-apps/api/core";
   import { submitReviewVerdict } from "$lib/review";
   import {
@@ -140,12 +140,45 @@
   let unlistenDeepLinkEvent: (() => void) | undefined;
   let unlistenSettings: (() => void) | undefined;
   let unlistenGitHubReviewSession: (() => void) | undefined;
+  let unlistenMenuItems: (() => void)[] = [];
 
   onMount(async () => {
     // Listen for settings menu event from native menu bar
     unlistenSettings = await listen("open-settings", () => {
       showSettings = true;
     });
+
+    // Native menu bar event listeners
+    unlistenMenuItems = await Promise.all([
+      listen("menu-open-folder", () => openFolderPicker()),
+      listen("menu-go-to-file", () => openCommandPalette("file")),
+      listen("menu-command-palette", () => openCommandPalette("default")),
+      listen("menu-export-annotations", async () => {
+        if (!editor.currentFilePath) return;
+        const markdown = await invoke<string>("export_annotations", { filePath: editor.currentFilePath });
+        if (!markdown) return;
+        const destPath = await saveDialog({
+          defaultPath: "annotations.md",
+          filters: [{ name: "Markdown", extensions: ["md"] }],
+        });
+        if (destPath) await writeTextFile(destPath, markdown);
+      }),
+      listen("menu-add-annotation", () => runCommand("annotations.add")),
+      listen("menu-reload-annotations", () => runCommand("annotations.reload")),
+      listen("menu-clear-annotations", () => runCommand("annotations.clear")),
+      listen("menu-toggle-markdown-preview", () => runCommand("view.toggleMarkdownPreview")),
+      listen("menu-diff-split", () => runCommand("diff.split")),
+      listen("menu-diff-unified", () => runCommand("diff.unified")),
+      listen("menu-diff-highlights", () => runCommand("diff.highlights")),
+      listen("menu-diff-exit", () => runCommand("diff.exit")),
+      listen("menu-review-changes", () => runCommand("review.changes")),
+      listen("menu-agent-feedback", () => runCommand("review.feedback")),
+      listen("menu-approve-review", () => runCommand("review.approve")),
+      listen("menu-request-changes", () => runCommand("review.requestChanges")),
+      listen("menu-find", () => editorRef?.openSearch()),
+      listen("menu-find-next", () => editorRef?.navigateMatch(1)),
+      listen("menu-find-previous", () => editorRef?.navigateMatch(-1)),
+    ]);
 
     // Drag-and-drop handling
     const appWindow = getCurrentWebviewWindow();
@@ -243,6 +276,7 @@
     unlistenSettings?.();
     unlistenGitHubReviewSession?.();
     stopWatcher?.();
+    unlistenMenuItems.forEach((fn) => fn());
   });
 
   function handleSelectionChange(
