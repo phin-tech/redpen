@@ -16,7 +16,9 @@ When an AI agent writes code and pushes, there's no human review gate before the
 
 Computes changed files via `git diff --name-only <sha>..HEAD`. Filters to files that exist on disk (excludes deletes). Opens the resulting list in redpen.
 
-Mutually exclusive with positional file arguments.
+Mutually exclusive with positional file arguments. When `--diff-base` or `--pre-push` is used, positional paths become optional (currently they are required).
+
+Uses `git diff --diff-filter=d` to exclude deleted files. Renames are included using the new path.
 
 **`--pre-push`**
 
@@ -36,6 +38,8 @@ Implies `--wait` (no need to pass `--wait` separately).
 
 Overrides the default timeout. When `--pre-push` is set, the default timeout is 600 seconds (10 minutes). Without `--pre-push`, existing behavior is unchanged (no default timeout).
 
+Precedence: `--no-timeout` > `--timeout <N>` > `--pre-push` default (600s) > existing default (none).
+
 ### Exit codes
 
 | Code | Meaning |
@@ -44,6 +48,13 @@ Overrides the default timeout. When `--pre-push` is set, the default timeout is 
 | 1 | Changes requested — push blocked |
 | 2 | Timeout — push blocked |
 | 3 | Could not connect to redpen app (launch failed) |
+
+Requires refining `server_client` error types to distinguish timeout from connection failure (currently both collapse to `None`).
+
+### Stdout/stderr contract
+
+- **Stdout**: JSON output (verdict + annotations) — preserved for machine consumption by agents
+- **Stderr**: Human-readable summary on rejection (see below)
 
 ### Stderr output on rejection
 
@@ -65,11 +76,13 @@ Run `redpen list --session <session-id>` for full annotation details.
 
 Lists all annotations across all files in the given review session as JSON. This gives agents and humans a single command to retrieve everything flagged in a review.
 
+Requires a new server RPC endpoint (e.g., `GET /rpc/session.annotations?id=<session-id>`) since the current `list` command is file-based only. The server needs to track which files belong to a session — currently only `primary_file_path` is stored; multi-file sessions need a file index.
+
 ## App Auto-Launch
 
 When the CLI can't find a running redpen server (no `server.json` or connection refused):
 
-1. Launch the desktop app via `open -a Redpen` (macOS only for now)
+1. Launch the desktop app via `open -a "Red Pen"` (macOS only for now)
 2. Poll for server availability: 5 attempts, 1 second apart
 3. If the app comes up, proceed normally
 4. If not, exit with code 3: `"Could not connect to Redpen. Is it installed?"`
@@ -130,6 +143,13 @@ Agent pushes
 
 ### Out of scope
 - Cross-platform app launch (Linux, Windows)
-- Changes to the desktop app (existing verdict/annotation flow is sufficient)
 - Changes to plugin skills or hooks (separate issue: #47)
 - prek configuration (user's responsibility)
+
+## Edge Cases
+
+- **Empty/malformed pre-push stdin**: exit 1 with a clear error message
+- **Push deletions** (local sha all zeros): skip — nothing to review
+- **Tag pushes**: skip — no file diff to review
+- **New branch** (remote sha all zeros): diff against merge-base with default branch; if default branch can't be determined locally, fall back to `HEAD~10` or error
+- **No changed files**: exit 0 silently (nothing to review, allow push)
