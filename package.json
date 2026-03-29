@@ -38,6 +38,7 @@
     "@tauri-apps/plugin-shell": "^2.3.5",
     "bits-ui": "^2.16.3",
     "dompurify": "^3.3.3",
+    "lucide-svelte": "^1.0.1",
     "marked": "^17.0.5",
     "mermaid": "^11.13.0"
   },

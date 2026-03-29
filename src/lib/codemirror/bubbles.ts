@@ -12,11 +12,12 @@ import {
 import { mount, unmount } from "svelte";
 import { annotationsField } from "./annotations";
 import AnnotationBubble from "../../components/AnnotationBubble.svelte";
-import type { Annotation } from "$lib/types";
+import type { Annotation, AnnotationKind } from "$lib/types";
 
 // --- State effects ---
 
 export const setBubblesEnabledEffect = StateEffect.define<boolean>();
+export const setBubbleKindFilterEffect = StateEffect.define<Set<AnnotationKind>>();
 export const toggleBubbleExpansionEffect = StateEffect.define<number>(); // line number
 
 // --- Callback facet ---
@@ -24,11 +25,12 @@ export const toggleBubbleExpansionEffect = StateEffect.define<number>(); // line
 interface BubbleCallbacks {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onChoiceToggle: (annotationId: string, choiceIndex: number) => void;
 }
 
 export const bubbleCallbacksFacet = Facet.define<BubbleCallbacks, BubbleCallbacks>({
   combine(values) {
-    return values[0] ?? { onSelect: () => {}, onDelete: () => {} };
+    return values[0] ?? { onSelect: () => {}, onDelete: () => {}, onChoiceToggle: () => {} };
   },
 });
 
@@ -41,6 +43,22 @@ export const bubblesEnabledField = StateField.define<boolean>({
   update(value, tr) {
     for (const effect of tr.effects) {
       if (effect.is(setBubblesEnabledEffect)) {
+        return effect.value;
+      }
+    }
+    return value;
+  },
+});
+
+const ALL_KINDS: Set<AnnotationKind> = new Set(["comment", "lineNote", "label", "explanation"]);
+
+export const bubbleKindFilterField = StateField.define<Set<AnnotationKind>>({
+  create() {
+    return ALL_KINDS;
+  },
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setBubbleKindFilterEffect)) {
         return effect.value;
       }
     }
@@ -142,6 +160,7 @@ class AnnotationBubbleWidget extends WidgetType {
         },
         onSelect: callbacks.onSelect,
         onDelete: callbacks.onDelete,
+        onChoiceToggle: callbacks.onChoiceToggle,
       },
     });
 
@@ -173,7 +192,7 @@ const bubbleViewCapture = EditorView.updateListener.of((update) => {
 // --- Decoration provider ---
 
 const bubbleDecorations = EditorView.decorations.compute(
-  [annotationsField, bubblesEnabledField, bubbleExpansionField],
+  [annotationsField, bubblesEnabledField, bubbleExpansionField, bubbleKindFilterField],
   (state) => {
     const enabled = state.field(bubblesEnabledField);
     if (!enabled) return Decoration.none;
@@ -181,8 +200,12 @@ const bubbleDecorations = EditorView.decorations.compute(
     const annotations = state.field(annotationsField);
     if (annotations.length === 0) return Decoration.none;
 
+    const kindFilter = state.field(bubbleKindFilterField);
+    const filtered = annotations.filter((a) => kindFilter.has(a.kind));
+    if (filtered.length === 0) return Decoration.none;
+
     const expandedLines = state.field(bubbleExpansionField);
-    const lineGroups = groupByLine(annotations);
+    const lineGroups = groupByLine(filtered);
     const callbacks = state.facet(bubbleCallbacksFacet);
 
     const builder = new RangeSetBuilder<Decoration>();
@@ -215,6 +238,7 @@ const bubbleDecorations = EditorView.decorations.compute(
 export function bubbleExtensions() {
   return [
     bubblesEnabledField,
+    bubbleKindFilterField,
     bubbleExpansionField,
     bubbleViewCapture,
     bubbleDecorations,

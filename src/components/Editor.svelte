@@ -4,12 +4,12 @@
   import { Compartment, StateEffect } from "@codemirror/state";
   import { createEditor } from "$lib/codemirror/setup";
   import { setAnnotationsEffect } from "$lib/codemirror/annotations";
-  import { setBubblesEnabledEffect } from "$lib/codemirror/bubbles";
+  import { setBubblesEnabledEffect, setBubbleKindFilterEffect } from "$lib/codemirror/bubbles";
   import { setSearchEffect } from "$lib/codemirror/search";
   import { getEditor, getFileExtension } from "$lib/stores/editor.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { highlightsModeExtensions } from "$lib/codemirror/diff";
-  import { sortedAnnotations, getBubblesEnabled, selectAnnotation, removeAnnotation } from "$lib/stores/annotations.svelte";
+  import { sortedAnnotations, getBubblesEnabled, getBubbleKindFilter, selectAnnotation, removeAnnotation, updateChoices } from "$lib/stores/annotations.svelte";
 
   // Svelte 5 runes mode: use $bindable ref pattern instead of `export function`
   let {
@@ -142,6 +142,19 @@
           const filePath = editor.currentFilePath;
           if (filePath) removeAnnotation(filePath, id);
         },
+        onChoiceToggle: (annotationId: string, choiceIndex: number) => {
+          const filePath = editor.currentFilePath;
+          if (!filePath) return;
+          const ann = sortedAnnotations().find((a) => a.id === annotationId);
+          if (!ann?.choices) return;
+          const newChoices = ann.choices.map((c, i) => {
+            if (ann.selectionMode === "single") {
+              return { ...c, selected: i === choiceIndex };
+            }
+            return i === choiceIndex ? { ...c, selected: !c.selected } : c;
+          });
+          updateChoices(filePath, annotationId, newChoices);
+        },
       },
     });
     // Add diff compartment to the editor state (initially empty)
@@ -179,6 +192,16 @@
     if (view) {
       view.dispatch({
         effects: setBubblesEnabledEffect.of(enabled),
+      });
+    }
+  });
+
+  // Update bubble kind filter
+  $effect(() => {
+    const kindFilter = getBubbleKindFilter();
+    if (view) {
+      view.dispatch({
+        effects: setBubbleKindFilterEffect.of(kindFilter),
       });
     }
   });

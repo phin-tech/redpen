@@ -2,7 +2,7 @@ mod server_client;
 
 use clap::{Parser, Subcommand};
 use redpen_core::anchor::reanchor_annotations;
-use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Range};
+use redpen_core::annotation::{Anchor, Annotation, AnnotationKind, Choice, Range, SelectionMode};
 use redpen_core::export::export_markdown;
 use redpen_core::hash::{hash_file, hash_string};
 use redpen_core::sidecar::SidecarFile;
@@ -37,6 +37,12 @@ enum Commands {
         /// Reply to an existing annotation by ID (inherits parent's anchor)
         #[arg(long)]
         reply_to: Option<String>,
+        /// Add a choice option (can be repeated for multiple choices)
+        #[arg(long, action = clap::ArgAction::Append)]
+        choice: Vec<String>,
+        /// Selection mode for choices: single (radio) or multi (checkbox)
+        #[arg(long, default_value = "single")]
+        selection_mode: String,
     },
     /// List all annotations as JSON
     List { file: PathBuf },
@@ -71,6 +77,8 @@ enum Commands {
         #[arg(long)]
         timeout: Option<u64>,
     },
+    /// Print agent usage prompt (system prompt for AI agents using redpen)
+    Agents,
 }
 
 fn main() {
@@ -85,6 +93,8 @@ fn main() {
             author,
             kind,
             reply_to,
+            choice,
+            selection_mode,
         } => cmd_annotate(
             &file,
             line,
@@ -94,6 +104,8 @@ fn main() {
             &author,
             &kind,
             reply_to.as_deref(),
+            &choice,
+            &selection_mode,
         ),
         Commands::List { file } => cmd_list(&file),
         Commands::Export { file, output } => cmd_export(&file, output.as_deref()),
@@ -112,6 +124,10 @@ fn main() {
             }
         }
         Commands::Wait { paths, timeout } => cmd_wait(&paths, timeout),
+        Commands::Agents => {
+            print!("{}", AGENT_PROMPT);
+            Ok(())
+        }
     };
     if let Err(e) = result {
         eprintln!("Error: {}", e);
@@ -151,6 +167,17 @@ fn parse_kind(kind: &str) -> Result<AnnotationKind, String> {
         "explanation" => Ok(AnnotationKind::Explanation),
         other => Err(format!(
             "Unknown kind: {}. Use comment, lineNote, label, or explanation.",
+            other
+        )),
+    }
+}
+
+fn parse_selection_mode(mode: &str) -> Result<SelectionMode, String> {
+    match mode {
+        "single" => Ok(SelectionMode::Single),
+        "multi" => Ok(SelectionMode::Multi),
+        other => Err(format!(
+            "Unknown selection mode: {}. Use single or multi.",
             other
         )),
     }
@@ -197,6 +224,8 @@ fn cmd_annotate(
     author: &str,
     kind: &str,
     reply_to: Option<&str>,
+    choices: &[String],
+    selection_mode: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let abs_path = fs::canonicalize(file)?;
     let project_root = resolve_project_root(&abs_path);
@@ -265,13 +294,27 @@ fn cmd_annotate(
         last_known_line: start_line,
     };
 
-    let annotation = Annotation::new(
+    let mut annotation = Annotation::new(
         parse_kind(kind)?,
         body.to_string(),
         labels.to_vec(),
         author.to_string(),
         anchor,
     );
+
+    if !choices.is_empty() {
+        let mode = parse_selection_mode(selection_mode)?;
+        let choice_list = choices
+            .iter()
+            .enumerate()
+            .map(|(i, label)| Choice {
+                id: format!("c{}", i),
+                label: label.clone(),
+                selected: false,
+            })
+            .collect();
+        annotation = annotation.with_choices(choice_list, mode);
+    }
 
     let mut sidecar = load_or_create_sidecar(&project_root, &abs_path)?;
     let id = annotation.id.clone();
@@ -644,3 +687,180 @@ fn cmd_open(paths: &[PathBuf], line: Option<u32>) -> Result<(), Box<dyn std::err
     }
     Ok(())
 }
+
+const AGENT_PROMPT: &str = r#"# Red Pen — Agent Integration Guide
+
+You have access to `redpen`, a code annotation and review tool with a desktop GUI.
+Use it to get structured human feedback on code, plans, and design decisions.
+
+## Core Commands
+
+```bash
+# Annotate a specific line (uses your name as author)
+redpen annotate <file> --line <N> --body "Your comment" --author "<YourName>" --kind <kind>
+
+# Annotation kinds: comment (default), explanation, lineNote, label
+# Labels for categorization:
+redpen annotate <file> --line 10 --body "Note" --label "question" --label "perf"
+
+# Pose a question with choices (single-select = radio, multi-select = checkboxes)
+redpen annotate <file> --line 42 \
+  --body "Which approach do you prefer?" \
+  --kind explanation --author "Claude" \
+  --choice "Option A: typed errors" \
+  --choice "Option B: string errors" \
+  --choice "Option C: anyhow" \
+  --selection-mode single
+
+# Multi-select choices
+redpen annotate <file> --line 20 \
+  --body "Which improvements should I tackle?" \
+  --kind explanation --author "Claude" \
+  --choice "Add validation" \
+  --choice "Improve logging" \
+  --choice "Add tests" \
+  --selection-mode multi
+
+# Reply to an annotation (inherits parent's anchor)
+redpen annotate <file> --body "Done — refactored to use typed errors" --reply-to <annotation-id>
+
+# Open file(s) in the desktop app and wait for review
+redpen open <file1> <file2> ... --wait --timeout 600
+
+# List annotations as JSON
+redpen list <file>
+
+# Check annotation counts
+redpen status <file>
+```
+
+## The Review Loop
+
+Use this pattern to get iterative human feedback:
+
+```
+┌─────────────────────────────────────────┐
+│  1. Annotate files with questions,      │
+│     explanations, and choices           │
+│                                         │
+│  2. Open files and wait for review      │
+│     redpen open <files> --wait          │
+│                                         │
+│  3. Parse the JSON output               │
+│     - verdict: approved | changes_req   │
+│     - annotations with choices filled   │
+│                                         │
+│  4. Act on feedback                     │
+│     - Implement requested changes       │
+│     - Read selected choices             │
+│     - Reply to each annotation          │
+│                                         │
+│  5. If not satisfied → go to 1          │
+│     If approved → done                  │
+└─────────────────────────────────────────┘
+```
+
+### Step-by-step
+
+**1. Create annotations before requesting review:**
+```bash
+# Ask a design question with choices
+redpen annotate src/auth.rs --line 15 \
+  --body "I see two ways to handle token refresh. Which do you prefer?" \
+  --kind explanation --author "Claude" \
+  --choice "Eager: refresh 5 min before expiry" \
+  --choice "Lazy: refresh on 401 response" \
+  --selection-mode single
+
+# Flag something for attention
+redpen annotate src/auth.rs --line 42 \
+  --body "This unwrap() could panic if the config file is missing. I'll add error handling." \
+  --kind comment --author "Claude" --label "safety"
+```
+
+**2. Open and wait for the reviewer:**
+```bash
+output=$(redpen open src/auth.rs --wait --timeout 600)
+```
+
+**3. Parse the response:**
+The output is JSON:
+```json
+{
+  "verdict": "changes_requested",
+  "session_id": "abc-123",
+  "annotations": [
+    {
+      "id": "A1B2C3",
+      "kind": "explanation",
+      "body": "Which approach do you prefer?",
+      "author": "Claude",
+      "choices": [
+        { "label": "Eager: refresh 5 min before expiry", "selected": true },
+        { "label": "Lazy: refresh on 401 response", "selected": false }
+      ],
+      "selectionMode": "single",
+      "anchor": { "range": { "startLine": 15 } }
+    },
+    {
+      "id": "D4E5F6",
+      "kind": "comment",
+      "body": "Also add retry logic for network failures",
+      "author": "reviewer_name",
+      "anchor": { "range": { "startLine": 50 } }
+    }
+  ]
+}
+```
+
+**4. Act on feedback and reply:**
+```bash
+# Implement the chosen approach
+# ... make code changes ...
+
+# Reply to confirm
+redpen annotate src/auth.rs \
+  --body "Done — implemented eager refresh with 5-min buffer" \
+  --reply-to A1B2C3
+
+# Reply to the reviewer's comment
+redpen annotate src/auth.rs \
+  --body "Added retry with exponential backoff (3 attempts)" \
+  --reply-to D4E5F6
+```
+
+**5. Check if another round is needed:**
+If the verdict was `changes_requested`, consider opening for review again after
+implementing changes. If `approved`, proceed.
+
+## Best Practices
+
+### When to use choices
+- Design decisions with clear alternatives
+- Prioritization ("which should I do first?")
+- Scope confirmation ("should I include X?")
+- Use `single` for either/or decisions, `multi` for prioritization/inclusion
+
+### Annotation kinds
+- `comment` — general feedback, observations, flags
+- `explanation` — agent-authored explanations, questions, proposals (shown with robot icon)
+- `lineNote` — brief inline notes
+- `label` — tagging/categorization
+
+### Writing good annotations
+- Be specific about what you're asking or flagging
+- For choices, make each option self-contained and clear
+- Use labels to categorize: "question", "safety", "perf", "design", "style"
+- Keep bodies concise — the reviewer sees them inline in the code
+
+### The loop
+- Don't ask too many questions at once — 3-5 per file is ideal
+- Group related questions on nearby lines
+- After implementing changes, always reply to acknowledge each annotation
+- Use `--timeout 600` (10 min) to avoid blocking indefinitely
+- If the reviewer approves with no annotations, proceed with confidence
+
+### Identity
+- Always use `--author "<YourName>"` so your annotations show a robot icon
+- Known agent names: claude, gpt, copilot, gemini, cursor, codex, agent
+"#;

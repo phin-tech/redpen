@@ -1,5 +1,12 @@
 <script lang="ts">
   import type { Annotation } from "$lib/types";
+  import { Bot } from "lucide-svelte";
+
+  const AGENT_AUTHORS = new Set(["claude", "gpt", "copilot", "gemini", "cursor", "codex", "agent"]);
+
+  function isAgent(author: string): boolean {
+    return AGENT_AUTHORS.has(author.toLowerCase());
+  }
 
   let {
     annotations,
@@ -7,12 +14,14 @@
     onToggle,
     onSelect,
     onDelete,
+    onChoiceToggle,
   }: {
     annotations: Annotation[];
     expanded?: boolean;
     onToggle: () => void;
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
+    onChoiceToggle: (annotationId: string, choiceIndex: number) => void;
   } = $props();
 
   const root = $derived(annotations.find((a) => !a.replyTo) ?? annotations[0]);
@@ -58,7 +67,10 @@
         onclick={(e) => { e.stopPropagation(); onSelect(root.id); }}
       >
         <div class="rp-bubble-header">
-          <span class="rp-bubble-author">{root.author}</span>
+          <span class="rp-bubble-author">
+            {#if isAgent(root.author)}<Bot size={14} class="rp-bubble-agent-icon" />{/if}
+            {root.author}
+          </span>
           {#if kindLabel}
             <span class="rp-bubble-orphan-badge" style:color="inherit">{kindLabel}</span>
           {/if}
@@ -72,6 +84,25 @@
           >×</button>
         </div>
         <div class="rp-bubble-body">{root.body}</div>
+        {#if root.choices && root.choices.length > 0}
+          <div class="rp-bubble-choices">
+            {#each root.choices as choice, i}
+              <label
+                class="rp-bubble-choice"
+                class:rp-bubble-choice-selected={choice.selected}
+                onclick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type={root.selectionMode === "multi" ? "checkbox" : "radio"}
+                  name="choice-{root.id}"
+                  checked={choice.selected}
+                  onchange={() => onChoiceToggle(root.id, i)}
+                />
+                <span>{choice.label}</span>
+              </label>
+            {/each}
+          </div>
+        {/if}
         {#if root.labels.length > 0}
           <div class="rp-bubble-labels">
             {#each root.labels as label}
@@ -88,7 +119,10 @@
         >
           <div class="rp-bubble-header">
             <span class="rp-bubble-reply-indicator">↳</span>
-            <span class="rp-bubble-author">{reply.author}</span>
+            <span class="rp-bubble-author">
+              {#if isAgent(reply.author)}<Bot size={14} class="rp-bubble-agent-icon" />{/if}
+              {reply.author}
+            </span>
             {#if reply.isOrphaned}
               <span class="rp-bubble-orphan-badge">orphaned</span>
             {/if}
@@ -105,7 +139,10 @@
   {:else}
     <!-- Collapsed: single line summary -->
     <div class="rp-bubble-summary" onclick={(e) => { e.stopPropagation(); onSelect(root.id); }}>
-      <span class="rp-bubble-author">{root.author}</span>
+      <span class="rp-bubble-author">
+        {#if isAgent(root.author)}<Bot size={14} class="rp-bubble-agent-icon" />{/if}
+        {root.author}
+      </span>
       {#if kindLabel}
         <span class="rp-bubble-orphan-badge" style:color="inherit">{kindLabel}</span>
       {/if}
@@ -113,6 +150,12 @@
         <span class="rp-bubble-orphan-badge">orphaned</span>
       {/if}
       <span class="rp-bubble-body">{truncate(root.body, 80)}</span>
+      {#if root.choices && root.choices.length > 0}
+        {@const selected = root.choices.filter((c) => c.selected)}
+        <span class="rp-bubble-reply-count">
+          {selected.length}/{root.choices.length} picked
+        </span>
+      {/if}
       {#if replyCount > 0}
         <span class="rp-bubble-reply-count">{replyCount} {replyCount === 1 ? "reply" : "replies"}</span>
       {/if}

@@ -1,7 +1,8 @@
 <script lang="ts">
-  import type { Annotation } from "$lib/types";
+  import type { Annotation, AnnotationKind } from "$lib/types";
+  import { Bot } from "lucide-svelte";
 
-  import type { AnnotationKind } from "$lib/types";
+  const AGENT_AUTHORS = new Set(["claude", "gpt", "copilot", "gemini", "cursor", "codex", "agent"]);
 
   let {
     annotation,
@@ -10,6 +11,7 @@
     onClick,
     onDoubleClick,
     onDelete,
+    onChoiceToggle,
   }: {
     annotation: Annotation;
     isReply?: boolean;
@@ -17,6 +19,7 @@
     onClick: () => void;
     onDoubleClick: () => void;
     onDelete: () => void;
+    onChoiceToggle?: (choiceIndex: number) => void;
   } = $props();
 
   const kindColorMap: Record<AnnotationKind, string> = {
@@ -72,6 +75,27 @@
     {annotation.body}
   </div>
 
+  {#if annotation.choices && annotation.choices.length > 0}
+    <div class="flex flex-col gap-1 mb-2">
+      {#each annotation.choices as choice, i}
+        <label
+          class="choice-option flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer text-sm border transition-all"
+          class:choice-selected={choice.selected}
+          onclick={(e) => e.stopPropagation()}
+        >
+          <input
+            type={annotation.selectionMode === "multi" ? "checkbox" : "radio"}
+            name="card-choice-{annotation.id}"
+            checked={choice.selected}
+            onchange={() => onChoiceToggle?.(i)}
+            class="accent-accent"
+          />
+          <span>{choice.label}</span>
+        </label>
+      {/each}
+    </div>
+  {/if}
+
   {#if annotation.labels.length > 0}
     <div class="flex flex-wrap gap-1 mb-1.5">
       {#each annotation.labels as label}
@@ -80,7 +104,12 @@
     </div>
   {/if}
 
-  <div class="text-xs text-text-secondary">{annotation.author}</div>
+  <div class="text-xs text-text-secondary flex items-center gap-1">
+    {#if AGENT_AUTHORS.has(annotation.author.toLowerCase())}
+      <Bot size={12} class="text-accent-blue" />
+    {/if}
+    {annotation.author}
+  </div>
 </div>
 
 <style>
@@ -101,5 +130,19 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+  .choice-option {
+    background: var(--surface-panel);
+    border-color: var(--border-default);
+    color: var(--text-secondary);
+  }
+  .choice-option:hover {
+    background: var(--surface-highlight);
+    border-color: var(--border-emphasis);
+  }
+  .choice-selected {
+    background: var(--accent-subtle);
+    border-color: var(--accent);
+    color: var(--text-primary);
   }
 </style>

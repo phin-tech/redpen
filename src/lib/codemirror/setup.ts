@@ -32,6 +32,7 @@ export interface EditorConfig {
   bubbleCallbacks?: {
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
+    onChoiceToggle: (annotationId: string, choiceIndex: number) => void;
   };
 }
 
