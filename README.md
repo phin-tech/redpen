@@ -114,7 +114,7 @@ Add to `prek.toml`:
 [[repos.hooks]]
 id = "redpen-review"
 name = "Red Pen review gate"
-entry = "redpen open --pre-push --wait --timeout 600"
+entry = "redpen open --diff-remote --wait --timeout 600"
 language = "system"
 pass_filenames = false
 stages = ["pre-push"]
@@ -124,8 +124,9 @@ stages = ["pre-push"]
 
 | Flag | Description |
 |------|-------------|
-| `--pre-push` | Read git pre-push stdin to determine changed files. Implies `--wait`. |
-| `--diff-base <sha>` | Compute changed files by diffing against a git ref. |
+| `--diff-remote` | Diff against the remote tracking branch. Implies `--wait`. Use this in prek/pre-commit. |
+| `--pre-push` | Read git pre-push hook stdin to determine changed files. Implies `--wait`. Use for raw git hooks. |
+| `--diff-base <sha>` | Compute changed files by diffing against a specific git ref. |
 | `--timeout <N>` | Timeout in seconds (default: 600 in `--pre-push` mode). |
 | `--no-timeout` | Wait indefinitely (overrides `--timeout`). |
 

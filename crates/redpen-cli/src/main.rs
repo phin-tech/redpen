@@ -81,6 +81,15 @@ enum Commands {
         /// Read git pre-push hook stdin to determine changed files. Implies --wait.
         #[arg(long, conflicts_with = "paths", conflicts_with = "diff_base")]
         pre_push: bool,
+        /// Diff against the remote tracking branch of the current branch. Implies --wait.
+        /// Use this in hook managers (e.g. prek) that don't forward pre-push stdin.
+        #[arg(
+            long,
+            conflicts_with = "paths",
+            conflicts_with = "diff_base",
+            conflicts_with = "pre_push"
+        )]
+        diff_remote: bool,
     },
     /// Wait for review to complete (blocks until "Done Reviewing" is clicked in the app)
     Wait {
@@ -158,7 +167,17 @@ fn main() {
             no_timeout,
             diff_base,
             pre_push,
-        } => cmd_open_dispatch(paths, line, wait, timeout, no_timeout, diff_base, pre_push),
+            diff_remote,
+        } => cmd_open_dispatch(
+            paths,
+            line,
+            wait,
+            timeout,
+            no_timeout,
+            diff_base,
+            pre_push,
+            diff_remote,
+        ),
         Commands::Wait {
             paths,
             timeout,
@@ -652,9 +671,10 @@ fn cmd_open_dispatch(
     no_timeout: bool,
     diff_base: Option<String>,
     pre_push: bool,
+    diff_remote: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Skip the gate entirely in CI or when explicitly opted out
-    if pre_push || diff_base.is_some() || wait {
+    if pre_push || diff_remote || diff_base.is_some() || wait {
         if let Some(reason) = should_skip_gate() {
             eprintln!("Red Pen: skipping review gate ({})", reason);
             return Ok(());
@@ -674,6 +694,18 @@ fn cmd_open_dispatch(
             Some(timeout.unwrap_or(600))
         };
         (files, true, t) // --pre-push implies --wait
+    } else if diff_remote {
+        let sha = git_remote_tracking_sha()?;
+        let files = git_diff_files(&sha)?;
+        if files.is_empty() {
+            return Ok(());
+        }
+        let t = if no_timeout {
+            None
+        } else {
+            Some(timeout.unwrap_or(600))
+        };
+        (files, true, t)
     } else if let Some(ref base) = diff_base {
         let files = git_diff_files(base)?;
         if files.is_empty() {
@@ -773,6 +805,28 @@ fn git_default_branch() -> Result<String, Box<dyn std::error::Error>> {
     }
 
     Err("Could not determine default branch".into())
+}
+
+/// Get the sha of the remote tracking branch for the current branch.
+/// Falls back to origin/HEAD if no tracking branch is configured.
+fn git_remote_tracking_sha() -> Result<String, Box<dyn std::error::Error>> {
+    // Try @{u} — the upstream of the current branch
+    let output = process::Command::new("git")
+        .args(["rev-parse", "@{u}"])
+        .output()?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+
+    // Fallback: origin/HEAD
+    let output = process::Command::new("git")
+        .args(["rev-parse", "origin/HEAD"])
+        .output()?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+
+    Err("Could not determine remote tracking branch. Set one with: git branch --set-upstream-to=origin/<branch>".into())
 }
 
 /// Compute changed files by diffing against a git ref.
