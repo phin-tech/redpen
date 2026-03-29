@@ -85,7 +85,9 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
     let stale_sessions = sessions
         .iter()
         .filter(|session| {
-            session.status == ReviewSessionStatus::Stale || is_stale_timestamp(&session.updated_at)
+            session.status == ReviewSessionStatus::Stale
+                || (session.status == ReviewSessionStatus::Active
+                    && is_stale_timestamp(&session.updated_at))
         })
         .take(6)
         .cloned()

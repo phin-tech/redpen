@@ -570,7 +570,6 @@ impl StateDb {
 
     fn initialize(&self) -> Result<(), StorageError> {
         let mut conn = self.connect()?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         migrations().to_latest(&mut conn)?;
         Ok(())
     }

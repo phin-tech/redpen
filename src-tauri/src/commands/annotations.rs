@@ -52,10 +52,11 @@ fn resolve_project_root(source_path: &Path) -> PathBuf {
 #[tauri::command]
 pub fn get_annotations(
     file_path: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<SidecarFile> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         return load_session_sidecar_for_file(&session, source_path);
     }
     let project_root = resolve_project_root(source_path);
@@ -66,10 +67,11 @@ pub fn get_annotations(
 #[tauri::command]
 pub fn get_all_annotations(
     root_folder: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Vec<FileAnnotations>> {
     let root = Path::new(&root_folder);
-    if let Some(session) = resolve_github_session_for_file(root)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, root)? {
         return collect_session_annotations(&session);
     }
     let project_root = resolve_project_root(root);
@@ -120,7 +122,7 @@ pub fn create_annotation(
         .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         let mut annotation = if let Some(reply_to) = reply_to.clone() {
             Annotation::new_reply(request.body.clone(), author, reply_to, anchor)
@@ -140,7 +142,7 @@ pub fn create_annotation(
             publishable_reason: None,
         });
         sidecar.add_annotation(annotation.clone());
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(annotation);
     }
     let project_root = resolve_project_root(source_path);
@@ -204,10 +206,11 @@ pub fn update_annotation(
     labels: Option<Vec<String>>,
     choices: Option<Vec<Choice>>,
     resolved: Option<bool>,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<Annotation> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         let annotation = sidecar
             .get_annotation_mut(&annotation_id)
@@ -231,7 +234,7 @@ pub fn update_annotation(
         }
         annotation.updated_at = Some(chrono::Utc::now());
         let updated = annotation.clone();
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(updated);
     }
     let project_root = resolve_project_root(source_path);
@@ -251,15 +254,16 @@ pub fn update_annotation(
 pub fn delete_annotation(
     file_path: String,
     annotation_id: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         sidecar
             .remove_annotation(&annotation_id)
             .ok_or_else(|| CommandError::NotFound(format!("annotation {}", annotation_id)))?;
-        save_session_sidecar_for_file(&session, source_path, &sidecar)?;
+        save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
         return Ok(());
     }
     let project_root = resolve_project_root(source_path);
@@ -270,11 +274,13 @@ pub fn delete_annotation(
 #[tauri::command]
 pub fn clear_annotations(
     file_path: String,
+    state: State<'_, AppState>,
     svc: State<'_, AnnotationService<TauriEventBus>>,
 ) -> CommandResult<()> {
     let source_path = Path::new(&file_path);
-    if let Some(session) = resolve_github_session_for_file(source_path)? {
+    if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         save_session_sidecar_for_file(
+            &state.storage,
             &session,
             source_path,
             &SidecarFile::new(hash_file(source_path)?),

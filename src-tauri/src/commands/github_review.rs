@@ -226,6 +226,7 @@ pub fn open_github_pr_review_impl(
     pr_ref: String,
     local_path_hint: Option<String>,
 ) -> CommandResult<GitHubPrSession> {
+    let db = &state.storage;
     let settings = state
         .settings
         .lock()
@@ -242,17 +243,18 @@ pub fn open_github_pr_review_impl(
     )?;
     let pr_json = load_pr_view(&parsed, &local_repo_path)?;
     ensure_repo_is_tracked(state, &parsed.repo, &local_repo_path)?;
-    let session = ensure_worktree_and_session(&parsed, &pr_json, &local_repo_path)?;
-    write_imported_review_state(&session)?;
+    let session = ensure_worktree_and_session(db, &parsed, &pr_json, &local_repo_path)?;
+    write_imported_review_state(db, &session)?;
     Ok(session)
 }
 
 #[tauri::command]
 pub fn resync_github_pr_review(
     session_id: String,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<GitHubPrSession> {
-    let session = load_session_by_id(&session_id)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
     let pr = PrRef {
         repo: session.repo.clone(),
         number: session.number,
@@ -264,18 +266,19 @@ pub fn resync_github_pr_review(
         ));
     }
 
-    let next_session = ensure_worktree_and_session(&pr, &pr_json, &session.local_repo_path)?;
-    write_imported_review_state(&next_session)?;
+    let next_session = ensure_worktree_and_session(db, &pr, &pr_json, &session.local_repo_path)?;
+    write_imported_review_state(db, &next_session)?;
     Ok(next_session)
 }
 
 #[tauri::command]
 pub fn discard_pending_github_review_changes(
     session_id: String,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<GitHubPrSession> {
-    let session = load_session_by_id(&session_id)?;
-    discard_pending_annotations(&session)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
+    discard_pending_annotations(db, &session)?;
     Ok(session)
 }
 
@@ -284,9 +287,10 @@ pub fn submit_github_pr_review(
     session_id: String,
     event: GitHubReviewEvent,
     summary: Option<String>,
-    _state: State<'_, AppState>,
+    state: State<'_, AppState>,
 ) -> CommandResult<SubmitGitHubReviewResult> {
-    let session = load_session_by_id(&session_id)?;
+    let db = &state.storage;
+    let session = load_session_by_id(db, &session_id)?;
 
     if matches!(
         event,
@@ -446,18 +450,17 @@ pub fn submit_github_pr_review(
         reply_count += 1;
     }
 
-    state_db()?
-        .complete_review_session(
-            &session_id,
-            match event {
-                GitHubReviewEvent::Comment => "commented",
-                GitHubReviewEvent::Approve => "approved",
-                GitHubReviewEvent::RequestChanges => "changes_requested",
-            },
-        )
-        .map_err(storage_error)?;
+    db.complete_review_session(
+        &session_id,
+        match event {
+            GitHubReviewEvent::Comment => "commented",
+            GitHubReviewEvent::Approve => "approved",
+            GitHubReviewEvent::RequestChanges => "changes_requested",
+        },
+    )
+    .map_err(storage_error)?;
 
-    let refreshed = load_session_by_id(&session_id)?;
+    let refreshed = load_session_by_id(db, &session_id)?;
     Ok(SubmitGitHubReviewResult {
         session: refreshed,
         published_count: review_body
@@ -469,9 +472,11 @@ pub fn submit_github_pr_review(
     })
 }
 
-pub fn resolve_github_session_for_file(file_path: &Path) -> CommandResult<Option<GitHubPrSession>> {
-    state_db()?
-        .find_github_session_for_file(file_path)
+pub fn resolve_github_session_for_file(
+    db: &StateDb,
+    file_path: &Path,
+) -> CommandResult<Option<GitHubPrSession>> {
+    db.find_github_session_for_file(file_path)
         .map_err(storage_error)?
         .map(github_session_from_stored)
         .transpose()
@@ -492,6 +497,7 @@ pub fn load_session_sidecar_for_file(
 }
 
 pub fn save_session_sidecar_for_file(
+    db: &StateDb,
     session: &GitHubPrSession,
     file_path: &Path,
     sidecar: &SidecarFile,
@@ -501,18 +507,16 @@ pub fn save_session_sidecar_for_file(
         if path.exists() {
             fs::remove_file(path)?;
         }
-        state_db()?
-            .delete_session_file(&session.id, &file_path.to_string_lossy())
+        db.delete_session_file(&session.id, &file_path.to_string_lossy())
             .map_err(storage_error)?;
         return Ok(());
     }
     sidecar.save(&path)?;
-    state_db()?
-        .upsert_session_file(
-            &session.id,
-            &indexed_session_file(session, file_path, sidecar),
-        )
-        .map_err(storage_error)?;
+    db.upsert_session_file(
+        &session.id,
+        &indexed_session_file(session, file_path, sidecar),
+    )
+    .map_err(storage_error)?;
     Ok(())
 }
 
@@ -718,6 +722,7 @@ fn load_viewer_login(local_repo_path: &str) -> CommandResult<String> {
 }
 
 fn ensure_worktree_and_session(
+    db: &StateDb,
     pr: &PrRef,
     pr_json: &PrViewJson,
     local_repo_path: &str,
@@ -780,11 +785,11 @@ fn ensure_worktree_and_session(
         )?,
         updated_at: Utc::now().to_rfc3339(),
     };
-    save_session(&session, ReviewSessionStatus::Active)?;
+    save_session(db, &session, ReviewSessionStatus::Active)?;
     Ok(session)
 }
 
-fn write_imported_review_state(session: &GitHubPrSession) -> CommandResult<()> {
+fn write_imported_review_state(db: &StateDb, session: &GitHubPrSession) -> CommandResult<()> {
     let imported = import_review_threads(session)?;
     let existing_sidecars = list_session_sidecars(session)?;
     let mut by_file: HashMap<PathBuf, Vec<Annotation>> = HashMap::new();
@@ -850,7 +855,7 @@ fn write_imported_review_state(session: &GitHubPrSession) -> CommandResult<()> {
             kept.annotations.push(annotation);
         }
 
-        save_session_sidecar_for_file(session, &file_path, &kept)?;
+        save_session_sidecar_for_file(db, session, &file_path, &kept)?;
     }
 
     Ok(())
@@ -982,7 +987,7 @@ fn has_pending_local_annotations(session: &GitHubPrSession) -> CommandResult<boo
     Ok(false)
 }
 
-fn discard_pending_annotations(session: &GitHubPrSession) -> CommandResult<()> {
+fn discard_pending_annotations(db: &StateDb, session: &GitHubPrSession) -> CommandResult<()> {
     for (file_path, sidecar_path) in list_session_sidecars(session)? {
         let mut sidecar = SidecarFile::load(&sidecar_path)?;
         sidecar.annotations.retain(|annotation| {
@@ -997,7 +1002,7 @@ fn discard_pending_annotations(session: &GitHubPrSession) -> CommandResult<()> {
                     .and_then(|metadata| metadata.sync_state.clone())
                     != Some(GitHubSyncState::LocalOnly)
         });
-        save_session_sidecar_for_file(session, &file_path, &sidecar)?;
+        save_session_sidecar_for_file(db, session, &file_path, &sidecar)?;
     }
     Ok(())
 }
@@ -1230,9 +1235,12 @@ fn session_sidecar_path(session: &GitHubPrSession, file_path: &Path) -> CommandR
         .join(relative.with_file_name(format!("{file_name}.json"))))
 }
 
-fn save_session(session: &GitHubPrSession, status: ReviewSessionStatus) -> CommandResult<()> {
+fn save_session(
+    db: &StateDb,
+    session: &GitHubPrSession,
+    status: ReviewSessionStatus,
+) -> CommandResult<()> {
     fs::create_dir_all(session_directory(session)?)?;
-    let db = state_db()?;
     db.upsert_review_session(&stored_session_from_github(session, status))
         .map_err(storage_error)?;
     let indexed_files = session
@@ -1254,8 +1262,8 @@ fn save_session(session: &GitHubPrSession, status: ReviewSessionStatus) -> Comma
     Ok(())
 }
 
-fn load_session_by_id(session_id: &str) -> CommandResult<GitHubPrSession> {
-    let stored = state_db()?
+fn load_session_by_id(db: &StateDb, session_id: &str) -> CommandResult<GitHubPrSession> {
+    let stored = db
         .get_review_session(session_id)
         .map_err(storage_error)?
         .ok_or_else(|| {
@@ -1310,10 +1318,6 @@ fn walk_dir_files(base: &Path) -> CommandResult<Vec<PathBuf>> {
         }
     }
     Ok(files)
-}
-
-fn state_db() -> CommandResult<StateDb> {
-    StateDb::new().map_err(storage_error)
 }
 
 fn storage_error(error: crate::storage::StorageError) -> CommandError {
