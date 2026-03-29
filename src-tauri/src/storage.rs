@@ -104,11 +104,7 @@ pub struct CleanupResult {
     pub removed_sessions: usize,
 }
 
-pub type ReviewSessionStatusRow = (
-    ReviewSessionStatus,
-    Option<String>,
-    Option<String>,
-);
+pub type ReviewSessionStatusRow = (ReviewSessionStatus, Option<String>, Option<String>);
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
