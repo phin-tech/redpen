@@ -7,22 +7,56 @@
   import EditorPane from "./components/EditorPane.svelte";
   import FileTree from "./components/FileTree.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
-  import ReviewWorkspaceHeader from "./components/ReviewWorkspaceHeader.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
+  import WorkspaceToolbar from "./components/editor-pane/WorkspaceToolbar.svelte";
   import { createAppShellController, type AppEditorRef } from "$lib/controllers/appShell.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
+  import { getWorkspace } from "$lib/stores/workspace.svelte";
 
   const diff = getDiffState();
   const editor = getEditor();
+  const workspace = getWorkspace();
+  const hasWorkspace = $derived(workspace.rootFolders.length > 0);
 
   let editorRef: AppEditorRef | undefined = $state(undefined);
+  let editorPaneRef: {
+    cycleView: (dir: 1 | -1) => void;
+    selectCodeView: () => void;
+    selectReviewView: () => void;
+    selectPrView: () => void;
+    enterDiff: (mode: import("$lib/types").DiffMode) => void;
+    agentReviewVerdict: (verdict: "approved" | "changes_requested") => Promise<void>;
+  } | undefined = $state(undefined);
+  let showPrView = $state(false);
   let savedLeftPanelWidth = $state(240);
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
+  let savedRightPanelWidth = $state(300);
+
+  function toggleLeftPanel() {
+    if (leftPanelWidth > 0) {
+      savedLeftPanelWidth = leftPanelWidth;
+      leftPanelWidth = 0;
+    } else {
+      leftPanelWidth = savedLeftPanelWidth > 0 ? savedLeftPanelWidth : 240;
+    }
+  }
+
+  function toggleRightPanel() {
+    if (rightPanelWidth > 0) {
+      savedRightPanelWidth = rightPanelWidth;
+      rightPanelWidth = 0;
+    } else {
+      rightPanelWidth = savedRightPanelWidth > 0 ? savedRightPanelWidth : 300;
+    }
+  }
 
   const appShell = createAppShellController({
     getEditorRef: () => editorRef,
+    onToggleLeftPanel: () => toggleLeftPanel(),
+    onToggleRightPanel: () => toggleRightPanel(),
+    onCycleView: (dir) => editorPaneRef?.cycleView(dir),
   });
 
   function resizeLeft(delta: number) {
@@ -65,40 +99,69 @@
 />
 
 <div class="app-root">
-  <ReviewWorkspaceHeader onOpenHelp={appShell.openReviewShortcutHelp} />
+  <WorkspaceToolbar
+    {showPrView}
+    onAgentReviewVerdict={(verdict) => editorPaneRef?.agentReviewVerdict(verdict) ?? Promise.resolve()}
+    onEnterDiff={(mode) => editorPaneRef?.enterDiff(mode)}
+    onSelectCodeView={() => editorPaneRef?.selectCodeView()}
+    onSelectPrView={() => editorPaneRef?.selectPrView()}
+    onSelectReviewView={() => editorPaneRef?.selectReviewView()}
+  />
 
   <div class="workspace-shell">
-    <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
-      <FileTree
-        onFileSelect={appShell.handleFileSelect}
-        selectedPath={editor.currentFilePath}
-        onOpenFolder={appShell.openFolderPicker}
-        onExpandAll={appShell.commandContext.expandAllFolders}
-        onCollapseAll={appShell.commandContext.collapseAllFolders}
-        onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
-      />
-    </section>
-
-    <ResizeHandle onResize={resizeLeft} />
+    {#if hasWorkspace}
+      {#if leftPanelWidth === 0}
+        <button class="panel-rail panel-rail-left" onclick={toggleLeftPanel} title="Expand file tree (⌘B)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      {:else}
+        <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
+          <FileTree
+            onFileSelect={appShell.handleFileSelect}
+            selectedPath={editor.currentFilePath}
+            onOpenFolder={appShell.openFolderPicker}
+            onExpandAll={appShell.commandContext.expandAllFolders}
+            onCollapseAll={appShell.commandContext.collapseAllFolders}
+            onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
+            onCollapse={toggleLeftPanel}
+          />
+        </section>
+        <ResizeHandle onResize={resizeLeft} />
+      {/if}
+    {/if}
 
     <section class="app-panel app-panel-workspace">
       <EditorPane
+        bind:this={editorPaneRef}
         bind:ref={editorRef}
         bind:showShortcutHelp={appShell.state.showReviewShortcutHelp}
+        bind:showPrView
         onSelectionChange={appShell.handleSelectionChange}
         onOpenFolder={appShell.openFolderPicker}
         onJumpToFile={appShell.handleJumpToFile}
       />
     </section>
 
-    <ResizeHandle onResize={resizeRight} />
-
-    <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
-      <AnnotationSidebar
-        onAnnotationClick={appShell.handleAnnotationClick}
-        onFileSelect={appShell.handleFileSelect}
-      />
-    </section>
+    {#if hasWorkspace}
+      {#if rightPanelWidth === 0}
+        <button class="panel-rail panel-rail-right" onclick={toggleRightPanel} title="Expand annotations (⌘⇧B)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      {:else}
+        <ResizeHandle onResize={resizeRight} />
+        <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
+          <AnnotationSidebar
+            onAnnotationClick={appShell.handleAnnotationClick}
+            onFileSelect={appShell.handleFileSelect}
+            onCollapse={toggleRightPanel}
+          />
+        </section>
+      {/if}
+    {/if}
   </div>
 
   {#if appShell.state.showPopover}
@@ -130,9 +193,7 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    background:
-      radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 45%),
-      var(--surface-base);
+    background: var(--surface-base);
   }
   .workspace-shell {
     flex: 1;
@@ -145,10 +206,7 @@
     min-height: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--border-default) 75%, transparent);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 96%, white 4%), transparent 100%),
-      var(--gradient-panel),
-      var(--surface-panel);
+    background: var(--surface-panel);
     box-shadow: var(--shadow-xs);
   }
   .app-panel-nav,
@@ -160,8 +218,22 @@
     min-width: 200px;
     border-left: 0;
     border-right: 0;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 94%, white 6%), transparent 100%),
-      var(--surface-base);
+    background: var(--surface-base);
+  }
+  .panel-rail {
+    width: 24px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    background: var(--surface-panel);
+    border: 1px solid color-mix(in srgb, var(--border-default) 75%, transparent);
+    cursor: pointer;
+    color: var(--text-ghost);
+  }
+  .panel-rail:hover {
+    color: var(--text-muted);
+    background: var(--surface-raised);
   }
 </style>

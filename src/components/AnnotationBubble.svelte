@@ -11,6 +11,7 @@
   let {
     annotations,
     expanded = false,
+    focusPosition,
     onToggle,
     onSelect,
     onDelete,
@@ -18,6 +19,7 @@
   }: {
     annotations: Annotation[];
     expanded?: boolean;
+    focusPosition?: { current: number; total: number } | null;
     onToggle: () => void;
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
@@ -135,6 +137,14 @@
           <div class="rp-bubble-body">{reply.body}</div>
         </div>
       {/each}
+      {#if focusPosition}
+        <div class="rp-bubble-nav-footer">
+          <span class="rp-bubble-nav-position">◀ {focusPosition.current}/{focusPosition.total}</span>
+          <span class="rp-bubble-nav-hint">
+            <kbd>n</kbd> next &middot; <kbd>N</kbd> prev
+          </span>
+        </div>
+      {/if}
     </div>
   {:else}
     <!-- Collapsed: single line summary -->

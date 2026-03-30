@@ -48,6 +48,7 @@ export function isReviewPageOpen(): boolean {
 }
 
 export async function openReviewPage(mode: ReviewMode) {
+  console.log("[ReviewPage store] openReviewPage:", mode);
   state.mode = mode;
   state.loading = true;
   state.error = null;
@@ -56,14 +57,20 @@ export async function openReviewPage(mode: ReviewMode) {
 
   try {
     if (mode === "changes") {
+      console.log("[ReviewPage store] loading changes...");
       await loadReviewChanges();
+      console.log("[ReviewPage store] loadReviewChanges done, files:", state.files.length);
     } else {
+      console.log("[ReviewPage store] loading feedback...");
       await loadAgentFeedback();
+      console.log("[ReviewPage store] loadAgentFeedback done, files:", state.files.length);
     }
   } catch (e) {
+    console.error("[ReviewPage store] error:", e);
     state.error = e instanceof Error ? e.message : String(e);
   } finally {
     state.loading = false;
+    console.log("[ReviewPage store] done. loading=false, error=", state.error);
   }
 }
 

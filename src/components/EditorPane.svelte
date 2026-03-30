@@ -1,12 +1,11 @@
 <script lang="ts">
   import CodeInputController from "./editor-pane/CodeInputController.svelte";
   import WorkspaceContentRouter from "./editor-pane/WorkspaceContentRouter.svelte";
-  import WorkspaceToolbar from "./editor-pane/WorkspaceToolbar.svelte";
   import { getReviewSession, clearReviewSession } from "$lib/stores/review.svelte";
   import { getEditor, getShowPreview, isMarkdownFile } from "$lib/stores/editor.svelte";
   import {
     getDiffState,
-    enterDiff,
+    enterDiff as enterDiffMode,
     setDiffMode,
     setDiffDefaults,
     resetDiffDefaults,
@@ -28,12 +27,14 @@
     onJumpToFile,
     onOpenFolder,
     showShortcutHelp = $bindable(false),
+    showPrView = $bindable(false),
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
     onJumpToFile?: (filePath: string, line: number) => void;
     onOpenFolder?: () => Promise<void>;
     showShortcutHelp?: boolean;
+    showPrView?: boolean;
     ref?: {
       scrollToLine: (line: number) => void;
       openSearch: () => void;
@@ -85,7 +86,6 @@
     hasVisualMode: () => boolean;
   } | undefined = $state(undefined);
   let cleanupScrollSync: (() => void) | null = null;
-  let showPrView = $state(false);
   let lastGitHubSessionId = $state<string | null>(null);
 
   $effect(() => {
@@ -159,7 +159,7 @@
   function handleEnterDiff(mode: import("$lib/types").DiffMode) {
     if (editor.currentFilePath && directory) {
       setDiffMode(mode);
-      enterDiff(directory, editor.currentFilePath);
+      enterDiffMode(directory, editor.currentFilePath);
     }
   }
 
@@ -184,24 +184,55 @@
     }
   }
 
+  /** Cycle through Code → Review → PR (→ Code) with direction */
+  export function cycleView(direction: 1 | -1) {
+    const hasPr = Boolean(githubReview.activeSession);
+    // Determine current tab index: 0=Code, 1=Review, 2=PR
+    let current = 0;
+    if (isReviewPageOpen() && !showPrView) current = 1;
+    else if (showPrView) current = 2;
+
+    const tabCount = hasPr ? 3 : 2;
+    const next = ((current + direction) % tabCount + tabCount) % tabCount;
+
+    if (next === 0) handleSelectCodeView();
+    else if (next === 1) handleSelectReviewView();
+    else if (next === 2) handleSelectPrView();
+  }
+
   async function handleAgentReviewVerdict(verdict: ReviewVerdict) {
     if (!editor.currentFilePath) return;
     await submitReviewVerdict(editor.currentFilePath, verdict);
     clearReviewSession();
   }
 
+  export function getShowPrView() {
+    return showPrView;
+  }
+
+  export function selectCodeView() {
+    handleSelectCodeView();
+  }
+
+  export function selectReviewView() {
+    handleSelectReviewView();
+  }
+
+  export function selectPrView() {
+    handleSelectPrView();
+  }
+
+  export function enterDiff(mode: import("$lib/types").DiffMode) {
+    handleEnterDiff(mode);
+  }
+
+  export function agentReviewVerdict(verdict: ReviewVerdict) {
+    return handleAgentReviewVerdict(verdict);
+  }
+
 </script>
 
 <div class="editor-pane">
-  <WorkspaceToolbar
-    {showPrView}
-    onAgentReviewVerdict={handleAgentReviewVerdict}
-    onEnterDiff={handleEnterDiff}
-    onSelectCodeView={handleSelectCodeView}
-    onSelectPrView={handleSelectPrView}
-    onSelectReviewView={handleSelectReviewView}
-  />
-
   <WorkspaceContentRouter
     bind:editorRef
     bind:leftDiffEditor

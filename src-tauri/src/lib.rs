@@ -33,6 +33,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .manage(AppState::new().expect("failed to initialize app state"))
         .invoke_handler(tauri::generate_handler![
             commands::files::read_directory,
@@ -79,7 +84,11 @@ pub fn run() {
                 .build(app)?;
 
             let app_submenu = SubmenuBuilder::new(app, "Red Pen")
-                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
+                .item(&PredefinedMenuItem::about(
+                    app,
+                    Some("About Red Pen"),
+                    None,
+                )?)
                 .separator()
                 .item(&settings_item)
                 .separator()
@@ -144,7 +153,7 @@ pub fn run() {
 
             // ── Annotations menu ──────────────────────────────────────────────
             let add_annotation = IconMenuItemBuilder::with_id("annotations.add", "Add Annotation")
-                .accelerator("Cmd+Enter")
+                .accelerator("Cmd+Return")
                 .native_icon(NativeIcon::Add)
                 .build(app)?;
 

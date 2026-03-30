@@ -4,6 +4,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import {
+  EditorState,
   StateField,
   StateEffect,
   Facet,
@@ -18,7 +19,7 @@ import type { Annotation, AnnotationKind } from "$lib/types";
 
 export const setBubblesEnabledEffect = StateEffect.define<boolean>();
 export const setBubbleKindFilterEffect = StateEffect.define<Set<AnnotationKind>>();
-export const toggleBubbleExpansionEffect = StateEffect.define<number>(); // line number
+export const setFocusedBubbleEffect = StateEffect.define<number | null>();
 
 // --- Callback facet ---
 
@@ -66,20 +67,14 @@ export const bubbleKindFilterField = StateField.define<Set<AnnotationKind>>({
   },
 });
 
-const bubbleExpansionField = StateField.define<Set<number>>({
+const focusedBubbleLineField = StateField.define<number | null>({
   create() {
-    return new Set();
+    return null; // All collapsed by default
   },
   update(value, tr) {
     for (const effect of tr.effects) {
-      if (effect.is(toggleBubbleExpansionEffect)) {
-        const next = new Set(value);
-        if (next.has(effect.value)) {
-          next.delete(effect.value);
-        } else {
-          next.add(effect.value);
-        }
-        return next;
+      if (effect.is(setFocusedBubbleEffect)) {
+        return effect.value === value ? null : effect.value;
       }
     }
     return value;
@@ -125,6 +120,7 @@ class AnnotationBubbleWidget extends WidgetType {
     readonly annotations: Annotation[],
     readonly lineNum: number,
     readonly expanded: boolean,
+    readonly focusPosition: { current: number; total: number } | null,
     readonly callbacks: BubbleCallbacks,
   ) {
     super();
@@ -133,6 +129,8 @@ class AnnotationBubbleWidget extends WidgetType {
   eq(other: AnnotationBubbleWidget) {
     if (this.annotations.length !== other.annotations.length) return false;
     if (this.expanded !== other.expanded) return false;
+    if (this.focusPosition?.current !== other.focusPosition?.current) return false;
+    if (this.focusPosition?.total !== other.focusPosition?.total) return false;
     for (let i = 0; i < this.annotations.length; i++) {
       const a = this.annotations[i];
       const b = other.annotations[i];
@@ -153,9 +151,10 @@ class AnnotationBubbleWidget extends WidgetType {
       props: {
         annotations: this.annotations,
         expanded: this.expanded,
+        focusPosition: this.focusPosition,
         onToggle: () => {
           activeViewRef.view?.dispatch({
-            effects: toggleBubbleExpansionEffect.of(lineNum),
+            effects: setFocusedBubbleEffect.of(lineNum),
           });
         },
         onSelect: callbacks.onSelect,
@@ -192,7 +191,7 @@ const bubbleViewCapture = EditorView.updateListener.of((update) => {
 // --- Decoration provider ---
 
 const bubbleDecorations = EditorView.decorations.compute(
-  [annotationsField, bubblesEnabledField, bubbleExpansionField, bubbleKindFilterField],
+  [annotationsField, bubblesEnabledField, focusedBubbleLineField, bubbleKindFilterField],
   (state) => {
     const enabled = state.field(bubblesEnabledField);
     if (!enabled) return Decoration.none;
@@ -204,21 +203,28 @@ const bubbleDecorations = EditorView.decorations.compute(
     const filtered = annotations.filter((a) => kindFilter.has(a.kind));
     if (filtered.length === 0) return Decoration.none;
 
-    const expandedLines = state.field(bubbleExpansionField);
+    const focusedLine = state.field(focusedBubbleLineField);
     const lineGroups = groupByLine(filtered);
     const callbacks = state.facet(bubbleCallbacksFacet);
 
     const builder = new RangeSetBuilder<Decoration>();
     const sortedLines = [...lineGroups.entries()].sort((a, b) => a[0] - b[0]);
 
-    for (const [lineNum, group] of sortedLines) {
+    for (let index = 0; index < sortedLines.length; index++) {
+      const [lineNum, group] = sortedLines[index];
       if (lineNum < 1 || lineNum > state.doc.lines) continue;
       const lineObj = state.doc.line(lineNum);
+
+      const isFocused = focusedLine === lineNum;
+      const focusPosition = isFocused
+        ? { current: index + 1, total: sortedLines.length }
+        : null;
 
       const widget = new AnnotationBubbleWidget(
         group,
         lineNum,
-        expandedLines.has(lineNum),
+        isFocused,
+        focusPosition,
         callbacks,
       );
 
@@ -239,8 +245,20 @@ export function bubbleExtensions() {
   return [
     bubblesEnabledField,
     bubbleKindFilterField,
-    bubbleExpansionField,
+    focusedBubbleLineField,
     bubbleViewCapture,
     bubbleDecorations,
   ];
+}
+
+export function getAnnotatedLines(state: EditorState): number[] {
+  const annotations = state.field(annotationsField);
+  const kindFilter = state.field(bubbleKindFilterField);
+  const filtered = annotations.filter((a) => !a.replyTo && kindFilter.has(a.kind));
+  const lines = [...new Set(filtered.map((a) => a.anchor.range.startLine))].sort((a, b) => a - b);
+  return lines;
+}
+
+export function getFocusedBubbleLine(state: EditorState): number | null {
+  return state.field(focusedBubbleLineField);
 }

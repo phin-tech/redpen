@@ -13,6 +13,7 @@
     onExpandAll,
     onCollapseAll,
     onToggleShowChangedOnly,
+    onCollapse,
   }: {
     onFileSelect: (path: string) => void;
     selectedPath: string | null;
@@ -20,6 +21,7 @@
     onExpandAll: () => Promise<void>;
     onCollapseAll: () => void;
     onToggleShowChangedOnly: () => void;
+    onCollapse?: () => void;
   } = $props();
 
   import { SvelteSet } from "svelte/reactivity";
@@ -89,7 +91,7 @@
   {/if}
 
   {#if workspace.rootFolders.length > 0}
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-border-default" style="min-height: 52px; box-sizing: border-box">
       <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Files</span>
       <div class="flex items-center gap-1.5">
         <IconButton label="Expand all" onclick={onExpandAll}>
@@ -114,6 +116,13 @@
             <path d="M12 5v14M5 12h14" />
           </svg>
         </IconButton>
+        {#if onCollapse}
+          <IconButton label="Collapse file tree" onclick={onCollapse}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </IconButton>
+        {/if}
       </div>
     </div>
   {/if}
@@ -159,7 +168,7 @@
   <div class="fixed inset-0 z-40" onclick={closeContextMenu}></div>
   <div
     class="fixed z-50 min-w-[160px] py-1 border border-border-default/60 rounded-lg backdrop-blur-sm"
-    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px; background: var(--gradient-panel), var(--surface-raised); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
+    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px; background: var(--surface-raised); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     role="menu"
   >
     <button
