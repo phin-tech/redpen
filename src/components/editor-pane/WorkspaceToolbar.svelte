@@ -88,7 +88,7 @@
   }
 </script>
 
-{#if editor.currentFilePath}
+{#if workspace.rootFolders.length > 0}
   <div class="consolidated-toolbar">
     <!-- Left zone: review context -->
     <div class="toolbar-left">
