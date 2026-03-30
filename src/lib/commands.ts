@@ -25,6 +25,7 @@ export interface AppCommandContext {
   canSubmitReviewVerdict: () => boolean;
   approveReview: () => Promise<void>;
   requestReviewChanges: () => Promise<void>;
+  navigateAnnotation: (direction: 1 | -1) => void;
 }
 
 export interface AppCommandDefinition {

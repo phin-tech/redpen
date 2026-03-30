@@ -14,7 +14,11 @@ import {
   clearAllAnnotations,
   getAnnotationsState,
   loadAnnotations,
+  selectAnnotation,
+  sortedAnnotations,
 } from "$lib/stores/annotations.svelte";
+import { getAnnotatedLines, getFocusedBubbleLine, setFocusedBubbleEffect } from "$lib/codemirror/bubbles";
+import { EditorView } from "@codemirror/view";
 import { activateReviewSession, addReviewFile } from "$lib/stores/review.svelte";
 import { closeReviewPage, isReviewPageOpen, openReviewPage } from "$lib/stores/reviewPage.svelte";
 import {
@@ -233,6 +237,45 @@ export function createAppShellController(
     }
   }
 
+  function navigateAnnotation(direction: 1 | -1) {
+    const view = editorRef()?.getView();
+    if (!view) return;
+
+    const lines = getAnnotatedLines(view.state);
+    if (lines.length === 0) return;
+
+    const currentFocus = getFocusedBubbleLine(view.state);
+    let nextIndex: number;
+
+    if (currentFocus === null) {
+      nextIndex = direction === 1 ? 0 : lines.length - 1;
+    } else {
+      const currentIndex = lines.indexOf(currentFocus);
+      if (currentIndex === -1) {
+        nextIndex = direction === 1 ? 0 : lines.length - 1;
+      } else {
+        nextIndex = (currentIndex + direction + lines.length) % lines.length;
+      }
+    }
+
+    const targetLine = lines[nextIndex];
+    const lineObj = view.state.doc.line(Math.min(targetLine, view.state.doc.lines));
+
+    view.dispatch({
+      effects: [
+        setFocusedBubbleEffect.of(targetLine),
+        EditorView.scrollIntoView(lineObj.from, { y: "center" }),
+      ],
+    });
+
+    // Sync sidebar selection with the root annotation on the target line
+    const annotations = sortedAnnotations();
+    const rootOnLine = annotations.find((a) => !a.replyTo && a.anchor.range.startLine === targetLine);
+    if (rootOnLine) {
+      selectAnnotation(rootOnLine.id);
+    }
+  }
+
   const commandContext: AppCommandContext = {
     openCommandPalette,
     openFolder: openFolderPicker,
@@ -283,6 +326,7 @@ export function createAppShellController(
     canSubmitReviewVerdict: () => Boolean(editor.currentFilePath),
     approveReview: () => submitCurrentReviewVerdict("approved"),
     requestReviewChanges: () => submitCurrentReviewVerdict("changes_requested"),
+    navigateAnnotation,
   };
 
   async function runCommand(id: string) {
@@ -307,6 +351,18 @@ export function createAppShellController(
       if (isReviewPageOpen()) {
         event.preventDefault();
         closeReviewPage();
+        return;
+      }
+    }
+
+    if (!ignoreGlobalShortcuts) {
+      if (event.key === "n" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.shiftKey) {
+          navigateAnnotation(-1);
+        } else {
+          navigateAnnotation(1);
+        }
+        event.preventDefault();
         return;
       }
     }

@@ -301,6 +301,33 @@ export const redPenTheme = EditorView.theme({
     accentColor: "var(--accent)",
     cursor: "pointer",
   },
+  // Bubble navigation footer
+  ".rp-bubble-nav-footer": {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "8px",
+    paddingTop: "6px",
+    borderTop: "1px solid var(--border-subtle)",
+  },
+  ".rp-bubble-nav-position": {
+    color: "var(--accent)",
+    fontSize: "10px",
+    fontWeight: "500",
+  },
+  ".rp-bubble-nav-hint": {
+    marginLeft: "auto",
+    color: "var(--text-ghost)",
+    fontSize: "10px",
+  },
+  ".rp-bubble-nav-hint kbd": {
+    background: "var(--surface-raised)",
+    border: "1px solid var(--border-default)",
+    borderRadius: "3px",
+    padding: "0 4px",
+    fontSize: "10px",
+    fontFamily: "inherit",
+  },
   // Diff highlights
   ".rp-diff-added": {
     backgroundColor: "var(--diff-added-bg)",
