@@ -574,7 +574,7 @@
         </div>
 
         {#if fileGroup.groups.length > 0}
-          {#each fileGroup.groups as group}
+          {#each fileGroup.groups as group, groupIdx (groupIdx)}
             <div class="review-context-block">
               <ReviewCodeSnippet
                 filePath={fileGroup.filePath}
@@ -585,7 +585,7 @@
                 annotatedLines={group.annotatedLines}
               />
 
-              {#each group.cards as entry (entry.annotation.id)}
+              {#each group.cards as entry (entry.flatIndex)}
                 {@const ann = entry.annotation}
                 {@const isActive = activeIndex === entry.flatIndex}
                 {@const isAgent = AGENT_AUTHORS.has(ann.author.toLowerCase())}
