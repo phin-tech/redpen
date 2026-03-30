@@ -59,10 +59,11 @@ interface AppShellControllerOptions {
   jumpToLineDelayMs?: number;
   onToggleLeftPanel?: () => void;
   onToggleRightPanel?: () => void;
+  onCycleView?: (direction: 1 | -1) => void;
 }
 
 export function createAppShellController(
-  { getEditorRef, jumpToLineDelayMs = 100, onToggleLeftPanel, onToggleRightPanel }: AppShellControllerOptions = {},
+  { getEditorRef, jumpToLineDelayMs = 100, onToggleLeftPanel, onToggleRightPanel, onCycleView }: AppShellControllerOptions = {},
 ) {
   const editor = getEditor();
   const workspace = getWorkspace();
@@ -377,18 +378,36 @@ export function createAppShellController(
 
     if (!isEditorTarget && !event.metaKey && !event.ctrlKey && !event.altKey) {
       if (event.key === "[") {
-        if (isReviewPageOpen()) {
-          event.preventDefault();
-          closeReviewPage();
-        }
+        event.preventDefault();
+        onCycleView?.(-1);
         return;
       }
 
       if (event.key === "]") {
-        if (!isReviewPageOpen()) {
-          event.preventDefault();
-          void runCommand("review.changes");
-        }
+        event.preventDefault();
+        onCycleView?.(1);
+        return;
+      }
+
+      // Vim-style sidebar toggles
+      if (event.key === "\\") {
+        event.preventDefault();
+        onToggleLeftPanel?.();
+        onToggleRightPanel?.();
+        return;
+      }
+    }
+
+    // Ctrl+h / Ctrl+l for individual sidebar toggles (vim-style)
+    if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+      if (event.key === "h") {
+        event.preventDefault();
+        onToggleLeftPanel?.();
+        return;
+      }
+      if (event.key === "l") {
+        event.preventDefault();
+        onToggleRightPanel?.();
         return;
       }
     }

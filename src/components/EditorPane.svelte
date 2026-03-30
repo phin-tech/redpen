@@ -184,6 +184,22 @@
     }
   }
 
+  /** Cycle through Code → Review → PR (→ Code) with direction */
+  export function cycleView(direction: 1 | -1) {
+    const hasPr = Boolean(githubReview.activeSession);
+    // Determine current tab index: 0=Code, 1=Review, 2=PR
+    let current = 0;
+    if (isReviewPageOpen() && !showPrView) current = 1;
+    else if (showPrView) current = 2;
+
+    const tabCount = hasPr ? 3 : 2;
+    const next = ((current + direction) % tabCount + tabCount) % tabCount;
+
+    if (next === 0) handleSelectCodeView();
+    else if (next === 1) handleSelectReviewView();
+    else if (next === 2) handleSelectPrView();
+  }
+
   async function handleAgentReviewVerdict(verdict: ReviewVerdict) {
     if (!editor.currentFilePath) return;
     await submitReviewVerdict(editor.currentFilePath, verdict);

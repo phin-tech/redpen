@@ -16,6 +16,7 @@
   const editor = getEditor();
 
   let editorRef: AppEditorRef | undefined = $state(undefined);
+  let editorPaneRef: { cycleView: (dir: 1 | -1) => void } | undefined = $state(undefined);
   let savedLeftPanelWidth = $state(240);
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
@@ -43,6 +44,7 @@
     getEditorRef: () => editorRef,
     onToggleLeftPanel: () => toggleLeftPanel(),
     onToggleRightPanel: () => toggleRightPanel(),
+    onCycleView: (dir) => editorPaneRef?.cycleView(dir),
   });
 
   function resizeLeft(delta: number) {
@@ -109,6 +111,7 @@
 
     <section class="app-panel app-panel-workspace">
       <EditorPane
+        bind:this={editorPaneRef}
         bind:ref={editorRef}
         bind:showShortcutHelp={appShell.state.showReviewShortcutHelp}
         onSelectionChange={appShell.handleSelectionChange}
