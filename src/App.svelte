@@ -7,7 +7,6 @@
   import EditorPane from "./components/EditorPane.svelte";
   import FileTree from "./components/FileTree.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
-  import ReviewWorkspaceHeader from "./components/ReviewWorkspaceHeader.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import { createAppShellController, type AppEditorRef } from "$lib/controllers/appShell.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
@@ -65,8 +64,6 @@
 />
 
 <div class="app-root">
-  <ReviewWorkspaceHeader onOpenHelp={appShell.openReviewShortcutHelp} />
-
   <div class="workspace-shell">
     <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
       <FileTree
