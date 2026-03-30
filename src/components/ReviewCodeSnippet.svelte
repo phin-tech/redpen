@@ -13,6 +13,7 @@
     highlightEndLine,
     diffHunk,
     kindColor = "var(--accent)",
+    annotatedLines,
   }: {
     filePath: string;
     snippet: FileSnippet | null;
@@ -20,7 +21,12 @@
     highlightEndLine?: number;
     diffHunk?: DiffHunk | null;
     kindColor?: string;
+    annotatedLines?: { line: number; resolved: boolean }[];
   } = $props();
+
+  const annotatedLineMap = $derived(
+    new Map((annotatedLines ?? []).map(a => [a.line, a.resolved]))
+  );
 
   let expandedAbove = $state(0);
   let expandedBelow = $state(0);
@@ -198,11 +204,18 @@
       class:snippet-insert={line.changeKind === "insert"}
       class:snippet-delete={line.changeKind === "delete"}
       style:--kind-highlight={kindColor}
+      data-line={line.lineNum}
     >
       <span class="snippet-linenum">
         {line.lineNum ?? ""}
       </span>
       <span class="snippet-content">{@html highlightedLines[i] ?? escapeHtml(line.content)}</span>
+      {#if line.lineNum !== null && annotatedLineMap.has(line.lineNum)}
+        <span
+          class="snippet-status-dot"
+          class:snippet-status-dot-resolved={annotatedLineMap.get(line.lineNum)}
+        ></span>
+      {/if}
     </div>
   {/each}
 
@@ -290,5 +303,20 @@
   .snippet-expand:hover {
     color: var(--text-secondary);
     background: color-mix(in srgb, var(--surface-raised) 50%, transparent);
+  }
+  .snippet-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-left: 8px;
+    align-self: center;
+  }
+  .snippet-status-dot-resolved {
+    background: var(--color-success);
+  }
+  :global(.snippet-line-hover) {
+    background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
   }
 </style>
