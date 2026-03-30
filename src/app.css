@@ -3,32 +3,41 @@
 /* ── Semantic design tokens ── */
 :root {
   /* Surfaces */
-  --surface-base: #0C0D10;
-  --surface-panel: #121419;
-  --surface-editor: #181B21;
-  --surface-raised: #20242C;
+  --surface-base: #0D1117;
+  --surface-panel: #161B22;
+  --surface-editor: #0D1117;
+  --surface-elevated: #1C2129;
+  --surface-raised: #21262D;
   --surface-highlight: #2A3039;
   --surface-selection: #231B1A;
 
   /* Text */
-  --text-primary: #F3F4F6;
-  --text-secondary: #C1C7D0;
-  --text-muted: #8B93A1;
+  --text-primary: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.3);
+  --text-ghost: rgba(255, 255, 255, 0.15);
 
   /* Borders */
-  --border-default: #2A3038;
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-emphasis: #3B4350;
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.03);
+  --border-emphasis: rgba(255, 255, 255, 0.12);
 
-  /* Accent */
-  --accent: #F28C74;
-  --accent-hover: #FFAF9B;
-  --accent-subtle: rgba(242, 140, 116, 0.16);
-  --accent-annotation-border: rgba(242, 140, 116, 0.58);
-  --view-active: #72AEE6;
-  --view-active-hover: #8BBBEA;
-  --view-active-subtle: rgba(114, 174, 230, 0.16);
-  --view-active-border: rgba(114, 174, 230, 0.38);
+  /* Accent — tiered usage:
+     solid fill → --accent (Submit button ONLY)
+     active indicator → --accent-active (2px underline)
+     badge/outlined → --accent-badge-* (text + border, transparent bg)
+     subtle → --accent-subtle (collapsed bubble left-border, highlights) */
+  --accent: #D9B15F;
+  --accent-hover: #E4C06E;
+  --accent-subtle: rgba(217, 177, 95, 0.12);
+  --accent-active: #D9B15F;
+  --accent-badge-text: #D9B15F;
+  --accent-badge-border: rgba(217, 177, 95, 0.3);
+  --accent-annotation-border: rgba(217, 177, 95, 0.4);
+  --view-active: rgba(255, 255, 255, 0.9);
+  --view-active-hover: rgba(255, 255, 255, 1);
+  --view-active-subtle: transparent;
+  --view-active-border: transparent;
 
   /* Annotation kind colors */
   --kind-comment: #D9B15F;
@@ -77,16 +86,14 @@
   --orphaned-border: rgba(224, 106, 95, 0.55);
 
   /* Elevation */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.15);
-  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.5), 0 8px 32px rgba(0, 0, 0, 0.3);
-  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.4), 0 4px 8px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 4px 8px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.25);
+  --shadow-panel: 0 2px 6px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3);
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.6), 0 16px 48px rgba(0, 0, 0, 0.4);
+  --shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.3);
 
-  /* Gradients (disabled – flat panels) */
-  --gradient-panel: none;
-  --gradient-toolbar: none;
+  /* Gradients — removed, surfaces use flat colors */
 
   /* Typography */
   --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", monospace;
@@ -101,6 +108,7 @@
   --color-surface-panel: var(--surface-panel);
   --color-surface-editor: var(--surface-editor);
   --color-surface-raised: var(--surface-raised);
+  --color-surface-elevated: var(--surface-elevated);
   --color-surface-highlight: var(--surface-highlight);
   --color-surface-selection: var(--surface-selection);
 
@@ -113,6 +121,7 @@
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
+  --color-text-ghost: var(--text-ghost);
 
   /* Borders */
   --color-border-default: var(--border-default);
@@ -163,10 +172,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: rgba(255, 255, 255, 0.15);
 }
