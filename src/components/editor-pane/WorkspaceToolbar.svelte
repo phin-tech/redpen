@@ -105,8 +105,8 @@
       {/if}
     </div>
 
-    <!-- Center zone: view switcher -->
-    <div class="toolbar-center">
+    <!-- Tabs + Actions: tethered as one group -->
+    <div class="toolbar-nav-group">
       <div class="view-tabs">
         <button
           class="view-tab"
@@ -135,10 +135,10 @@
           </button>
         {/if}
       </div>
-    </div>
 
-    <!-- Right zone: mode-specific actions -->
-    <div class="toolbar-right">
+      <div class="toolbar-divider"></div>
+
+      <div class="toolbar-actions">
       {#if isReviewView && githubReview.activeSession}
         <!-- GitHub review mode actions -->
         <button
@@ -227,6 +227,7 @@
         {/if}
 
       {/if}
+      </div>
     </div>
   </div>
 {/if}
@@ -235,9 +236,7 @@
   .consolidated-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    position: relative;
-    padding: 0 10px;
+    padding: 0 14px;
     min-height: 42px;
     box-sizing: border-box;
     background: var(--surface-panel);
@@ -245,14 +244,15 @@
     flex-shrink: 0;
   }
 
-  /* Left zone: review context */
+  /* Left zone: review context — takes remaining space, pushes nav group right */
   .toolbar-left {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     overflow: hidden;
+    margin-right: 16px;
   }
   .context-label {
     color: var(--text-secondary);
@@ -289,12 +289,24 @@
     min-width: 0;
   }
 
-  /* Center zone: view switcher — absolutely centered */
-  .toolbar-center {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1;
+  /* Tabs + Actions tethered as one group */
+  .toolbar-nav-group {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 0;
+  }
+  .toolbar-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--border-default);
+    margin: 0 8px;
+    flex-shrink: 0;
+  }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .view-tabs {
     display: flex;
@@ -332,7 +344,7 @@
     left: 6px;
     right: 6px;
     height: 2px;
-    background: var(--accent-badge-text, #D9B15F);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 1px;
   }
   .view-tab-badge {
@@ -351,14 +363,7 @@
     font-family: var(--font-mono);
   }
 
-  /* Right zone: actions — pinned right */
-  .toolbar-right {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-  }
+  /* (toolbar-right removed — actions now inside toolbar-nav-group) */
 
   /* Icon buttons (Resync, Revert) */
   .icon-btn {
