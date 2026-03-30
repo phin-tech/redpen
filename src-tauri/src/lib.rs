@@ -33,6 +33,11 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .manage(AppState::new().expect("failed to initialize app state"))
         .invoke_handler(tauri::generate_handler![
             commands::files::read_directory,

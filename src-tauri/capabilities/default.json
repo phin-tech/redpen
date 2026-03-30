@@ -17,6 +17,7 @@
     "shell:default",
     "shell:allow-execute",
     "deep-link:default",
-    "notification:default"
+    "notification:default",
+    "log:default"
   ]
 }
