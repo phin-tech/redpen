@@ -37,6 +37,50 @@
   let historyError = $state<string | null>(null);
   let cleaningHistory = $state(false);
 
+  let hasContent = $derived(
+    history != null && (
+      history.activeSession != null ||
+      history.recentPullRequests.length > 0 ||
+      history.recentFiles.length > 0
+    )
+  );
+
+  let allSessions = $derived(buildSessionList());
+
+  function buildSessionList() {
+    if (!history) return [];
+    const items: Array<{ item: typeof history.recentPullRequests[0]; label: string; isActive: boolean }> = [];
+    if (history.activeSession) {
+      items.push({ item: history.activeSession, label: history.activeSession.kind === "github_pr" ? "Pull request" : "Local review", isActive: true });
+    }
+    for (const pr of history.recentPullRequests) {
+      items.push({ item: pr, label: "Pull request", isActive: false });
+    }
+    for (const f of history.recentFiles) {
+      items.push({ item: f, label: "Local review", isActive: false });
+    }
+    return items;
+  }
+
+  function relativeTime(isoDate: string): string {
+    const now = Date.now();
+    const then = new Date(isoDate).getTime();
+    const diffMs = now - then;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays === 1) return "yesterday";
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return new Date(isoDate).toLocaleDateString();
+  }
+
+  function pluralize(count: number, singular: string): string {
+    return `${count} ${singular}${count === 1 ? '' : 's'}`;
+  }
+
   onMount(() => {
     void initialize();
     const poll = window.setInterval(() => {
@@ -157,238 +201,474 @@
   }
 </script>
 
-<div class="github-inbox">
-  <div class="github-inbox-shell">
-    <div class="github-inbox-header">
-      <div>
-        <div class="github-inbox-kicker">GitHub Review</div>
-        <h2>Pull requests to review</h2>
-        <p>Open a PR directly or pick one from your tracked review queue.</p>
-      </div>
-      <div class="github-inbox-header-actions">
-        <Button variant="secondary" size="sm" onclick={() => void loadGitHubReviewQueue()}>
-          Refresh
-        </Button>
-        <Button size="sm" onclick={() => void onOpenFolder()}>
-          Open Folder
-        </Button>
-      </div>
+<div class="launch-screen">
+  <!-- Hero -->
+  <div class="launch-hero">
+    <div class="launch-hero-label">Start a review</div>
+    <div class="launch-hero-input-wrapper">
+      <span class="launch-hero-search-icon">&#x2315;</span>
+      <input
+        bind:value={manualPrRef}
+        placeholder="Paste a GitHub PR URL or owner/repo#123"
+        class="launch-hero-input"
+        onkeydown={(e) => { if (e.key === 'Enter') void openManualPr(); }}
+      />
     </div>
-
-    <div class="github-inbox-manual">
-      <div class="github-inbox-field">
-        <label for="github-pr-ref">PR</label>
-        <input
-          id="github-pr-ref"
-          bind:value={manualPrRef}
-          placeholder="phin-tech/test-repo#16 or GitHub PR URL"
-          class="github-inbox-input"
-        />
-      </div>
-      <div class="github-inbox-field">
-        <label for="github-local-path">Local checkout override</label>
-        <input
-          id="github-local-path"
-          bind:value={manualLocalPath}
-          placeholder="Optional. Defaults to Settings checkout location."
-          class="github-inbox-input"
-        />
-      </div>
-      <Button onclick={() => void openManualPr()} disabled={!manualPrRef.trim() || githubReview.opening}>
-        Open PR
-      </Button>
-    </div>
-
-    {#if githubReview.actionError}
-      <div class="github-inbox-banner github-inbox-banner-error">{githubReview.actionError}</div>
-    {/if}
-
-    <div class="github-inbox-section">
-      <div class="github-inbox-section-header">
-        <h3>Review Queue</h3>
-        <span>{githubReview.queue.length} items</span>
-      </div>
-
-      {#if githubReview.loadingQueue}
-        <div class="github-inbox-empty">Loading review queue...</div>
-      {:else if githubReview.queueError}
-        <div class="github-inbox-empty">{githubReview.queueError}</div>
-      {:else if githubReview.queue.length === 0}
-        <div class="github-inbox-empty">
-          No review-requested PRs found. Add tracked repos in Settings or open a PR manually.
-        </div>
-      {:else}
-        <div class="github-inbox-list">
-          {#each githubReview.queue as item (`${item.repo}#${item.number}`)}
-            <button
-              class="github-inbox-item"
-              onclick={() => void openGitHubPullRequest(`${item.repo}#${item.number}`, item.localPath)}
-            >
-              <div class="github-inbox-item-main">
-                <div class="github-inbox-item-topline">
-                  <span class="github-inbox-item-repo">{item.repo}</span>
-                  <span class="github-inbox-item-pr">#{item.number}</span>
-                </div>
-                <div class="github-inbox-item-title">{item.title}</div>
-                <div class="github-inbox-item-meta">
-                  <span>{item.author}</span>
-                  <span>{item.baseRef} ← {item.headRef}</span>
-                </div>
-              </div>
-              <div class="github-inbox-item-arrow">Open</div>
-            </button>
-          {/each}
-        </div>
-      {/if}
-    </div>
-
-    <div class="github-inbox-section">
-      <div class="github-inbox-section-header">
-        <h3>History</h3>
-        <div class="github-inbox-history-actions">
-          <Button variant="secondary" size="sm" onclick={() => void refreshHistory()}>
-            Refresh
-          </Button>
-          <Button variant="secondary" size="sm" onclick={() => void handleCleanup()} disabled={cleaningHistory}>
-            {cleaningHistory ? "Cleaning..." : "Clean stale"}
-          </Button>
-        </div>
-      </div>
-
-      {#if historyError}
-        <div class="github-inbox-empty">{historyError}</div>
-      {:else if !history}
-        <div class="github-inbox-empty">Loading review history...</div>
-      {:else}
-        {#if history.activeSession}
-          <div class="github-inbox-history-group">
-            <div class="github-inbox-history-label">Resume active session</div>
-            <button class="github-inbox-item" onclick={() => void handleResume(history!.activeSession!.id)}>
-              <div class="github-inbox-item-main">
-                <div class="github-inbox-item-topline">
-                  <span class="github-inbox-item-repo">{history.activeSession.kind === "github_pr" ? "Pull request" : "File review"}</span>
-                  <span class="github-inbox-item-pr">{history.activeSession.status}</span>
-                </div>
-                <div class="github-inbox-item-title">{history.activeSession.title}</div>
-                <div class="github-inbox-item-meta">
-                  <span>{history.activeSession.subtitle}</span>
-                  <span>{history.activeSession.fileCount} files</span>
-                </div>
-              </div>
-              <div class="github-inbox-item-arrow">Resume</div>
-            </button>
-          </div>
-        {/if}
-
-        {#if history.recentPullRequests.length > 0}
-          <div class="github-inbox-history-group">
-            <div class="github-inbox-history-label">Recent PRs</div>
-            <div class="github-inbox-list">
-              {#each history.recentPullRequests as item (item.id)}
-                <button class="github-inbox-item" onclick={() => void handleResume(item.id)}>
-                  <div class="github-inbox-item-main">
-                    <div class="github-inbox-item-topline">
-                      <span class="github-inbox-item-repo">{item.subtitle}</span>
-                      <span class="github-inbox-item-pr">{item.status}</span>
-                    </div>
-                    <div class="github-inbox-item-title">{item.title}</div>
-                    <div class="github-inbox-item-meta">
-                      <span>{item.fileCount} files</span>
-                      {#if item.verdict}<span>{item.verdict}</span>{/if}
-                    </div>
-                  </div>
-                  <div class="github-inbox-item-arrow">Open</div>
-                </button>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        {#if history.recentFiles.length > 0}
-          <div class="github-inbox-history-group">
-            <div class="github-inbox-history-label">Recent file reviews</div>
-            <div class="github-inbox-list">
-              {#each history.recentFiles as item (item.id)}
-                <button class="github-inbox-item" onclick={() => void handleResume(item.id)}>
-                  <div class="github-inbox-item-main">
-                    <div class="github-inbox-item-topline">
-                      <span class="github-inbox-item-repo">File review</span>
-                      <span class="github-inbox-item-pr">{item.status}</span>
-                    </div>
-                    <div class="github-inbox-item-title">{item.title}</div>
-                    <div class="github-inbox-item-meta">
-                      <span>{item.subtitle}</span>
-                      {#if item.verdict}<span>{item.verdict}</span>{/if}
-                    </div>
-                  </div>
-                  <div class="github-inbox-item-arrow">Resume</div>
-                </button>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        {#if history.staleSessions.length > 0}
-          <div class="github-inbox-history-group">
-            <div class="github-inbox-history-label">Stale sessions</div>
-            <div class="github-inbox-list">
-              {#each history.staleSessions as item (item.id)}
-                <div class="github-inbox-item github-inbox-item-stale">
-                  <div class="github-inbox-item-main">
-                    <div class="github-inbox-item-topline">
-                      <span class="github-inbox-item-repo">{item.kind === "github_pr" ? "Pull request" : "File review"}</span>
-                      <span class="github-inbox-item-pr">stale</span>
-                    </div>
-                    <div class="github-inbox-item-title">{item.title}</div>
-                    <div class="github-inbox-item-meta">
-                      <span>{item.subtitle}</span>
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      {/if}
-    </div>
+    <div class="launch-hero-hint">or drag a folder anywhere to start a local review</div>
   </div>
 
-  {#if pendingAutoCheckout}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="github-inbox-modal-backdrop" onclick={cancelAutoCheckout}>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <div class="github-inbox-modal" onclick={(event) => event.stopPropagation()}>
-        <div class="github-inbox-modal-kicker">New Checkout</div>
-        <h3>Clone repo for this review?</h3>
-        <p>
-          <strong>{pendingAutoCheckout.repo}</strong> is not tracked yet. Red Pen will clone it to
-          <code>{pendingAutoCheckout.checkoutPath}</code> and then open the pull request.
-        </p>
-        <div class="github-inbox-modal-actions">
-          <Button variant="secondary" size="sm" onclick={cancelAutoCheckout}>Cancel</Button>
-          <Button size="sm" onclick={() => void confirmAutoCheckout()}>Clone and Open</Button>
+  {#if githubReview.actionError}
+    <div class="launch-error">{githubReview.actionError}</div>
+  {/if}
+
+  {#if hasContent}
+    <div class="launch-columns">
+      <div class="launch-col">
+        <div class="launch-col-label">Local Review</div>
+        <button class="launch-open-folder" onclick={() => void onOpenFolder()}>
+          <span class="launch-open-folder-icon">&#x1F4C1;</span> Open Folder&hellip;
+        </button>
+      </div>
+      <div class="launch-divider"></div>
+      <div class="launch-col">
+        <div class="launch-col-label-row">
+          <div class="launch-col-label">Recent Sessions</div>
+          <div class="launch-col-actions">
+            <button class="launch-ghost-btn launch-ghost-btn-small" onclick={() => void refreshHistory()}>Refresh</button>
+            {#if history?.staleSessions && history.staleSessions.length > 0}
+              <button class="launch-ghost-btn launch-ghost-btn-small" onclick={() => void handleCleanup()} disabled={cleaningHistory}>
+                {cleaningHistory ? "Cleaning..." : "Clean stale"}
+              </button>
+            {/if}
+          </div>
         </div>
+        {#if historyError}
+          <div class="launch-session-empty">{historyError}</div>
+        {:else if !history}
+          <div class="launch-session-empty">Loading...</div>
+        {:else}
+          <div class="launch-session-list">
+            {#each allSessions as { item, label, isActive } (item.id)}
+              <div class="launch-session-card" class:launch-session-card-active={isActive}>
+                <div class="launch-session-card-top">
+                  <span class="launch-session-card-kind">{label}</span>
+                  {#if item.verdict}
+                    <span class="launch-session-card-verdict">{item.verdict}</span>
+                  {/if}
+                  <span class="launch-session-card-time">{relativeTime(item.updatedAt)}</span>
+                </div>
+                <div class="launch-session-card-title">{item.title}</div>
+                <div class="launch-session-card-meta">
+                  <span>{item.subtitle}</span>
+                  <span>{pluralize(item.fileCount, 'file')}</span>
+                </div>
+                <button class="launch-ghost-btn" onclick={() => void handleResume(item.id)}>
+                  {isActive ? "Resume" : "Open"}
+                </button>
+              </div>
+            {/each}
+
+            {#if history.staleSessions.length > 0}
+              {#each history.staleSessions as item (item.id)}
+                <div class="launch-session-card launch-session-card-stale">
+                  <div class="launch-session-card-top">
+                    <span class="launch-session-card-kind">{item.kind === "github_pr" ? "Pull request" : "Local review"}</span>
+                    <span class="launch-session-card-time">stale</span>
+                  </div>
+                  <div class="launch-session-card-title">{item.title}</div>
+                  <div class="launch-session-card-meta">
+                    <span>{item.subtitle}</span>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <!-- Empty state: tight cluster -->
+    <div class="launch-empty">
+      <button class="launch-open-folder" onclick={() => void onOpenFolder()}>
+        <span class="launch-open-folder-icon">&#x1F4C1;</span> Open Folder&hellip;
+      </button>
+    </div>
+  {/if}
+
+  <!-- Review queue (only if items exist) -->
+  {#if githubReview.queue.length > 0}
+    <div class="launch-queue">
+      <div class="launch-col-label">Review Queue <span class="launch-queue-count">{githubReview.queue.length}</span></div>
+      <div class="launch-queue-list">
+        {#each githubReview.queue as item (`${item.repo}#${item.number}`)}
+          <button
+            class="launch-queue-item"
+            onclick={() => void openGitHubPullRequest(`${item.repo}#${item.number}`, item.localPath)}
+          >
+            <div class="launch-queue-item-main">
+              <div class="launch-queue-item-topline">
+                <span class="launch-queue-item-repo">{item.repo}</span>
+                <span class="launch-queue-item-number">#{item.number}</span>
+              </div>
+              <div class="launch-queue-item-title">{item.title}</div>
+              <div class="launch-queue-item-meta">
+                <span>{item.author}</span>
+                <span>{item.baseRef} &larr; {item.headRef}</span>
+              </div>
+            </div>
+            <span class="launch-ghost-btn">Open</span>
+          </button>
+        {/each}
       </div>
     </div>
   {/if}
+
+  <div class="launch-tip">
+    Tip: Review PRs by pasting a GitHub URL above, or open a local folder to review agent changes
+  </div>
 </div>
 
+{#if pendingAutoCheckout}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="launch-modal-backdrop" onclick={cancelAutoCheckout}>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="launch-modal" onclick={(event) => event.stopPropagation()}>
+      <div class="launch-modal-kicker">New Checkout</div>
+      <h3>Clone repo for this review?</h3>
+      <p>
+        <strong>{pendingAutoCheckout.repo}</strong> is not tracked yet. Red Pen will clone it to
+        <code>{pendingAutoCheckout.checkoutPath}</code> and then open the pull request.
+      </p>
+      <div class="launch-modal-actions">
+        <Button variant="secondary" size="sm" onclick={cancelAutoCheckout}>Cancel</Button>
+        <Button size="sm" onclick={() => void confirmAutoCheckout()}>Clone and Open</Button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
-  .github-inbox {
+  /* ── Launch Screen Shell ── */
+  .launch-screen {
     height: 100%;
     overflow: auto;
     background: var(--surface-base);
-  }
-  .github-inbox-shell {
-    max-width: 980px;
-    margin: 0 auto;
-    padding: 18px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-items: center;
   }
-  .github-inbox-modal-backdrop {
+
+  /* ── Hero ── */
+  .launch-hero {
+    padding: 60px 40px 32px;
+    text-align: center;
+    width: 100%;
+  }
+  .launch-hero-label {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    letter-spacing: 0.02em;
+  }
+  .launch-hero-input-wrapper {
+    max-width: 480px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .launch-hero-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-ghost);
+    font-size: 16px;
+    pointer-events: none;
+  }
+  .launch-hero-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--surface-panel);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    padding: 12px 16px 12px 40px;
+    font-size: 14px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .launch-hero-input::placeholder {
+    color: var(--text-ghost);
+  }
+  .launch-hero-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(217, 177, 95, 0.2);
+  }
+  .launch-hero-hint {
+    color: var(--text-ghost);
+    font-size: 12px;
+    margin-top: 10px;
+  }
+
+  /* ── Error banner ── */
+  .launch-error {
+    max-width: 480px;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--danger) 10%, var(--surface-panel));
+    color: var(--danger);
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  /* ── Two-column layout ── */
+  .launch-columns {
+    display: flex;
+    gap: 0;
+    padding: 0 40px 24px;
+    max-width: 720px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .launch-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .launch-col:first-child {
+    padding-right: 24px;
+  }
+  .launch-col:last-child {
+    padding-left: 24px;
+  }
+  .launch-divider {
+    width: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+  }
+  .launch-col-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .launch-col-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .launch-col-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  /* ── Open Folder button ── */
+  .launch-open-folder {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 10px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s;
+    width: fit-content;
+  }
+  .launch-open-folder:hover {
+    background: var(--surface-highlight);
+    color: var(--text-primary);
+  }
+  .launch-open-folder-icon {
+    font-size: 15px;
+  }
+
+  /* ── Empty state ── */
+  .launch-empty {
+    padding: 0 40px 32px;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* ── Session cards ── */
+  .launch-session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .launch-session-empty {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .launch-session-card {
+    background: var(--surface-panel);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .launch-session-card-active {
+    box-shadow: inset 0 0 0 1px rgba(217, 177, 95, 0.18);
+  }
+  .launch-session-card-stale {
+    opacity: 0.55;
+  }
+  .launch-session-card-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .launch-session-card-kind {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .launch-session-card-verdict {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+  .launch-session-card-time {
+    color: var(--text-ghost);
+    margin-left: auto;
+  }
+  .launch-session-card-title {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .launch-session-card-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-ghost);
+  }
+
+  /* ── Ghost button ── */
+  .launch-ghost-btn {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-default);
+    background: transparent;
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    width: fit-content;
+    margin-top: 2px;
+  }
+  .launch-ghost-btn:hover {
+    background: var(--surface-highlight);
+    color: var(--text-primary);
+  }
+  .launch-ghost-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .launch-ghost-btn-small {
+    font-size: 11px;
+    padding: 2px 8px;
+    border: none;
+    color: var(--text-ghost);
+  }
+
+  /* ── Review Queue ── */
+  .launch-queue {
+    max-width: 720px;
+    width: 100%;
+    padding: 0 40px 24px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .launch-queue-count {
+    font-weight: 400;
+    color: var(--text-ghost);
+  }
+  .launch-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .launch-queue-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--surface-panel);
+    border-radius: 8px;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s;
+    color: inherit;
+  }
+  .launch-queue-item:hover {
+    background: var(--surface-highlight);
+  }
+  .launch-queue-item-main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .launch-queue-item-topline {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+  }
+  .launch-queue-item-repo {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .launch-queue-item-number {
+    color: var(--text-muted);
+  }
+  .launch-queue-item-title {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .launch-queue-item-meta {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text-ghost);
+  }
+
+  /* ── Tip ── */
+  .launch-tip {
+    color: var(--text-ghost);
+    font-size: 12px;
+    padding: 16px 40px 32px;
+    text-align: center;
+    max-width: 480px;
+  }
+
+  /* ── Modal (kept from original) ── */
+  .launch-modal-backdrop {
     position: fixed;
     inset: 0;
     background: color-mix(in srgb, black 58%, transparent);
@@ -398,7 +678,7 @@
     padding: 24px;
     z-index: 50;
   }
-  .github-inbox-modal {
+  .launch-modal {
     width: min(460px, 100%);
     border: 1px solid var(--border-default);
     border-radius: 12px;
@@ -409,225 +689,58 @@
     flex-direction: column;
     gap: 12px;
   }
-  .github-inbox-modal-kicker {
+  .launch-modal-kicker {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
-  .github-inbox-modal h3 {
+  .launch-modal h3 {
     margin: 0;
     font-size: 18px;
     color: var(--text-primary);
   }
-  .github-inbox-modal p {
+  .launch-modal p {
     margin: 0;
     color: var(--text-secondary);
     font-size: 14px;
     line-height: 1.5;
   }
-  .github-inbox-modal code {
+  .launch-modal code {
     color: var(--text-primary);
     word-break: break-word;
   }
-  .github-inbox-modal-actions {
+  .launch-modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     padding-top: 4px;
   }
-  .github-inbox-header,
-  .github-inbox-manual,
-  .github-inbox-section,
-  .github-inbox-empty,
-  .github-inbox-banner {
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    background: var(--surface-panel);
-    box-shadow: var(--shadow-xs);
-  }
-  .github-inbox-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 16px;
-  }
-  .github-inbox-kicker {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-  .github-inbox-header h2 {
-    margin: 0;
-    font-size: 24px;
-    line-height: 1.2;
-    color: var(--text-primary);
-  }
-  .github-inbox-header p {
-    margin: 6px 0 0;
-    color: var(--text-secondary);
-    font-size: 14px;
-  }
-  .github-inbox-header-actions {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  .github-inbox-manual {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
-    gap: 12px;
-    padding: 12px;
-    align-items: end;
-  }
-  .github-inbox-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  .github-inbox-field label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-  .github-inbox-input {
-    width: 100%;
-    min-width: 0;
-    border: 1px solid var(--border-default);
-    border-radius: 8px;
-    background: var(--surface-base);
-    color: var(--text-primary);
-    padding: 10px 12px;
-    outline: none;
-  }
-  .github-inbox-input:focus {
-    border-color: var(--accent);
-  }
-  .github-inbox-banner {
-    padding: 12px 14px;
-    color: var(--text-secondary);
-  }
-  .github-inbox-banner-error {
-    border-color: color-mix(in srgb, var(--danger) 45%, var(--border-default));
-    color: var(--danger);
-  }
-  .github-inbox-section {
-    overflow: hidden;
-  }
-  .github-inbox-section-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border-default);
-    background: var(--surface-raised);
-  }
-  .github-inbox-section-header h3 {
-    margin: 0;
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text-muted);
-  }
-  .github-inbox-section-header span {
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  .github-inbox-history-actions {
-    display: flex;
-    gap: 8px;
-  }
-  .github-inbox-history-group {
-    display: grid;
-    gap: 10px;
-    padding: 14px;
-    border-top: 1px solid var(--border-subtle);
-  }
-  .github-inbox-history-group:first-child {
-    border-top: 0;
-  }
-  .github-inbox-history-label {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .github-inbox-list {
-    display: flex;
-    flex-direction: column;
-  }
-  .github-inbox-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    padding: 14px;
-    border-top: 1px solid var(--border-subtle);
-    text-align: left;
-    background: transparent;
-  }
-  .github-inbox-item:first-child {
-    border-top: 0;
-  }
-  .github-inbox-item:hover {
-    background: var(--surface-highlight);
-  }
-  .github-inbox-item-main {
-    min-width: 0;
-    flex: 1;
-  }
-  .github-inbox-item-topline,
-  .github-inbox-item-meta {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  .github-inbox-item-title {
-    margin: 6px 0;
-    color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 1.35;
-  }
-  .github-inbox-item-arrow {
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-  .github-inbox-item-stale {
-    cursor: default;
-    opacity: 0.72;
-  }
-  .github-inbox-empty {
-    padding: 20px;
-    color: var(--text-secondary);
-    font-size: 14px;
-    box-shadow: none;
-  }
-  @media (max-width: 840px) {
-    .github-inbox-manual {
-      grid-template-columns: 1fr;
+
+  /* ── Responsive ── */
+  @media (max-width: 640px) {
+    .launch-hero {
+      padding: 40px 20px 24px;
     }
-    .github-inbox-header {
+    .launch-columns {
       flex-direction: column;
+      gap: 24px;
+      padding: 0 20px 24px;
     }
-    .github-inbox-header-actions {
-      width: 100%;
-      justify-content: flex-start;
+    .launch-col:first-child {
+      padding-right: 0;
     }
-    .github-inbox-item {
-      align-items: flex-start;
-      flex-direction: column;
+    .launch-col:last-child {
+      padding-left: 0;
+    }
+    .launch-divider {
+      display: none;
+    }
+    .launch-queue,
+    .launch-tip {
+      padding-left: 20px;
+      padding-right: 20px;
     }
   }
 </style>
