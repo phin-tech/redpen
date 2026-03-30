@@ -105,8 +105,8 @@
       {/if}
     </div>
 
-    <!-- Tabs + Actions: tethered as one group -->
-    <div class="toolbar-nav-group">
+    <!-- Center: Navigation tabs (grid-locked to screen center) -->
+    <div class="toolbar-center">
       <div class="view-tabs">
         <button
           class="view-tab"
@@ -135,10 +135,10 @@
           </button>
         {/if}
       </div>
+    </div>
 
-      <div class="toolbar-divider"></div>
-
-      <div class="toolbar-actions">
+    <!-- Right: Mode-specific actions (pinned to right edge) -->
+    <div class="toolbar-right">
       {#if isReviewView && githubReview.activeSession}
         <!-- GitHub review mode actions -->
         <button
@@ -227,14 +227,14 @@
         {/if}
 
       {/if}
-      </div>
     </div>
   </div>
 {/if}
 
 <style>
   .consolidated-toolbar {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     padding: 0 14px;
     min-height: 42px;
@@ -244,15 +244,13 @@
     flex-shrink: 0;
   }
 
-  /* Left zone: review context — takes remaining space, pushes nav group right */
+  /* Left zone: review context */
   .toolbar-left {
-    flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
     overflow: hidden;
-    margin-right: 16px;
   }
   .context-label {
     color: var(--text-secondary);
@@ -289,21 +287,14 @@
     min-width: 0;
   }
 
-  /* Tabs + Actions tethered as one group */
-  .toolbar-nav-group {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-    gap: 0;
+  /* Center zone: tabs — grid-locked to screen center */
+  .toolbar-center {
+    justify-self: center;
   }
-  .toolbar-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--border-default);
-    margin: 0 8px;
-    flex-shrink: 0;
-  }
-  .toolbar-actions {
+
+  /* Right zone: actions — pinned to right edge */
+  .toolbar-right {
+    justify-self: end;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -363,7 +354,6 @@
     font-family: var(--font-mono);
   }
 
-  /* (toolbar-right removed — actions now inside toolbar-nav-group) */
 
   /* Icon buttons (Resync, Revert) */
   .icon-btn {
