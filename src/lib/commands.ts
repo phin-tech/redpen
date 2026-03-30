@@ -26,6 +26,8 @@ export interface AppCommandContext {
   approveReview: () => Promise<void>;
   requestReviewChanges: () => Promise<void>;
   navigateAnnotation: (direction: 1 | -1) => void;
+  toggleLeftPanel: () => void;
+  toggleRightPanel: () => void;
 }
 
 export interface AppCommandDefinition {
@@ -196,6 +198,22 @@ export function createCommandRegistry(): AppCommandDefinition[] {
       keywords: ["request", "changes", "reject", "review"],
       isEnabled: (context) => context.canSubmitReviewVerdict(),
       run: (context) => context.requestReviewChanges(),
+    },
+    {
+      id: "sidebar.toggleLeft",
+      title: "Toggle file tree",
+      section: "View",
+      keywords: ["sidebar", "file", "tree", "toggle", "collapse"],
+      shortcut: ["Mod", "B"],
+      run: (ctx) => ctx.toggleLeftPanel(),
+    },
+    {
+      id: "sidebar.toggleRight",
+      title: "Toggle annotations panel",
+      section: "View",
+      keywords: ["sidebar", "annotations", "toggle", "collapse"],
+      shortcut: ["Mod", "Shift", "B"],
+      run: (ctx) => ctx.toggleRightPanel(),
     },
   ];
 }

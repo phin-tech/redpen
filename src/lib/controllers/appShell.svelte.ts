@@ -57,10 +57,12 @@ interface AnnotationSelection {
 interface AppShellControllerOptions {
   getEditorRef?: () => AppEditorRef | undefined;
   jumpToLineDelayMs?: number;
+  onToggleLeftPanel?: () => void;
+  onToggleRightPanel?: () => void;
 }
 
 export function createAppShellController(
-  { getEditorRef, jumpToLineDelayMs = 100 }: AppShellControllerOptions = {},
+  { getEditorRef, jumpToLineDelayMs = 100, onToggleLeftPanel, onToggleRightPanel }: AppShellControllerOptions = {},
 ) {
   const editor = getEditor();
   const workspace = getWorkspace();
@@ -327,6 +329,8 @@ export function createAppShellController(
     approveReview: () => submitCurrentReviewVerdict("approved"),
     requestReviewChanges: () => submitCurrentReviewVerdict("changes_requested"),
     navigateAnnotation,
+    toggleLeftPanel: () => onToggleLeftPanel?.(),
+    toggleRightPanel: () => onToggleRightPanel?.(),
   };
 
   async function runCommand(id: string) {
@@ -436,6 +440,16 @@ export function createAppShellController(
     if (matchesShortcut(event, ["Mod", "Shift", "G"])) {
       event.preventDefault();
       editorRef()?.navigateMatch(-1);
+      return;
+    }
+    if (matchesShortcut(event, ["Mod", "B"])) {
+      event.preventDefault();
+      onToggleLeftPanel?.();
+      return;
+    }
+    if (matchesShortcut(event, ["Mod", "Shift", "B"])) {
+      event.preventDefault();
+      onToggleRightPanel?.();
     }
   }
 

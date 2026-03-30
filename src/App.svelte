@@ -19,9 +19,30 @@
   let savedLeftPanelWidth = $state(240);
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
+  let savedRightPanelWidth = $state(300);
+
+  function toggleLeftPanel() {
+    if (leftPanelWidth > 0) {
+      savedLeftPanelWidth = leftPanelWidth;
+      leftPanelWidth = 0;
+    } else {
+      leftPanelWidth = savedLeftPanelWidth > 0 ? savedLeftPanelWidth : 240;
+    }
+  }
+
+  function toggleRightPanel() {
+    if (rightPanelWidth > 0) {
+      savedRightPanelWidth = rightPanelWidth;
+      rightPanelWidth = 0;
+    } else {
+      rightPanelWidth = savedRightPanelWidth > 0 ? savedRightPanelWidth : 300;
+    }
+  }
 
   const appShell = createAppShellController({
     getEditorRef: () => editorRef,
+    onToggleLeftPanel: () => toggleLeftPanel(),
+    onToggleRightPanel: () => toggleRightPanel(),
   });
 
   function resizeLeft(delta: number) {
@@ -65,18 +86,26 @@
 
 <div class="app-root">
   <div class="workspace-shell">
-    <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
-      <FileTree
-        onFileSelect={appShell.handleFileSelect}
-        selectedPath={editor.currentFilePath}
-        onOpenFolder={appShell.openFolderPicker}
-        onExpandAll={appShell.commandContext.expandAllFolders}
-        onCollapseAll={appShell.commandContext.collapseAllFolders}
-        onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
-      />
-    </section>
-
-    <ResizeHandle onResize={resizeLeft} />
+    {#if leftPanelWidth === 0}
+      <button class="panel-rail panel-rail-left" onclick={toggleLeftPanel} title="Expand file tree (⌘B)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+    {:else}
+      <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
+        <FileTree
+          onFileSelect={appShell.handleFileSelect}
+          selectedPath={editor.currentFilePath}
+          onOpenFolder={appShell.openFolderPicker}
+          onExpandAll={appShell.commandContext.expandAllFolders}
+          onCollapseAll={appShell.commandContext.collapseAllFolders}
+          onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
+          onCollapse={toggleLeftPanel}
+        />
+      </section>
+      <ResizeHandle onResize={resizeLeft} />
+    {/if}
 
     <section class="app-panel app-panel-workspace">
       <EditorPane
@@ -88,14 +117,22 @@
       />
     </section>
 
-    <ResizeHandle onResize={resizeRight} />
-
-    <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
-      <AnnotationSidebar
-        onAnnotationClick={appShell.handleAnnotationClick}
-        onFileSelect={appShell.handleFileSelect}
-      />
-    </section>
+    {#if rightPanelWidth === 0}
+      <button class="panel-rail panel-rail-right" onclick={toggleRightPanel} title="Expand annotations (⌘⇧B)">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+    {:else}
+      <ResizeHandle onResize={resizeRight} />
+      <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
+        <AnnotationSidebar
+          onAnnotationClick={appShell.handleAnnotationClick}
+          onFileSelect={appShell.handleFileSelect}
+          onCollapse={toggleRightPanel}
+        />
+      </section>
+    {/if}
   </div>
 
   {#if appShell.state.showPopover}
@@ -153,5 +190,21 @@
     border-left: 0;
     border-right: 0;
     background: var(--surface-base);
+  }
+  .panel-rail {
+    width: 24px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    background: var(--surface-panel);
+    border: 1px solid color-mix(in srgb, var(--border-default) 75%, transparent);
+    cursor: pointer;
+    color: var(--text-ghost);
+  }
+  .panel-rail:hover {
+    color: var(--text-muted);
+    background: var(--surface-raised);
   }
 </style>

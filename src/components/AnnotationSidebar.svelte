@@ -19,9 +19,11 @@
   let {
     onAnnotationClick,
     onFileSelect,
+    onCollapse,
   }: {
     onAnnotationClick: (line: number) => void;
     onFileSelect?: (path: string) => void;
+    onCollapse?: () => void;
   } = $props();
 
   const annotationsState = getAnnotationsState();
@@ -80,6 +82,13 @@
 <div class="h-full flex flex-col">
   <!-- View toggle -->
   <div class="sidebar-header">
+    {#if onCollapse}
+      <button class="sidebar-collapse-btn" onclick={onCollapse} title="Collapse annotations">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+    {/if}
     <button
       class="sidebar-tab"
       class:active={annotationsState.sidebarView === 'file'}
@@ -230,6 +239,22 @@
     box-sizing: border-box;
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
+  }
+  .sidebar-collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-ghost);
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+  }
+  .sidebar-collapse-btn:hover {
+    color: var(--text-muted);
   }
   .sidebar-tab {
     flex: 1;
