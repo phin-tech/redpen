@@ -105,58 +105,59 @@ export const redPenTheme = EditorView.theme({
   },
   // Annotation bubbles
   ".rp-bubble-widget": {
-    padding: "6px 0 6px 56px",
+    padding: "3px 0 3px 56px",
     position: "relative",
   },
   ".rp-bubble-container": {
     maxWidth: "560px",
-    background: "color-mix(in srgb, var(--kind-comment-subtle) 60%, var(--surface-raised))",
-    border: "1px solid var(--kind-comment-border)",
-    borderLeft: "4px solid var(--kind-comment)",
-    borderRadius: "6px",
-    padding: "8px 12px",
-    fontSize: "13px",
+    background: "var(--surface-panel)",
+    border: "none",
+    borderLeft: "3px solid var(--accent-annotation-border)",
+    borderRadius: "4px",
+    padding: "4px 10px",
+    fontSize: "12px",
     fontFamily: "var(--font-sans, system-ui, sans-serif)",
     color: "var(--text-primary)",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
     cursor: "pointer",
-    transition: "box-shadow 150ms, transform 150ms, border-color 150ms",
+    transition: "box-shadow 150ms, border-color 150ms",
     position: "relative",
   },
   ".rp-bubble-container:hover": {
-    boxShadow: "0 4px 16px rgba(0, 0, 0, 0.35)",
-    transform: "translateY(-1px)",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+  },
+  ".rp-bubble-container:not(.rp-bubble-collapsed)": {
+    padding: "10px 12px",
+    fontSize: "13px",
+    borderLeft: "3px solid var(--accent)",
+    boxShadow: "0 0 0 1px var(--border-subtle), 0 4px 12px rgba(0, 0, 0, 0.3)",
   },
   ".rp-bubble-orphaned": {
     borderLeftColor: "var(--color-danger)",
-    borderColor: "var(--orphaned-border)",
-    background: "color-mix(in srgb, var(--orphaned-subtle) 60%, var(--surface-raised))",
     opacity: "0.7",
+  },
+  ".rp-bubble-orphaned:not(.rp-bubble-collapsed)": {
+    background: "color-mix(in srgb, var(--orphaned-subtle) 60%, var(--surface-raised))",
   },
   ".rp-bubble-kind-explanation": {
     borderLeftColor: "var(--kind-explanation)",
-    borderColor: "var(--kind-explanation-border)",
+  },
+  ".rp-bubble-kind-explanation:not(.rp-bubble-collapsed)": {
     background: "color-mix(in srgb, var(--kind-explanation-subtle) 60%, var(--surface-raised))",
   },
   ".rp-bubble-kind-linenote": {
     borderLeftColor: "var(--kind-linenote)",
-    borderColor: "var(--kind-linenote-border)",
+  },
+  ".rp-bubble-kind-linenote:not(.rp-bubble-collapsed)": {
     background: "color-mix(in srgb, var(--kind-linenote-subtle) 60%, var(--surface-raised))",
   },
   ".rp-bubble-kind-label": {
     borderLeftColor: "var(--kind-label)",
-    borderColor: "var(--kind-label-border)",
+  },
+  ".rp-bubble-kind-label:not(.rp-bubble-collapsed)": {
     background: "color-mix(in srgb, var(--kind-label-subtle) 60%, var(--surface-raised))",
   },
   ".rp-bubble-notch": {
-    position: "absolute",
-    top: "-6px",
-    left: "16px",
-    width: "0",
-    height: "0",
-    borderLeft: "6px solid transparent",
-    borderRight: "6px solid transparent",
-    borderBottom: "6px solid var(--border-default)",
+    display: "none",
   },
   // Bubble collapsed summary
   ".rp-bubble-summary": {
