@@ -12,9 +12,12 @@
   import { createAppShellController, type AppEditorRef } from "$lib/controllers/appShell.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
+  import { getWorkspace } from "$lib/stores/workspace.svelte";
 
   const diff = getDiffState();
   const editor = getEditor();
+  const workspace = getWorkspace();
+  const hasWorkspace = $derived(workspace.rootFolders.length > 0);
 
   let editorRef: AppEditorRef | undefined = $state(undefined);
   let editorPaneRef: {
@@ -106,25 +109,27 @@
   />
 
   <div class="workspace-shell">
-    {#if leftPanelWidth === 0}
-      <button class="panel-rail panel-rail-left" onclick={toggleLeftPanel} title="Expand file tree (⌘B)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 18l6-6-6-6" />
-        </svg>
-      </button>
-    {:else}
-      <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
-        <FileTree
-          onFileSelect={appShell.handleFileSelect}
-          selectedPath={editor.currentFilePath}
-          onOpenFolder={appShell.openFolderPicker}
-          onExpandAll={appShell.commandContext.expandAllFolders}
-          onCollapseAll={appShell.commandContext.collapseAllFolders}
-          onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
-          onCollapse={toggleLeftPanel}
-        />
-      </section>
-      <ResizeHandle onResize={resizeLeft} />
+    {#if hasWorkspace}
+      {#if leftPanelWidth === 0}
+        <button class="panel-rail panel-rail-left" onclick={toggleLeftPanel} title="Expand file tree (⌘B)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      {:else}
+        <section class="app-panel app-panel-nav" style={`width: ${leftPanelWidth}px;`}>
+          <FileTree
+            onFileSelect={appShell.handleFileSelect}
+            selectedPath={editor.currentFilePath}
+            onOpenFolder={appShell.openFolderPicker}
+            onExpandAll={appShell.commandContext.expandAllFolders}
+            onCollapseAll={appShell.commandContext.collapseAllFolders}
+            onToggleShowChangedOnly={appShell.commandContext.toggleShowChangedOnly}
+            onCollapse={toggleLeftPanel}
+          />
+        </section>
+        <ResizeHandle onResize={resizeLeft} />
+      {/if}
     {/if}
 
     <section class="app-panel app-panel-workspace">
@@ -139,21 +144,23 @@
       />
     </section>
 
-    {#if rightPanelWidth === 0}
-      <button class="panel-rail panel-rail-right" onclick={toggleRightPanel} title="Expand annotations (⌘⇧B)">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-      </button>
-    {:else}
-      <ResizeHandle onResize={resizeRight} />
-      <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
-        <AnnotationSidebar
-          onAnnotationClick={appShell.handleAnnotationClick}
-          onFileSelect={appShell.handleFileSelect}
-          onCollapse={toggleRightPanel}
-        />
-      </section>
+    {#if hasWorkspace}
+      {#if rightPanelWidth === 0}
+        <button class="panel-rail panel-rail-right" onclick={toggleRightPanel} title="Expand annotations (⌘⇧B)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      {:else}
+        <ResizeHandle onResize={resizeRight} />
+        <section class="app-panel app-panel-sidebar" style={`width: ${rightPanelWidth}px;`}>
+          <AnnotationSidebar
+            onAnnotationClick={appShell.handleAnnotationClick}
+            onFileSelect={appShell.handleFileSelect}
+            onCollapse={toggleRightPanel}
+          />
+        </section>
+      {/if}
     {/if}
   </div>
 
