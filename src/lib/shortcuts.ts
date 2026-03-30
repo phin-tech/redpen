@@ -1,3 +1,4 @@
+/** A keyboard shortcut represented as an array of modifier/key tokens */
 export type Shortcut = string[];
 
 function getPlatform() {
