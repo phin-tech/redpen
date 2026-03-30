@@ -152,7 +152,7 @@
 <style>
   .annotation-card {
     box-shadow: var(--shadow-card);
-    background: var(--gradient-panel), var(--surface-panel);
+    background: var(--surface-panel);
   }
   .annotation-card:hover {
     box-shadow: var(--shadow-card-hover);
@@ -160,7 +160,7 @@
   }
   .annotation-card-selected {
     box-shadow: var(--shadow-card-hover), 0 0 0 1px rgba(227, 154, 45, 0.15);
-    background: linear-gradient(180deg, rgba(227, 154, 45, 0.04) 0%, transparent 100%), var(--surface-selection);
+    background: var(--surface-selection);
   }
   .kind-badge {
     font-size: 10px;

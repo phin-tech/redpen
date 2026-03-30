@@ -13,7 +13,7 @@
   );
 </script>
 
-<div class="flex items-center justify-between h-10 px-3 border-b border-border-default/60" style="background: var(--gradient-toolbar), var(--surface-base); box-shadow: var(--shadow-xs)">
+<div class="flex items-center justify-between h-10 px-3 border-b border-border-default/60" style="background: var(--surface-base); box-shadow: var(--shadow-xs)">
   <div class="flex items-center gap-2 flex-1">
     <span class="text-xs font-semibold text-text-secondary tracking-wide">{workspaceName}</span>
   </div>

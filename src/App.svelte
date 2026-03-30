@@ -130,9 +130,7 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-    background:
-      radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 45%),
-      var(--surface-base);
+    background: var(--surface-base);
   }
   .workspace-shell {
     flex: 1;
@@ -145,10 +143,7 @@
     min-height: 0;
     overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--border-default) 75%, transparent);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 96%, white 4%), transparent 100%),
-      var(--gradient-panel),
-      var(--surface-panel);
+    background: var(--surface-panel);
     box-shadow: var(--shadow-xs);
   }
   .app-panel-nav,
@@ -160,8 +155,6 @@
     min-width: 200px;
     border-left: 0;
     border-right: 0;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 94%, white 6%), transparent 100%),
-      var(--surface-base);
+    background: var(--surface-base);
   }
 </style>

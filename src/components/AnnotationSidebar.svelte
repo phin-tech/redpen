@@ -79,35 +79,31 @@
 
 <div class="h-full flex flex-col">
   <!-- View toggle -->
-  <div class="flex border-b border-border-default/60" style="box-shadow: var(--shadow-xs)">
+  <div class="sidebar-header">
     <button
-      class="flex-1 px-3 py-2 text-xs font-medium transition-colors relative
-        {annotationsState.sidebarView === 'file'
-          ? 'text-text-primary'
-          : 'text-text-secondary hover:text-text-primary'}"
+      class="sidebar-tab"
+      class:active={annotationsState.sidebarView === 'file'}
       onclick={() => switchView('file')}
     >
       Current File
       {#if annotations.length > 0}
-        <span class="ml-1 text-xs font-mono px-1 py-px rounded bg-surface-raised text-text-secondary">{annotations.length}</span>
+        <span class="sidebar-tab-badge">{annotations.length}</span>
       {/if}
       {#if annotationsState.sidebarView === 'file'}
-        <span class="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full"></span>
+        <span class="sidebar-tab-indicator"></span>
       {/if}
     </button>
     <button
-      class="flex-1 px-3 py-2 text-xs font-medium transition-colors relative
-        {annotationsState.sidebarView === 'project'
-          ? 'text-text-primary'
-          : 'text-text-secondary hover:text-text-primary'}"
+      class="sidebar-tab"
+      class:active={annotationsState.sidebarView === 'project'}
       onclick={() => switchView('project')}
     >
       All Files
       {#if totalProjectAnnotations > 0}
-        <span class="ml-1 text-xs font-mono px-1 py-px rounded bg-surface-raised text-text-secondary">{totalProjectAnnotations}</span>
+        <span class="sidebar-tab-badge">{totalProjectAnnotations}</span>
       {/if}
       {#if annotationsState.sidebarView === 'project'}
-        <span class="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full"></span>
+        <span class="sidebar-tab-indicator"></span>
       {/if}
     </button>
   </div>
@@ -117,7 +113,7 @@
     <div class="flex-1 overflow-y-auto px-1.5 py-1">
       {#each annotations as annotation (annotation.id)}
         {#if editingId === annotation.id}
-          <div class="p-2.5 my-1 flex flex-col gap-2 rounded-md" style="background: var(--gradient-panel), var(--surface-base); box-shadow: var(--shadow-card)">
+          <div class="p-2.5 my-1 flex flex-col gap-2 rounded-md" style="background: var(--surface-base); box-shadow: var(--shadow-card)">
             <textarea
               bind:value={editBody}
               rows="3"
@@ -224,3 +220,56 @@
   {/if}
 
 </div>
+
+<style>
+  .sidebar-header {
+    display: flex;
+    align-items: stretch;
+    padding: 8px 10px;
+    min-height: 52px;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+  }
+  .sidebar-tab {
+    flex: 1;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 10px;
+    min-height: 30px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .sidebar-tab:hover {
+    color: var(--text-primary);
+  }
+  .sidebar-tab.active {
+    color: var(--text-primary);
+  }
+  .sidebar-tab-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+  }
+  .sidebar-tab-indicator {
+    position: absolute;
+    bottom: -8px;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 9999px;
+  }
+</style>

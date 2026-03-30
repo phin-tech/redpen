@@ -99,7 +99,7 @@
     align-items: center;
     gap: 14px;
     padding: 10px 14px;
-    background: var(--gradient-panel), var(--surface-panel);
+    background: var(--surface-panel);
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
   }

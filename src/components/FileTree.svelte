@@ -89,7 +89,7 @@
   {/if}
 
   {#if workspace.rootFolders.length > 0}
-    <div class="flex items-center justify-between px-3 py-1.5 border-b border-border-default">
+    <div class="flex items-center justify-between px-3 py-2 border-b border-border-default" style="min-height: 52px; box-sizing: border-box">
       <span class="text-xs font-semibold uppercase text-text-muted tracking-wider">Files</span>
       <div class="flex items-center gap-1.5">
         <IconButton label="Expand all" onclick={onExpandAll}>
@@ -159,7 +159,7 @@
   <div class="fixed inset-0 z-40" onclick={closeContextMenu}></div>
   <div
     class="fixed z-50 min-w-[160px] py-1 border border-border-default/60 rounded-lg backdrop-blur-sm"
-    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px; background: var(--gradient-panel), var(--surface-raised); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
+    style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px; background: var(--surface-raised); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     role="menu"
   >
     <button

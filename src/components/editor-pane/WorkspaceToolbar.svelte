@@ -201,10 +201,9 @@
     gap: 10px;
     align-items: center;
     padding: 8px 10px;
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--surface-panel) 92%, white 8%), transparent 100%),
-      var(--gradient-toolbar),
-      var(--surface-panel);
+    min-height: 52px;
+    box-sizing: border-box;
+    background: var(--surface-panel);
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
   }

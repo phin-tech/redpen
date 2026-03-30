@@ -47,7 +47,7 @@
 <div class="fixed inset-0 z-[99]" onclick={onCancel}></div>
 <div
   class="fixed z-[100] border border-border-default/60 rounded-xl p-3.5 w-[340px] flex flex-col gap-2.5 backdrop-blur-sm"
-  style="left: {position.x}px; top: {position.y}px; background: var(--gradient-panel), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
+  style="left: {position.x}px; top: {position.y}px; background: var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
   onkeydown={handleKeydown}
   role="dialog"
   tabindex="-1"

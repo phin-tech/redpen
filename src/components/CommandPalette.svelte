@@ -177,7 +177,7 @@
     <Dialog.Content
       aria-label="Command palette"
       class="fixed left-1/2 top-20 z-50 -translate-x-1/2 w-[520px] rounded-xl border border-border-emphasis overflow-hidden focus:outline-none"
-      style="background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
+      style="background: var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     >
       <div bind:this={contentEl}>
         <Command.Root loop shouldFilter={mode === "default"} class="flex flex-col">

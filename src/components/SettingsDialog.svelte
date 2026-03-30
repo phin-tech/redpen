@@ -85,7 +85,7 @@
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="border border-border-default/60 rounded-xl p-6 w-[380px] flex flex-col gap-4"
-    style="background: var(--gradient-panel), var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
+    style="background: var(--surface-panel); box-shadow: var(--shadow-popover), 0 0 0 1px var(--border-subtle)"
     onclick={(e) => e.stopPropagation()}
     onkeydown={handleKeydown}
     role="dialog"

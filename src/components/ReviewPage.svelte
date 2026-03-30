@@ -627,7 +627,7 @@
     width: min(760px, 100%);
     max-height: min(560px, calc(100vh - 80px));
     overflow: auto;
-    background: var(--gradient-panel), var(--surface-panel);
+    background: var(--surface-panel);
     border: 1px solid var(--border-emphasis);
     border-radius: 14px;
     box-shadow: var(--shadow-popover);
