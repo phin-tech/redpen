@@ -49,3 +49,10 @@ export function getShowPreview(): boolean {
 export function togglePreview() {
   state.showPreview = !state.showPreview;
 }
+
+export function resetEditorForTests() {
+  state.currentFilePath = null;
+  state.content = "";
+  state.loading = false;
+  state.showPreview = false;
+}

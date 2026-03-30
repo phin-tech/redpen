@@ -79,11 +79,7 @@ pub fn run() {
                 .build(app)?;
 
             let app_submenu = SubmenuBuilder::new(app, "Red Pen")
-                .item(&PredefinedMenuItem::about(
-                    app,
-                    Some("About Red Pen"),
-                    None,
-                )?)
+                .item(&PredefinedMenuItem::about(app, Some("About Red Pen"), None)?)
                 .separator()
                 .item(&settings_item)
                 .separator()

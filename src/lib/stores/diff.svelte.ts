@@ -187,3 +187,18 @@ export async function loadRefs(directory: string) {
 export function setAlgorithm(algo: "patience" | "myers") {
     state.algorithm = algo;
 }
+
+export function resetDiffForTests() {
+    state.enabled = false;
+    state.mode = "highlights";
+    state.baseRef = "HEAD";
+    state.targetRef = "working-tree";
+    state.baseLabel = "HEAD";
+    state.targetLabel = "working-tree";
+    state.diffResult = null;
+    state.algorithm = "patience";
+    state.loading = false;
+    state.error = null;
+    refs = null;
+    clearDiffCache();
+}
