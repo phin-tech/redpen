@@ -82,6 +82,12 @@ vi.mock("@tauri-apps/plugin-shell", () => ({
   open: vi.fn(async () => {}),
 }));
 
+vi.mock("@tauri-apps/plugin-log", () => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+}));
+
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
@@ -100,10 +106,12 @@ describe("App", () => {
     resetGitHubReviewForTests();
   });
 
-  it("renders the extracted three-panel shell", () => {
+  it("renders the workspace shell with center panel (sidebars hidden when no workspace open)", () => {
     const { container } = render(App);
 
     expect(container.querySelector(".workspace-shell")).toBeTruthy();
-    expect(container.querySelectorAll(".app-panel")).toHaveLength(3);
+    // With no workspace roots, only the center panel renders (sidebars hidden)
+    expect(container.querySelectorAll(".app-panel")).toHaveLength(1);
+    expect(container.querySelector(".app-panel-workspace")).toBeTruthy();
   });
 });

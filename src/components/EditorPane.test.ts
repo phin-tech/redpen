@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import EditorPane from "./EditorPane.svelte";
 
@@ -38,7 +38,6 @@ vi.mock("$lib/tauri", () => ({
   cleanupStaleReviewSessions: vi.fn(async () => ({ removedSessions: 0 })),
 }));
 
-// Mock mermaid to avoid DOM rendering issues in jsdom
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
@@ -48,7 +47,7 @@ vi.mock("mermaid", () => ({
 
 import { openFile } from "$lib/stores/editor.svelte";
 import { addRootFolder, resetWorkspaceForTests } from "$lib/stores/workspace.svelte";
-import { setActiveGitHubReviewSessionForTests, resetGitHubReviewForTests } from "$lib/stores/githubReview.svelte";
+import { resetGitHubReviewForTests } from "$lib/stores/githubReview.svelte";
 import { resetReviewPageForTests } from "$lib/stores/reviewPage.svelte";
 import { resetReviewSessionForTests } from "$lib/stores/review.svelte";
 import { resetDiffForTests } from "$lib/stores/diff.svelte";
@@ -67,98 +66,18 @@ describe("EditorPane", () => {
     resetGitHubReviewForTests();
   });
 
-  it("does not show toggle bar for non-markdown files", async () => {
+  it("renders the editor pane container", async () => {
     readFileMock.mockResolvedValue("const x = 1;");
     await openFile("/project/file.ts");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    expect(screen.queryByText("Source")).toBeNull();
-    expect(screen.queryByText("Preview")).toBeNull();
-  });
-
-  it("shows toggle bar for markdown files", async () => {
-    readFileMock.mockResolvedValue("# Hello");
-    await openFile("/project/readme.md");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    expect(screen.getByText("Source")).toBeTruthy();
-    expect(screen.getByText("Preview")).toBeTruthy();
-  });
-
-  it("defaults to source view for markdown files", async () => {
-    readFileMock.mockResolvedValue("# Hello");
-    await openFile("/project/readme.md");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    const sourceBtn = screen.getByText("Source");
-    expect(sourceBtn.closest("button")?.classList.contains("active")).toBe(true);
-  });
-
-  it("switches to preview when Preview button is clicked", async () => {
-    readFileMock.mockResolvedValue("# Hello World\n\nSome text.");
-    await openFile("/project/readme.md");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    const previewBtn = screen.getByText("Preview");
-    await fireEvent.click(previewBtn);
-
-    // Preview should now be active
-    expect(previewBtn.closest("button")?.classList.contains("active")).toBe(true);
-
-    // Rendered markdown should be visible
-    expect(screen.getByText("Hello World")).toBeTruthy();
-    expect(screen.getByText("Some text.")).toBeTruthy();
-  });
-
-  it("renders mermaid code blocks as pre.mermaid in preview", async () => {
-    readFileMock.mockResolvedValue("```mermaid\ngraph TD;\n  A-->B;\n```");
-    await openFile("/project/diagram.md");
     await addRootFolder("/project");
 
     const { container } = render(EditorPane, {
       onSelectionChange: vi.fn(),
     });
 
-    await fireEvent.click(screen.getByText("Preview"));
-
-    const mermaidPre = container.querySelector("pre.mermaid");
-    expect(mermaidPre).toBeTruthy();
-    expect(mermaidPre?.textContent).toContain("graph TD;");
+    expect(container.querySelector(".editor-pane")).toBeTruthy();
   });
 
-  it("switches back to source view when Source button is clicked", async () => {
-    readFileMock.mockResolvedValue("# Hello");
-    await openFile("/project/readme.md");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    // Go to preview
-    await fireEvent.click(screen.getByText("Preview"));
-    expect(screen.getByText("Preview").closest("button")?.classList.contains("active")).toBe(true);
-
-    // Go back to source
-    await fireEvent.click(screen.getByText("Source"));
-    expect(screen.getByText("Source").closest("button")?.classList.contains("active")).toBe(true);
-  });
-
-  // Tab switching tests (Code/Review/PR) removed — toolbar moved to App.svelte
+  // Toolbar tests (Source/Preview, Code/Review/PR tabs) removed —
+  // WorkspaceToolbar moved to App.svelte global header
 });
