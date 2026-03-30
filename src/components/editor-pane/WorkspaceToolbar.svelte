@@ -19,6 +19,9 @@
   } from "$lib/stores/githubReview.svelte";
   import { getBubblesEnabled, toggleBubbles } from "$lib/stores/annotations.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { submitReviewVerdict } from "$lib/review";
+  import { clearReviewSession } from "$lib/stores/review.svelte";
+  import { open as openUrl } from "@tauri-apps/plugin-shell";
   import type { SubmitGitHubReviewResult } from "$lib/types";
 
   let {
@@ -76,6 +79,13 @@
   const isCodeView = $derived(!isReviewPageOpen() && !showPrView);
   const isReviewView = $derived(isReviewPageOpen() && !showPrView);
   const isPrViewActive = $derived(showPrView);
+
+  async function handleLocalReviewVerdict(verdict: "approved" | "changes_requested") {
+    const file = reviewSession.files[0];
+    if (!file) return;
+    await submitReviewVerdict(file, verdict);
+    clearReviewSession();
+  }
 </script>
 
 {#if editor.currentFilePath}
@@ -83,7 +93,11 @@
     <!-- Left zone: review context -->
     <div class="toolbar-left">
       {#if reviewContextText}
-        <span class="context-label">{reviewContextText.label}</span>
+        {#if githubReview.activeSession?.url}
+          <button class="context-link" onclick={() => openUrl(githubReview.activeSession!.url)}>{reviewContextText.label}</button>
+        {:else}
+          <span class="context-label">{reviewContextText.label}</span>
+        {/if}
         {#if reviewContextText.title}
           <span class="context-separator">&middot;</span>
           <span class="context-title">{reviewContextText.title}</span>
@@ -154,7 +168,7 @@
         <!-- Local review mode actions -->
         <button
           class="ghost-btn ghost-btn-success"
-          onclick={() => void onAgentReviewVerdict("approved")}
+          onclick={() => void handleLocalReviewVerdict("approved")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
@@ -163,7 +177,7 @@
         </button>
         <button
           class="ghost-btn ghost-btn-danger"
-          onclick={() => void onAgentReviewVerdict("changes_requested")}
+          onclick={() => void handleLocalReviewVerdict("changes_requested")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
           Request Changes
@@ -212,23 +226,6 @@
           </button>
         {/if}
 
-        {#if reviewSession.active && !githubReview.activeSession}
-          <button
-            class="ghost-btn ghost-btn-success"
-            onclick={() => void onAgentReviewVerdict("approved")}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            Approve
-          </button>
-          <button
-            class="ghost-btn ghost-btn-danger"
-            onclick={() => void onAgentReviewVerdict("changes_requested")}
-          >
-            Request Changes
-          </button>
-        {/if}
       {/if}
     </div>
   </div>
@@ -261,6 +258,21 @@
     font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
+  }
+  .context-link {
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+  }
+  .context-link:hover {
+    color: var(--accent-hover);
   }
   .context-separator {
     color: var(--text-muted);
