@@ -171,24 +171,25 @@
         }
       }
 
-      const cards: CardEntry[] = [];
-      for (const root of roots) {
-        cards.push({
-          annotation: root,
-          replies: replyMap.get(root.id) ?? [],
-          filePath: file.filePath,
-          flatIndex,
-        });
-        flatIndex++;
-      }
+      // Build cards sorted by line FIRST, then assign flatIndex
+      const unsortedCards = roots.map(root => ({
+        annotation: root,
+        replies: replyMap.get(root.id) ?? [],
+        filePath: file.filePath,
+        flatIndex: 0, // assigned below
+      }));
+      unsortedCards.sort(
+        (a, b) => a.annotation.anchor.range.startLine - b.annotation.anchor.range.startLine
+      );
+      const cards: CardEntry[] = unsortedCards.map(c => {
+        c.flatIndex = flatIndex++;
+        return c;
+      });
 
-      // Proximity grouping
+      // Proximity grouping (cards already sorted by line)
       const groups: ContextGroup[] = [];
       if (cards.length > 0) {
-        // Sort by startLine
-        const sorted = [...cards].sort(
-          (a, b) => a.annotation.anchor.range.startLine - b.annotation.anchor.range.startLine
-        );
+        const sorted = cards;
 
         let currentGroup: CardEntry[] = [sorted[0]];
         let groupEndLine = sorted[0].annotation.anchor.range.endLine ?? sorted[0].annotation.anchor.range.startLine;
@@ -607,14 +608,7 @@
                       {#if isAgent}<Bot size={13} class="review-thread-agent-icon" />{/if}
                       {ann.author}
                     </span>
-                    <span class="review-thread-badge" style:background="color-mix(in srgb, {kindColor} 15%, transparent)" style:color={kindColor}>
-                      {KIND_LABELS[ann.kind]}
-                    </span>
-                    {#if syncBadge(ann.github?.syncState)}
-                      {@const badge = syncBadge(ann.github?.syncState)}
-                      <span class={`review-thread-sync-badge ${badge?.className}`}>{badge?.label}</span>
-                    {/if}
-                    <span class="review-thread-time">{relativeTime(ann.createdAt)}</span>
+                    <span class="review-thread-time">· {relativeTime(ann.createdAt)}</span>
                   </div>
 
                   <div class="review-thread-body">{ann.body}</div>
@@ -657,12 +651,8 @@
                             {#if AGENT_AUTHORS.has(reply.author.toLowerCase())}<Bot size={11} class="review-thread-agent-icon" />{/if}
                             {reply.author}
                           </span>
-                          {#if syncBadge(reply.github?.syncState)}
-                            {@const badge = syncBadge(reply.github?.syncState)}
-                            <span class={`review-thread-sync-badge ${badge?.className}`}>{badge?.label}</span>
-                          {/if}
                           {#if reply.createdAt}
-                            <span class="review-thread-reply-time">{relativeTime(reply.createdAt)}</span>
+                            <span class="review-thread-reply-time">· {relativeTime(reply.createdAt)}</span>
                           {/if}
                           <span class="review-thread-reply-text">{reply.body}</span>
                         </div>
