@@ -37,7 +37,7 @@
   --view-active: rgba(255, 255, 255, 0.9);
   --view-active-hover: rgba(255, 255, 255, 1);
   --view-active-subtle: transparent;
-  --view-active-border: transparent;
+  --view-active-border: rgba(255, 255, 255, 0.12);
 
   /* Annotation kind colors */
   --kind-comment: #D9B15F;
@@ -116,6 +116,9 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-subtle: var(--accent-subtle);
+  --color-accent-active: var(--accent-active);
+  --color-accent-badge-text: var(--accent-badge-text);
+  --color-accent-badge-border: var(--accent-badge-border);
 
   /* Text */
   --color-text-primary: var(--text-primary);
