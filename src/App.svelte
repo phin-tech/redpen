@@ -8,6 +8,7 @@
   import FileTree from "./components/FileTree.svelte";
   import ResizeHandle from "./components/ResizeHandle.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
+  import WorkspaceToolbar from "./components/editor-pane/WorkspaceToolbar.svelte";
   import { createAppShellController, type AppEditorRef } from "$lib/controllers/appShell.svelte";
   import { getDiffState } from "$lib/stores/diff.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
@@ -16,7 +17,15 @@
   const editor = getEditor();
 
   let editorRef: AppEditorRef | undefined = $state(undefined);
-  let editorPaneRef: { cycleView: (dir: 1 | -1) => void } | undefined = $state(undefined);
+  let editorPaneRef: {
+    cycleView: (dir: 1 | -1) => void;
+    selectCodeView: () => void;
+    selectReviewView: () => void;
+    selectPrView: () => void;
+    enterDiff: (mode: import("$lib/types").DiffMode) => void;
+    agentReviewVerdict: (verdict: "approved" | "changes_requested") => Promise<void>;
+  } | undefined = $state(undefined);
+  let showPrView = $state(false);
   let savedLeftPanelWidth = $state(240);
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
@@ -87,6 +96,15 @@
 />
 
 <div class="app-root">
+  <WorkspaceToolbar
+    {showPrView}
+    onAgentReviewVerdict={(verdict) => editorPaneRef?.agentReviewVerdict(verdict) ?? Promise.resolve()}
+    onEnterDiff={(mode) => editorPaneRef?.enterDiff(mode)}
+    onSelectCodeView={() => editorPaneRef?.selectCodeView()}
+    onSelectPrView={() => editorPaneRef?.selectPrView()}
+    onSelectReviewView={() => editorPaneRef?.selectReviewView()}
+  />
+
   <div class="workspace-shell">
     {#if leftPanelWidth === 0}
       <button class="panel-rail panel-rail-left" onclick={toggleLeftPanel} title="Expand file tree (⌘B)">
@@ -114,6 +132,7 @@
         bind:this={editorPaneRef}
         bind:ref={editorRef}
         bind:showShortcutHelp={appShell.state.showReviewShortcutHelp}
+        bind:showPrView
         onSelectionChange={appShell.handleSelectionChange}
         onOpenFolder={appShell.openFolderPicker}
         onJumpToFile={appShell.handleJumpToFile}
