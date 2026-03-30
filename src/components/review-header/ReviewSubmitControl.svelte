@@ -14,6 +14,7 @@
 
   let showSubmitMenu = $state(false);
   let submitModalAction = $state<"comment" | "approve" | "requestChanges" | null>(null);
+  let submitTextareaRef: HTMLTextAreaElement | undefined = $state(undefined);
   let submitModalMessage = $state("");
   let submitModalStatus = $state<"editing" | "submitting" | "success" | "error">("editing");
   let submitModalError = $state<string | null>(null);
@@ -26,6 +27,7 @@
     submitModalStatus = "editing";
     submitModalError = null;
     submitModalResult = null;
+    requestAnimationFrame(() => submitTextareaRef?.focus());
   }
 
   function closeSubmitModal() {
@@ -189,12 +191,15 @@
 
         <label class="review-submit-field">
           <span>Message</span>
+          <!-- svelte-ignore a11y_autofocus -->
           <textarea
+            bind:this={submitTextareaRef}
             class="review-submit-textarea"
             bind:value={submitModalMessage}
             placeholder="Optional summary for this review"
             rows="6"
             disabled={submitModalStatus === "submitting"}
+            autofocus
           ></textarea>
         </label>
 

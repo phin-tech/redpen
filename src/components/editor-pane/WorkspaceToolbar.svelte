@@ -235,13 +235,14 @@
   .consolidated-toolbar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    position: relative;
     padding: 0 10px;
     min-height: 42px;
     box-sizing: border-box;
     background: var(--surface-panel);
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
-    gap: 12px;
   }
 
   /* Left zone: review context */
@@ -288,9 +289,12 @@
     min-width: 0;
   }
 
-  /* Center zone: view switcher */
+  /* Center zone: view switcher — absolutely centered */
   .toolbar-center {
-    flex-shrink: 0;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1;
   }
   .view-tabs {
     display: flex;
@@ -347,12 +351,13 @@
     font-family: var(--font-mono);
   }
 
-  /* Right zone: actions */
+  /* Right zone: actions — pinned right */
   .toolbar-right {
     flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-left: auto;
   }
 
   /* Icon buttons (Resync, Revert) */
