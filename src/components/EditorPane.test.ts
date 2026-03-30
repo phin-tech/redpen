@@ -160,53 +160,5 @@ describe("EditorPane", () => {
     expect(screen.getByText("Source").closest("button")?.classList.contains("active")).toBe(true);
   });
 
-  it("switches between code and review toolbar tabs", async () => {
-    readFileMock.mockResolvedValue("const x = 1;");
-    await openFile("/project/file.ts");
-    await addRootFolder("/project");
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    const reviewTab = screen.getByText("Review");
-    await fireEvent.click(reviewTab);
-    expect(reviewTab.closest("button")?.classList.contains("active")).toBe(true);
-
-    const codeTab = screen.getByText("Code");
-    await fireEvent.click(codeTab);
-    expect(codeTab.closest("button")?.classList.contains("active")).toBe(true);
-  });
-
-  it("shows and activates the PR tab for GitHub review sessions", async () => {
-    readFileMock.mockResolvedValue("const x = 1;");
-    await openFile("/project/file.ts");
-    await addRootFolder("/project");
-    setActiveGitHubReviewSessionForTests({
-      id: "gh-1",
-      repo: "phin-tech/redpen",
-      number: 42,
-      title: "Frontend sections",
-      body: "",
-      url: "https://github.com/phin-tech/redpen/pull/42",
-      localRepoPath: "/project",
-      worktreePath: "/project",
-      baseSha: "base",
-      headSha: "head",
-      baseRef: "main",
-      headRef: "feature",
-      changedFiles: [],
-      authorLogin: "reviewer",
-      viewerLogin: "reviewer-2",
-      updatedAt: "2026-03-29T17:00:00Z",
-    });
-
-    render(EditorPane, {
-      onSelectionChange: vi.fn(),
-    });
-
-    const prTab = screen.getByText("PR");
-    await fireEvent.click(prTab);
-    expect(prTab.closest("button")?.classList.contains("active")).toBe(true);
-  });
+  // Tab switching tests (Code/Review/PR) removed — toolbar moved to App.svelte
 });
