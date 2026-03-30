@@ -84,6 +84,9 @@ function createCommandContext(overrides: Partial<AppCommandContext> = {}): AppCo
     canSubmitReviewVerdict: () => false,
     approveReview: vi.fn(async () => {}),
     requestReviewChanges: vi.fn(async () => {}),
+    navigateAnnotation: vi.fn(),
+    toggleLeftPanel: vi.fn(),
+    toggleRightPanel: vi.fn(),
     ...overrides,
   };
 }
