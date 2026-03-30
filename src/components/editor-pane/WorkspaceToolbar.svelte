@@ -137,53 +137,10 @@
       </div>
     </div>
 
-    <!-- Right: Mode-specific actions (pinned to right edge) -->
+    <!-- Right: mode tools + persistent review actions -->
     <div class="toolbar-right">
-      {#if isReviewView && githubReview.activeSession}
-        <!-- GitHub review mode actions -->
-        <button
-          class="icon-btn"
-          title="Resync review"
-          onclick={() => void resyncActiveGitHubReview()}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.5 2v6h-6"></path>
-            <path d="M2.5 22v-6h6"></path>
-            <path d="M2 11.5a10 10 0 0 1 18.8-4.3"></path>
-            <path d="M22 12.5a10 10 0 0 1-18.8 4.2"></path>
-          </svg>
-        </button>
-        <button
-          class="icon-btn"
-          title="Revert pending changes"
-          onclick={() => void discardActiveGitHubReviewChanges()}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="1 4 1 10 7 10"></polyline>
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-          </svg>
-        </button>
-        <ReviewSubmitControl {isSelfAuthoredPr} onSubmitReview={submitActiveGitHubReview} />
-      {:else if isReviewView && reviewSession.active && !githubReview.activeSession}
-        <!-- Local review mode actions -->
-        <button
-          class="ghost-btn ghost-btn-success"
-          onclick={() => void handleLocalReviewVerdict("approved")}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          Approve
-        </button>
-        <button
-          class="ghost-btn ghost-btn-danger"
-          onclick={() => void handleLocalReviewVerdict("changes_requested")}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-          Request Changes
-        </button>
-      {:else if isCodeView}
-        <!-- Code view actions -->
+      <!-- Mode-specific tools -->
+      {#if isCodeView}
         <DiffModeToggle onEnterDiff={onEnterDiff} />
         {#if diff.enabled}
           <DiffRefPicker {directory} filePath={editor.currentFilePath ?? ""} />
@@ -225,7 +182,56 @@
             Preview
           </button>
         {/if}
+      {/if}
 
+      <!-- Persistent review actions — always visible when a review session is active -->
+      {#if githubReview.activeSession}
+        {#if isCodeView || isReviewView || isPrViewActive}
+          <div class="toolbar-review-divider"></div>
+        {/if}
+        <button
+          class="icon-btn"
+          title="Resync review"
+          onclick={() => void resyncActiveGitHubReview()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6"></path>
+            <path d="M2.5 22v-6h6"></path>
+            <path d="M2 11.5a10 10 0 0 1 18.8-4.3"></path>
+            <path d="M22 12.5a10 10 0 0 1-18.8 4.2"></path>
+          </svg>
+        </button>
+        <button
+          class="icon-btn"
+          title="Revert pending changes"
+          onclick={() => void discardActiveGitHubReviewChanges()}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+          </svg>
+        </button>
+        <ReviewSubmitControl {isSelfAuthoredPr} onSubmitReview={submitActiveGitHubReview} />
+      {:else if reviewSession.active && !githubReview.activeSession}
+        {#if isCodeView}
+          <div class="toolbar-review-divider"></div>
+        {/if}
+        <button
+          class="ghost-btn ghost-btn-success"
+          onclick={() => void handleLocalReviewVerdict("approved")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Approve
+        </button>
+        <button
+          class="ghost-btn ghost-btn-danger"
+          onclick={() => void handleLocalReviewVerdict("changes_requested")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Request Changes
+        </button>
       {/if}
     </div>
   </div>
@@ -298,6 +304,13 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+  .toolbar-review-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--border-default);
+    margin: 0 4px;
+    flex-shrink: 0;
   }
   .view-tabs {
     display: flex;
