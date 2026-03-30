@@ -689,6 +689,11 @@
                         onkeydown={(e) => handleReplyKeydown(e, ann.id)}
                         autofocus
                       />
+                      <button
+                        class="review-thread-reply-submit"
+                        onclick={(e) => { e.stopPropagation(); submitReply(ann.id); }}
+                        disabled={!replyText.trim()}
+                      >↵</button>
                     </div>
                   {/if}
                 </div>
@@ -1088,9 +1093,13 @@
   /* Reply input — hidden until activated */
   .review-thread-reply-input-wrapper {
     margin-top: 8px;
+    display: flex;
+    gap: 4px;
+    align-items: center;
   }
   .review-thread-reply-input {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     background: var(--surface-raised);
     border: 1px solid var(--border-default);
     border-radius: 5px;
@@ -1106,6 +1115,29 @@
   .review-thread-reply-input:focus {
     outline: none;
     border-color: var(--accent);
+  }
+  .review-thread-reply-submit {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 1px solid var(--border-default);
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .review-thread-reply-submit:hover:not(:disabled) {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .review-thread-reply-submit:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
 
   /* Delete confirmation overlay */
