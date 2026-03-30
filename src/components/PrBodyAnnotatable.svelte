@@ -14,6 +14,7 @@
   import { updateChoices } from "$lib/stores/annotations.svelte";
   import AnnotationPopover from "./AnnotationPopover.svelte";
   import AnnotationBubble from "./AnnotationBubble.svelte";
+  import { mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
 
   let {
     body,
@@ -31,10 +32,21 @@
   let popoverLine = $state<number | null>(null);
   let popoverPosition = $state({ x: 0, y: 0 });
 
-  // Load annotations for the virtual file on mount / when path changes
+  // Write the PR body to the virtual file path so the Rust backend
+  // can read it when creating annotations (it needs line content for anchors).
+  // Then load any existing annotations.
   $effect(() => {
-    if (virtualFilePath) {
-      loadAnnotations(virtualFilePath);
+    if (virtualFilePath && body) {
+      const dirPath = virtualFilePath.substring(0, virtualFilePath.lastIndexOf("/"));
+      (async () => {
+        try {
+          await mkdir(dirPath, { recursive: true });
+          await writeTextFile(virtualFilePath, body);
+        } catch {
+          // Directory/file may already exist, that's fine
+        }
+        await loadAnnotations(virtualFilePath);
+      })();
     }
   });
 
