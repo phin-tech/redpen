@@ -31,6 +31,12 @@ if echo "$command" | grep -qE '(^|&&|\|\||;)\s*git push'; then
   fi
 
   # Direct mode: if redpen CLI is available, open changed files directly for review
+  # Set REDPEN_SKIP_DIRECT=1 to skip inline review and fall back to "/review-code" prompt
+  if [ "${REDPEN_SKIP_DIRECT:-}" = "1" ]; then
+    echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}'
+    exit 2
+  fi
+
   if command -v redpen >/dev/null 2>&1; then
     review_output=$(redpen open --diff-remote --wait --timeout 600 2>/dev/null) || review_exit=$?
     review_exit=${review_exit:-0}
