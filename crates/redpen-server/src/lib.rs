@@ -37,6 +37,10 @@ pub trait AppBridge: Send + Sync + 'static {
     fn start_review_session(&self, session_id: &str, file: &str) -> Result<(), String>;
     /// Persist review completion state.
     fn complete_review_session(&self, session_id: &str, verdict: &str) -> Result<(), String>;
+    /// Cancel an active review session.
+    fn cancel_review_session(&self, session_id: &str) -> Result<(), String>;
+    /// Mark a review session as timed out.
+    fn timeout_review_session(&self, session_id: &str) -> Result<(), String>;
     /// Read persisted status for a review session.
     fn review_session_status(&self, session_id: &str)
         -> Result<Option<ReviewSessionState>, String>;
@@ -75,6 +79,11 @@ pub struct ReviewStartRequest {
 pub struct ReviewDoneRequest {
     pub session_id: String,
     pub verdict: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewCancelRequest {
+    pub session_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -324,6 +333,18 @@ async fn rpc_review_done(
     }
 }
 
+async fn rpc_review_cancel(
+    AxumState(state): AxumState<ServerState>,
+    Json(req): Json<ReviewCancelRequest>,
+) -> impl IntoResponse {
+    let _ = state.bridge.cancel_review_session(&req.session_id);
+    // Also complete the in-memory channel so any waiters unblock
+    match state.sessions.complete(&req.session_id, "cancelled").await {
+        Some(_) => (StatusCode::OK, Json(OkResponse { ok: true })),
+        None => (StatusCode::OK, Json(OkResponse { ok: true })),
+    }
+}
+
 async fn rpc_review_wait(
     AxumState(state): AxumState<ServerState>,
     Json(req): Json<ReviewWaitRequest>,
@@ -340,16 +361,22 @@ async fn rpc_review_wait(
                     Json(serde_json::json!(ReviewWaitResponse { verdict })),
                 )
                     .into_response(),
-                Ok(Err(_)) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "session cancelled"})),
-                )
-                    .into_response(),
-                Err(_) => (
-                    StatusCode::GATEWAY_TIMEOUT,
-                    Json(serde_json::json!({"error": "review timed out"})),
-                )
-                    .into_response(),
+                Ok(Err(_)) => {
+                    let _ = state.bridge.cancel_review_session(&req.session_id);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "session cancelled"})),
+                    )
+                        .into_response()
+                }
+                Err(_) => {
+                    let _ = state.bridge.timeout_review_session(&req.session_id);
+                    (
+                        StatusCode::GATEWAY_TIMEOUT,
+                        Json(serde_json::json!({"error": "review timed out"})),
+                    )
+                        .into_response()
+                }
             }
         }
         None => {
@@ -393,16 +420,22 @@ async fn rpc_review(
             )
                 .into_response()
         }
-        Ok(Err(_)) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": "session cancelled"})),
-        )
-            .into_response(),
-        Err(_) => (
-            StatusCode::GATEWAY_TIMEOUT,
-            Json(serde_json::json!({"error": "review timed out"})),
-        )
-            .into_response(),
+        Ok(Err(_)) => {
+            let _ = state.bridge.cancel_review_session(&session_id);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "session cancelled"})),
+            )
+                .into_response()
+        }
+        Err(_) => {
+            let _ = state.bridge.timeout_review_session(&session_id);
+            (
+                StatusCode::GATEWAY_TIMEOUT,
+                Json(serde_json::json!({"error": "review timed out"})),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -483,6 +516,7 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/get_annotations", post(rpc_get_annotations))
         .route("/rpc/review.start", post(rpc_review_start))
         .route("/rpc/review.done", post(rpc_review_done))
+        .route("/rpc/review.cancel", post(rpc_review_cancel))
         .route("/rpc/review.wait", post(rpc_review_wait))
         .route("/rpc/review", post(rpc_review))
         .route("/rpc/review.pr", post(rpc_review_pr))

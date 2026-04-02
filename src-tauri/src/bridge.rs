@@ -185,6 +185,24 @@ impl AppBridge for TauriBridge {
         Ok(())
     }
 
+    fn cancel_review_session(&self, session_id: &str) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        state
+            .storage
+            .cancel_review_session(session_id)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    fn timeout_review_session(&self, session_id: &str) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        state
+            .storage
+            .timeout_review_session(session_id)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     fn review_session_status(
         &self,
         session_id: &str,
