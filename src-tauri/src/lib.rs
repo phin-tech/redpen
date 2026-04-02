@@ -59,6 +59,7 @@ pub fn run() {
             commands::annotations::send_notification,
             commands::git::get_git_root,
             commands::git::get_git_status,
+            commands::git::get_git_remote_url,
             commands::github_review::list_github_review_queue,
             commands::github_review::open_github_pr_review,
             commands::github_review::resync_github_pr_review,
