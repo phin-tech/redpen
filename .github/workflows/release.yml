@@ -114,7 +114,7 @@ jobs:
             git-cliff --latest --strip header > RELEASE_NOTES.md
           fi
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
