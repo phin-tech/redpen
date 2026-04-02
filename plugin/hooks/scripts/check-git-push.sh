@@ -30,6 +30,36 @@ if echo "$command" | grep -qE '(^|&&|\|\||;)\s*git push'; then
     exit 0
   fi
 
+  # Direct mode: if redpen CLI is available, open changed files directly for review
+  # Set REDPEN_SKIP_DIRECT=1 to skip inline review and fall back to "/review-code" prompt
+  if [ "${REDPEN_SKIP_DIRECT:-}" = "1" ]; then
+    echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}'
+    exit 2
+  fi
+
+  if command -v redpen >/dev/null 2>&1; then
+    review_output=$(redpen open --diff-remote --wait --timeout 600 2>/dev/null) || review_exit=$?
+    review_exit=${review_exit:-0}
+
+    if [ "$review_exit" -eq 0 ]; then
+      # Approved — push can proceed
+      exit 0
+    elif [ "$review_exit" -eq 1 ] && [ -n "$review_output" ]; then
+      # Changes requested — return annotations as structured feedback
+      cat <<BLOCK
+{"decision": "block", "reason": "Review completed — changes requested. Annotations from the reviewer are below. Fix the issues and try pushing again.", "systemMessage": $review_output}
+BLOCK
+      exit 2
+    elif [ "$review_exit" -eq 2 ]; then
+      echo '{"decision": "block", "reason": "Review timed out. Run /review-code or try pushing again."}'
+      exit 2
+    elif [ "$review_exit" -eq 3 ]; then
+      # Red Pen app not running — fall through to the manual prompt
+      echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}'
+      exit 2
+    fi
+  fi
+
   echo '{"decision": "block", "reason": "Run /review-code to review changes in Red Pen before pushing."}'
   exit 2
 fi

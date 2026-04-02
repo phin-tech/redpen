@@ -58,6 +58,7 @@ export interface CreateAnnotationParams {
   body: string;
   labels: string[];
   kind?: AnnotationKind;
+  blocking?: boolean;
   startLine: number;
   startColumn: number;
   endLine: number;

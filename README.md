@@ -217,6 +217,10 @@ crates/redpen-cli/      # CLI tool
 channels/redpen-channel # MCP channel server for async review
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
+
 ## Deep Link URL Scheme
 
 Red Pen registers the `redpen://` URL scheme. Format:

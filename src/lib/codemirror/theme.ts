@@ -57,6 +57,10 @@ export const redPenTheme = EditorView.theme({
     backgroundColor: "var(--kind-label-subtle)",
     borderBottom: "2px solid var(--kind-label-border)",
   },
+  ".rp-annotation-question": {
+    backgroundColor: "var(--kind-question-subtle)",
+    borderBottom: "2px solid var(--kind-question-border)",
+  },
   // Gutter markers
   ".rp-annotation-gutter": {
     width: "14px",
@@ -93,6 +97,12 @@ export const redPenTheme = EditorView.theme({
   },
   ".rp-gutter-marker-label:hover": {
     backgroundColor: "var(--kind-label)",
+  },
+  ".rp-gutter-marker-question": {
+    backgroundColor: "var(--kind-question-border)",
+  },
+  ".rp-gutter-marker-question:hover": {
+    backgroundColor: "var(--kind-question)",
   },
   // Search highlights
   ".rp-search-match": {
@@ -155,6 +165,12 @@ export const redPenTheme = EditorView.theme({
   },
   ".rp-bubble-kind-label:not(.rp-bubble-collapsed)": {
     background: "color-mix(in srgb, var(--kind-label-subtle) 60%, var(--surface-raised))",
+  },
+  ".rp-bubble-kind-question": {
+    borderLeftColor: "var(--kind-question)",
+  },
+  ".rp-bubble-kind-question:not(.rp-bubble-collapsed)": {
+    background: "color-mix(in srgb, var(--kind-question-subtle) 60%, var(--surface-raised))",
   },
   ".rp-bubble-notch": {
     display: "none",

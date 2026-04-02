@@ -27,6 +27,7 @@
     explanation: "var(--kind-explanation-border)",
     lineNote: "var(--kind-linenote-border)",
     label: "var(--kind-label-border)",
+    question: "var(--kind-question-border)",
   };
 
   const kindBorderColor = $derived(
@@ -86,8 +87,11 @@
     {/if}
     {#if annotation.kind !== "comment"}
       <span class="kind-badge" style:color={kindColorMap[annotation.kind]}>
-        {annotation.kind === "explanation" ? "explanation" : annotation.kind === "lineNote" ? "note" : "label"}
+        {annotation.kind === "explanation" ? "explanation" : annotation.kind === "lineNote" ? "note" : annotation.kind === "question" ? "question" : "label"}
       </span>
+    {/if}
+    {#if annotation.kind === "question" && annotation.blocking}
+      <span class="kind-badge" style:color="var(--kind-question-border)">must-answer</span>
     {/if}
     {#if annotation.isOrphaned}
       <span class="text-xs text-danger font-semibold uppercase tracking-wide">orphaned</span>

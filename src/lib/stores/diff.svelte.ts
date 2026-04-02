@@ -30,6 +30,7 @@ let state = $state<DiffState>({
 let refs = $state<RefList | null>(null);
 
 // --- Diff cache ---
+const MAX_DIFF_CACHE_ENTRIES = 128;
 const diffCache = new Map<string, DiffResult>();
 const requestCounters = new Map<string, number>();
 
@@ -53,7 +54,11 @@ export async function cachedInvokeDiff(
     const key = cacheKey(directory, filePath, baseRef, targetRef, algorithm);
 
     const cached = diffCache.get(key);
-    if (cached) return cached;
+    if (cached) {
+        diffCache.delete(key);
+        diffCache.set(key, cached);
+        return cached;
+    }
 
     const counter = (requestCounters.get(key) ?? 0) + 1;
     requestCounters.set(key, counter);
@@ -68,9 +73,19 @@ export async function cachedInvokeDiff(
 
     if (requestCounters.get(key) === counter) {
         diffCache.set(key, result);
+        trimDiffCache();
     }
 
     return result;
+}
+
+function trimDiffCache() {
+    while (diffCache.size > MAX_DIFF_CACHE_ENTRIES) {
+        const oldestKey = diffCache.keys().next().value;
+        if (!oldestKey) return;
+        diffCache.delete(oldestKey);
+        requestCounters.delete(oldestKey);
+    }
 }
 
 export function invalidateFile(directory: string, filePath: string) {
@@ -182,6 +197,18 @@ export async function loadRefs(directory: string) {
     } catch {
         refs = null;
     }
+}
+
+export async function fetchFileContentAtRef(
+    directory: string,
+    filePath: string,
+    gitRef: string,
+): Promise<string> {
+    return invoke<string>("get_file_content_at_ref", {
+        directory,
+        filePath,
+        gitRef,
+    });
 }
 
 export function setAlgorithm(algo: "patience" | "myers") {

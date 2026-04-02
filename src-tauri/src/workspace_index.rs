@@ -5,6 +5,8 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -99,6 +101,7 @@ struct WatcherHandle {
 struct RootEntry {
     status: WorkspaceIndexStatus,
     files: Vec<IndexedFile>,
+    context: Option<RootContext>,
     refresh_requested: bool,
     rebuilding: bool,
     watcher: Option<WatcherHandle>,
@@ -149,6 +152,7 @@ impl WorkspaceIndexService {
                         error: None,
                     },
                     files: Vec::new(),
+                    context: None,
                     refresh_requested: false,
                     rebuilding: false,
                     watcher: None,
@@ -204,53 +208,42 @@ impl WorkspaceIndexService {
         let query = request.query.trim().to_lowercase();
 
         let roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
-        let statuses = roots
+        let mut root_entries = roots
             .values()
             .filter(|entry| {
                 requested_roots.is_empty() || requested_roots.contains(&entry.status.root)
             })
+            .collect::<Vec<_>>();
+        root_entries.sort_by(|left, right| left.status.root.cmp(&right.status.root));
+
+        let statuses = root_entries
+            .iter()
             .map(|entry| entry.status.clone())
             .collect::<Vec<_>>();
 
-        let mut all_files = roots
-            .values()
-            .filter(|entry| {
-                requested_roots.is_empty() || requested_roots.contains(&entry.status.root)
-            })
-            .flat_map(|entry| entry.files.iter().cloned())
-            .collect::<Vec<_>>();
-
         let results = if query.is_empty() {
-            all_files.sort_by(|a, b| {
-                a.root
-                    .cmp(&b.root)
-                    .then(a.relative_path.cmp(&b.relative_path))
-            });
-            all_files
-                .into_iter()
+            root_entries
+                .iter()
+                .flat_map(|entry| entry.files.iter())
                 .take(limit)
-                .map(to_workspace_match)
+                .map(|file| to_workspace_match(file.clone()))
                 .collect::<Vec<_>>()
         } else {
-            let mut scored = all_files
+            let mut ranked = Vec::with_capacity(limit);
+            for entry in &root_entries {
+                for file in &entry.files {
+                    let Some(score) = score_match(file, &query) else {
+                        continue;
+                    };
+                    insert_ranked_match(&mut ranked, limit, score, file);
+                }
+            }
+
+            ranked
                 .into_iter()
-                .filter_map(|file| score_match(&file, &query).map(|score| (score, file)))
-                .collect::<Vec<_>>();
-            scored.sort_by(|(left_score, left_file), (right_score, right_file)| {
-                right_score
-                    .cmp(left_score)
-                    .then(left_file.root.cmp(&right_file.root))
-                    .then(left_file.relative_path.cmp(&right_file.relative_path))
-            });
-            scored
-                .into_iter()
-                .take(limit)
-                .map(|(_, file)| to_workspace_match(file))
+                .map(|(_, file)| to_workspace_match(file.clone()))
                 .collect::<Vec<_>>()
         };
-
-        let mut statuses = statuses;
-        statuses.sort_by(|a, b| a.root.cmp(&b.root));
 
         WorkspaceFileQueryResponse { results, statuses }
     }
@@ -342,23 +335,24 @@ impl WorkspaceIndexService {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let ignored_names = ignored_folder_names(&settings);
-        let root_path = canonicalize_path(Path::new(root));
-        let repo = git2::Repository::discover(&root_path).ok();
-        let project_root = repo
-            .as_ref()
-            .and_then(|repository| repository.workdir().map(canonicalize_path));
-        let git_ignore_matcher = GitIgnoreMatcher::from_repo(project_root.as_deref());
+        let context = {
+            let roots = self.inner.roots.lock().unwrap_or_else(|e| e.into_inner());
+            roots
+                .get(root)
+                .and_then(|entry| entry.context.clone())
+                .unwrap_or_else(|| RootContext::resolve(Path::new(root)))
+        };
 
         paths.iter().any(|path| {
             let canonical_path = canonicalize_path(path);
-            if !canonical_path.starts_with(&root_path) {
+            if !canonical_path.starts_with(&context.root_path) {
                 return false;
             }
             !is_path_ignored(
                 &canonical_path,
-                &root_path,
-                project_root.as_deref(),
-                &git_ignore_matcher,
+                &context.root_path,
+                context.project_root.as_deref(),
+                &context.git_ignore_matcher,
                 &ignored_names,
             )
         })
@@ -433,6 +427,7 @@ impl WorkspaceIndexService {
                 match snapshot {
                     Ok(snapshot) => {
                         entry.files = snapshot.files;
+                        entry.context = Some(snapshot.context);
                         entry.status.state = WorkspaceIndexState::Ready;
                         entry.status.indexed_count = entry.files.len();
                         entry.status.truncated = snapshot.truncated;
@@ -463,15 +458,18 @@ impl WorkspaceIndexService {
 struct IndexSnapshot {
     files: Vec<IndexedFile>,
     truncated: bool,
+    context: RootContext,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct GitIgnoreMatcher {
     ignored_paths: Vec<String>,
 }
 
 impl GitIgnoreMatcher {
     fn from_repo(project_root: Option<&Path>) -> Self {
+        #[cfg(test)]
+        GIT_IGNORE_MATCHER_BUILD_COUNT.fetch_add(1, Ordering::SeqCst);
         let Some(project_root) = project_root else {
             return Self::default();
         };
@@ -517,18 +515,38 @@ impl GitIgnoreMatcher {
     }
 }
 
+#[derive(Clone)]
+struct RootContext {
+    root_path: PathBuf,
+    project_root: Option<PathBuf>,
+    git_ignore_matcher: GitIgnoreMatcher,
+}
+
+impl RootContext {
+    fn resolve(root: &Path) -> Self {
+        let root_path = canonicalize_path(root);
+        let repo = git2::Repository::discover(&root_path).ok();
+        let project_root = repo
+            .as_ref()
+            .and_then(|repository| repository.workdir().map(canonicalize_path));
+        let git_ignore_matcher = GitIgnoreMatcher::from_repo(project_root.as_deref());
+
+        Self {
+            root_path,
+            project_root,
+            git_ignore_matcher,
+        }
+    }
+}
+
 fn build_index_snapshot(
     root: &Path,
     settings: &AppSettings,
     max_files_override: Option<usize>,
 ) -> Result<IndexSnapshot, String> {
-    let walk_root = canonicalize_path(root);
-    let repo = git2::Repository::discover(&walk_root).ok();
-    let project_root = repo
-        .as_ref()
-        .and_then(|repository| repository.workdir().map(canonicalize_path));
+    let context = RootContext::resolve(root);
+    let repo = git2::Repository::discover(&context.root_path).ok();
     let ignored_names = ignored_folder_names(settings);
-    let git_ignore_matcher = GitIgnoreMatcher::from_repo(project_root.as_deref());
     let max_files = max_files_override.unwrap_or_else(|| {
         if repo.is_some() {
             GIT_ROOT_MAX_FILES
@@ -540,15 +558,17 @@ fn build_index_snapshot(
     let mut files = Vec::new();
     let mut truncated = false;
 
-    let walker = WalkDir::new(&walk_root).into_iter().filter_entry(|entry| {
-        should_visit_entry(
-            entry,
-            &walk_root,
-            project_root.as_deref(),
-            &git_ignore_matcher,
-            &ignored_names,
-        )
-    });
+    let walker = WalkDir::new(&context.root_path)
+        .into_iter()
+        .filter_entry(|entry| {
+            should_visit_entry(
+                entry,
+                &context.root_path,
+                context.project_root.as_deref(),
+                &context.git_ignore_matcher,
+                &ignored_names,
+            )
+        });
 
     for entry in walker {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -563,7 +583,7 @@ fn build_index_snapshot(
 
         let path = entry.path();
         let relative_path = path
-            .strip_prefix(&walk_root)
+            .strip_prefix(&context.root_path)
             .unwrap_or(path)
             .to_string_lossy()
             .to_string();
@@ -583,7 +603,24 @@ fn build_index_snapshot(
             .then(a.relative_path.cmp(&b.relative_path))
     });
 
-    Ok(IndexSnapshot { files, truncated })
+    Ok(IndexSnapshot {
+        files,
+        truncated,
+        context,
+    })
+}
+
+#[cfg(test)]
+static GIT_IGNORE_MATCHER_BUILD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+#[cfg(test)]
+fn reset_git_ignore_matcher_build_count() {
+    GIT_IGNORE_MATCHER_BUILD_COUNT.store(0, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+fn git_ignore_matcher_build_count() -> usize {
+    GIT_IGNORE_MATCHER_BUILD_COUNT.load(Ordering::SeqCst)
 }
 
 fn ignored_folder_names(settings: &AppSettings) -> HashSet<String> {
@@ -677,6 +714,45 @@ fn to_workspace_match(file: IndexedFile) -> WorkspaceFileMatch {
     }
 }
 
+fn insert_ranked_match<'a>(
+    ranked: &mut Vec<(usize, &'a IndexedFile)>,
+    limit: usize,
+    score: usize,
+    file: &'a IndexedFile,
+) {
+    if limit == 0 {
+        return;
+    }
+
+    let insert_at = ranked
+        .iter()
+        .position(|(existing_score, existing_file)| {
+            compare_ranked_matches(score, file, *existing_score, existing_file).is_lt()
+        })
+        .unwrap_or(ranked.len());
+
+    if insert_at >= limit {
+        return;
+    }
+
+    ranked.insert(insert_at, (score, file));
+    if ranked.len() > limit {
+        ranked.pop();
+    }
+}
+
+fn compare_ranked_matches(
+    left_score: usize,
+    left_file: &IndexedFile,
+    right_score: usize,
+    right_file: &IndexedFile,
+) -> std::cmp::Ordering {
+    right_score
+        .cmp(&left_score)
+        .then(left_file.root.cmp(&right_file.root))
+        .then(left_file.relative_path.cmp(&right_file.relative_path))
+}
+
 fn score_match(file: &IndexedFile, query: &str) -> Option<usize> {
     let name = file.name.to_lowercase();
     let relative_path = file.relative_path.to_lowercase();
@@ -734,7 +810,8 @@ fn score_match(file: &IndexedFile, query: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_index_snapshot, normalize_root, score_match, IndexedFile, WorkspaceIndexService,
+        build_index_snapshot, git_ignore_matcher_build_count, normalize_root,
+        reset_git_ignore_matcher_build_count, score_match, IndexedFile, WorkspaceIndexService,
         WorkspaceIndexState,
     };
     use crate::settings::AppSettings;
@@ -881,6 +958,115 @@ mod tests {
     }
 
     #[test]
+    fn empty_query_orders_results_by_root_then_relative_path() {
+        let parent = tempdir().unwrap();
+        let root_a_path = parent.path().join("root-a");
+        let root_b_path = parent.path().join("root-b");
+        fs::create_dir_all(root_b_path.join("src")).unwrap();
+        fs::create_dir_all(root_a_path.join("src")).unwrap();
+        fs::write(root_b_path.join("src").join("z.ts"), "ok").unwrap();
+        fs::write(root_a_path.join("a.ts"), "ok").unwrap();
+        fs::write(root_a_path.join("src").join("b.ts"), "ok").unwrap();
+
+        let settings = Arc::new(Mutex::new(AppSettings::default()));
+        let service = WorkspaceIndexService::new(settings);
+        let root_b = root_b_path.to_string_lossy().to_string();
+        let root_a = root_a_path.to_string_lossy().to_string();
+
+        service.register_root(&root_b).unwrap();
+        service.register_root(&root_a).unwrap();
+        wait_for_state(
+            &service,
+            &normalize_root(&root_a),
+            WorkspaceIndexState::Ready,
+        );
+        wait_for_state(
+            &service,
+            &normalize_root(&root_b),
+            WorkspaceIndexState::Ready,
+        );
+
+        let response = service.query(super::QueryWorkspaceFilesRequest {
+            query: String::new(),
+            roots: Some(vec![root_b.clone(), root_a.clone()]),
+            limit: Some(10),
+        });
+
+        let ordered = response
+            .results
+            .into_iter()
+            .map(|file| (file.root, file.relative_path))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered,
+            vec![
+                (normalize_root(&root_a), "a.ts".to_string()),
+                (normalize_root(&root_a), "src/b.ts".to_string()),
+                (normalize_root(&root_b), "src/z.ts".to_string()),
+            ]
+        );
+
+        service.unregister_root(&root_a);
+        service.unregister_root(&root_b);
+    }
+
+    #[test]
+    fn search_query_breaks_ties_by_root_then_relative_path() {
+        let parent = tempdir().unwrap();
+        let root_a_path = parent.path().join("root-a");
+        let root_b_path = parent.path().join("root-b");
+        fs::create_dir_all(root_b_path.join("a")).unwrap();
+        fs::create_dir_all(root_a_path.join("a")).unwrap();
+        fs::create_dir_all(root_a_path.join("b")).unwrap();
+        fs::write(root_b_path.join("a").join("app.ts"), "ok").unwrap();
+        fs::write(root_a_path.join("a").join("app.ts"), "ok").unwrap();
+        fs::write(root_a_path.join("b").join("app.ts"), "ok").unwrap();
+
+        let settings = Arc::new(Mutex::new(AppSettings::default()));
+        let service = WorkspaceIndexService::new(settings);
+        let root_b = root_b_path.to_string_lossy().to_string();
+        let root_a = root_a_path.to_string_lossy().to_string();
+
+        service.register_root(&root_b).unwrap();
+        service.register_root(&root_a).unwrap();
+        wait_for_state(
+            &service,
+            &normalize_root(&root_a),
+            WorkspaceIndexState::Ready,
+        );
+        wait_for_state(
+            &service,
+            &normalize_root(&root_b),
+            WorkspaceIndexState::Ready,
+        );
+
+        let response = service.query(super::QueryWorkspaceFilesRequest {
+            query: "app.ts".to_string(),
+            roots: Some(vec![root_b.clone(), root_a.clone()]),
+            limit: Some(10),
+        });
+
+        let ordered = response
+            .results
+            .into_iter()
+            .map(|file| (file.root, file.relative_path))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ordered,
+            vec![
+                (normalize_root(&root_a), "a/app.ts".to_string()),
+                (normalize_root(&root_a), "b/app.ts".to_string()),
+                (normalize_root(&root_b), "a/app.ts".to_string()),
+            ]
+        );
+
+        service.unregister_root(&root_a);
+        service.unregister_root(&root_b);
+    }
+
+    #[test]
     fn refresh_request_rebuilds_index_after_file_change() {
         let directory = tempdir().unwrap();
         for index in 0..4_000 {
@@ -929,6 +1115,61 @@ mod tests {
 
         service.unregister_root(&root);
         panic!("workspace index did not refresh after a file change");
+    }
+
+    #[test]
+    fn event_relevance_uses_cached_root_context() {
+        let directory = tempdir().unwrap();
+        git2::Repository::init(directory.path()).unwrap();
+        fs::create_dir_all(directory.path().join("src")).unwrap();
+        fs::write(directory.path().join("src").join("main.ts"), "ok").unwrap();
+
+        let settings = Arc::new(Mutex::new(AppSettings::default()));
+        let service = WorkspaceIndexService::new(settings);
+        let root = directory.path().to_string_lossy().to_string();
+        let normalized_root = normalize_root(&root);
+
+        service.register_root(&root).unwrap();
+        wait_for_state(&service, &normalized_root, WorkspaceIndexState::Ready);
+
+        reset_git_ignore_matcher_build_count();
+
+        let tracked_file = directory.path().join("src").join("main.ts");
+        assert!(service.event_is_relevant(&normalized_root, &[tracked_file.clone()]));
+        assert!(service.event_is_relevant(&normalized_root, &[tracked_file]));
+        assert_eq!(git_ignore_matcher_build_count(), 0);
+
+        service.unregister_root(&root);
+    }
+
+    #[test]
+    fn refresh_updates_cached_git_ignore_matcher() {
+        let directory = tempdir().unwrap();
+        git2::Repository::init(directory.path()).unwrap();
+        fs::create_dir_all(directory.path().join("src")).unwrap();
+        fs::write(directory.path().join("src").join("main.ts"), "ok").unwrap();
+
+        let settings = Arc::new(Mutex::new(AppSettings::default()));
+        let service = WorkspaceIndexService::new(settings);
+        let root = directory.path().to_string_lossy().to_string();
+        let normalized_root = normalize_root(&root);
+
+        service.register_root(&root).unwrap();
+        wait_for_state(&service, &normalized_root, WorkspaceIndexState::Ready);
+
+        fs::write(directory.path().join(".gitignore"), "ignored/\n").unwrap();
+        fs::create_dir_all(directory.path().join("ignored")).unwrap();
+        fs::write(directory.path().join("ignored").join("skip.ts"), "ignored").unwrap();
+        service.request_refresh(&normalized_root, true);
+        wait_for_state(&service, &normalized_root, WorkspaceIndexState::Ready);
+
+        reset_git_ignore_matcher_build_count();
+
+        let ignored_file = directory.path().join("ignored").join("skip.ts");
+        assert!(!service.event_is_relevant(&normalized_root, &[ignored_file]));
+        assert_eq!(git_ignore_matcher_build_count(), 0);
+
+        service.unregister_root(&root);
     }
 
     fn wait_for_state(

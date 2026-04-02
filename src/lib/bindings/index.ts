@@ -8,6 +8,8 @@ export type { Choice } from "./Choice";
 export type { SelectionMode } from "./SelectionMode";
 export type { AppSettings } from "./AppSettings";
 export type { BranchInfo } from "./BranchInfo";
+export type { CheckRun } from "./CheckRun";
+export type { CheckRunsResult } from "./CheckRunsResult";
 export type { ChangeKind } from "./ChangeKind";
 export type { CommitInfo } from "./CommitInfo";
 export type { CleanupReviewSessionsResult } from "./CleanupReviewSessionsResult";

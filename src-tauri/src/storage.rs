@@ -38,6 +38,8 @@ impl ReviewSessionKind {
 pub enum ReviewSessionStatus {
     Active,
     Completed,
+    Cancelled,
+    TimedOut,
     Stale,
     Archived,
 }
@@ -47,6 +49,8 @@ impl ReviewSessionStatus {
         match self {
             Self::Active => "active",
             Self::Completed => "completed",
+            Self::Cancelled => "cancelled",
+            Self::TimedOut => "timed_out",
             Self::Stale => "stale",
             Self::Archived => "archived",
         }
@@ -56,9 +60,25 @@ impl ReviewSessionStatus {
         match value {
             "active" => Some(Self::Active),
             "completed" => Some(Self::Completed),
+            "cancelled" => Some(Self::Cancelled),
+            "timed_out" => Some(Self::TimedOut),
             "stale" => Some(Self::Stale),
             "archived" => Some(Self::Archived),
             _ => None,
+        }
+    }
+
+    pub fn can_transition_to(self, target: Self) -> bool {
+        match (self, target) {
+            // Active sessions can move to any terminal state or stale
+            (Self::Active, Self::Completed | Self::Cancelled | Self::TimedOut | Self::Stale) => {
+                true
+            }
+            // Stale sessions can be completed, cancelled, or archived
+            (Self::Stale, Self::Completed | Self::Cancelled | Self::Archived) => true,
+            // Terminal states can only move to archived
+            (Self::Completed | Self::Cancelled | Self::TimedOut, Self::Archived) => true,
+            _ => false,
         }
     }
 }
@@ -238,10 +258,23 @@ impl StateDb {
         session_id: &str,
         verdict: &str,
     ) -> Result<Option<StoredReviewSession>, StorageError> {
+        let current = self.review_session_status(session_id)?;
+        match current {
+            None => return Ok(None),
+            Some((status, _, _)) => {
+                if !status.can_transition_to(ReviewSessionStatus::Completed) {
+                    return Err(StorageError::Message(format!(
+                        "cannot complete session in {} state",
+                        status.as_str(),
+                    )));
+                }
+            }
+        }
+
         let now = Utc::now().to_rfc3339();
         let mut conn = self.connect()?;
         let tx = conn.transaction()?;
-        let updated = tx.execute(
+        tx.execute(
             r#"
             UPDATE review_sessions
             SET status = ?2,
@@ -259,11 +292,6 @@ impl StateDb {
             ],
         )?;
 
-        if updated == 0 {
-            tx.commit()?;
-            return Ok(None);
-        }
-
         record_activity_tx(
             &tx,
             Some(session_id),
@@ -274,6 +302,73 @@ impl StateDb {
             None,
         )?;
 
+        tx.commit()?;
+        self.get_review_session(session_id)
+    }
+
+    pub fn cancel_review_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<StoredReviewSession>, StorageError> {
+        self.transition_session(
+            session_id,
+            ReviewSessionStatus::Cancelled,
+            Some("cancelled"),
+        )
+    }
+
+    pub fn timeout_review_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<StoredReviewSession>, StorageError> {
+        self.transition_session(session_id, ReviewSessionStatus::TimedOut, Some("timed_out"))
+    }
+
+    fn transition_session(
+        &self,
+        session_id: &str,
+        target_status: ReviewSessionStatus,
+        verdict: Option<&str>,
+    ) -> Result<Option<StoredReviewSession>, StorageError> {
+        let current = self.review_session_status(session_id)?;
+        let current_status = match current {
+            Some((status, _, _)) => status,
+            None => return Ok(None),
+        };
+        if !current_status.can_transition_to(target_status) {
+            return Err(StorageError::Message(format!(
+                "cannot transition session from {} to {}",
+                current_status.as_str(),
+                target_status.as_str(),
+            )));
+        }
+
+        let now = Utc::now().to_rfc3339();
+        let mut conn = self.connect()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            r#"
+            UPDATE review_sessions
+            SET status = ?2, verdict = COALESCE(?3, verdict),
+                updated_at = ?4, completed_at = ?4, last_accessed_at = ?4
+            WHERE id = ?1
+            "#,
+            params![session_id, target_status.as_str(), verdict, now],
+        )?;
+        let activity_kind = match target_status {
+            ReviewSessionStatus::Cancelled => "session_cancelled",
+            ReviewSessionStatus::TimedOut => "session_timed_out",
+            _ => "session_transitioned",
+        };
+        record_activity_tx(
+            &tx,
+            Some(session_id),
+            None,
+            activity_kind,
+            verdict,
+            None,
+            None,
+        )?;
         tx.commit()?;
         self.get_review_session(session_id)
     }
@@ -492,7 +587,7 @@ impl StateDb {
         let mut stmt = conn.prepare(
             r#"
             SELECT id FROM review_sessions
-            WHERE status IN (?1, ?2) AND updated_at <= ?3
+            WHERE status IN (?1, ?2, ?3, ?4) AND updated_at <= ?5
             "#,
         )?;
         let session_ids = stmt
@@ -500,6 +595,8 @@ impl StateDb {
                 params![
                     ReviewSessionStatus::Completed.as_str(),
                     ReviewSessionStatus::Stale.as_str(),
+                    ReviewSessionStatus::Cancelled.as_str(),
+                    ReviewSessionStatus::TimedOut.as_str(),
                     cutoff
                 ],
                 |row| row.get::<_, String>(0),

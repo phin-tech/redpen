@@ -17,7 +17,6 @@
   import type { Annotation, AnnotationKind, DiffHunk } from "$lib/types";
   import type { FileSnippet } from "$lib/tauri";
   import { Bot } from "lucide-svelte";
-  import { info } from "@tauri-apps/plugin-log";
 
   const PROXIMITY_THRESHOLD = 5;
 
@@ -28,6 +27,7 @@
     lineNote: "var(--kind-linenote-border)",
     explanation: "var(--kind-explanation-border)",
     label: "var(--kind-label-border)",
+    question: "var(--kind-question-border)",
   };
 
   const KIND_LABELS: Record<AnnotationKind, string> = {
@@ -35,6 +35,7 @@
     lineNote: "note",
     explanation: "explanation",
     label: "label",
+    question: "question",
   };
 
   let {
@@ -130,7 +131,6 @@
 
   function mergeSnippets(snippets: (FileSnippet | null)[]): FileSnippet | null {
     const valid = snippets.filter((s): s is FileSnippet => s !== null);
-    info(`[ReviewPage]     mergeSnippets: ${snippets.length} input, ${valid.length} valid`);
     if (valid.length === 0) return null;
     if (valid.length === 1) return valid[0];
 
@@ -159,7 +159,6 @@
   }
 
   const cardEntries = $derived.by(() => {
-    info(`[ReviewPage] cardEntries recompute: ${reviewState.files.length} files, loading=${reviewState.loading}`);
     const result: FileGroupEntry[] = [];
     let flatIndex = 0;
 
@@ -174,7 +173,6 @@
         }
       }
 
-      info(`[ReviewPage]   file=${file.fileName}: ${roots.length} roots, ${file.annotations.length} total annotations, snippets=${file.snippets.size}`);
       // Build cards sorted by line FIRST, then assign flatIndex
       const unsortedCards = roots.map(root => ({
         annotation: root,
@@ -222,12 +220,10 @@
       }
     }
 
-    info(`[ReviewPage] cardEntries done: ${result.length} file groups, ${flatIndex} total cards`);
     return result;
   });
 
   function buildContextGroup(cards: CardEntry[], file: typeof reviewState.files[0]): ContextGroup {
-    info(`[ReviewPage]   buildContextGroup: ${cards.length} cards, lines ${cards.map(c => c.annotation.anchor.range.startLine).join(',')}`);
     const snippets = cards.map(c => file.snippets.get(c.annotation.id) ?? null);
     const mergedSnippet = mergeSnippets(snippets);
 

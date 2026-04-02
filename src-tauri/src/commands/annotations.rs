@@ -26,6 +26,8 @@ pub struct CreateAnnotationRequest {
     pub labels: Vec<String>,
     #[serde(default = "default_kind")]
     pub kind: AnnotationKind,
+    #[serde(default)]
+    pub blocking: bool,
     pub start_line: u32,
     pub start_column: u32,
     pub end_line: u32,
@@ -122,6 +124,7 @@ pub fn create_annotation(
         .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
         .author
         .clone();
+    let blocking = request.blocking;
     if let Some(session) = resolve_github_session_for_file(&state.storage, source_path)? {
         let mut sidecar = load_session_sidecar_for_file(&session, source_path)?;
         let mut annotation = if let Some(reply_to) = reply_to.clone() {
@@ -135,6 +138,7 @@ pub fn create_annotation(
                 anchor,
             )
         };
+        annotation.blocking = blocking;
         annotation.github = Some(GitHubAnnotationMetadata {
             sync_state: Some(GitHubSyncState::PendingPublish),
             external_comment_id: None,
@@ -146,17 +150,22 @@ pub fn create_annotation(
         return Ok(annotation);
     }
     let project_root = resolve_project_root(source_path);
-    svc.create_annotation_in_session(
-        &project_root,
-        source_path,
-        kind,
-        &request.body,
-        request.labels,
-        &author,
-        anchor,
-        reply_to,
-    )
-    .map_err(CommandError::from)
+    let mut annotation = svc
+        .create_annotation_in_session(
+            &project_root,
+            source_path,
+            kind,
+            &request.body,
+            request.labels,
+            &author,
+            anchor,
+            reply_to,
+        )
+        .map_err(CommandError::from)?;
+    if blocking {
+        annotation.blocking = true;
+    }
+    Ok(annotation)
 }
 
 #[derive(Debug, serde::Serialize, ts_rs::TS)]

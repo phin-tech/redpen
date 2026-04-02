@@ -28,6 +28,7 @@
     onOpenFolder,
     showShortcutHelp = $bindable(false),
     showPrView = $bindable(false),
+    showChecksView = $bindable(false),
     ref = $bindable(undefined),
   }: {
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
@@ -35,6 +36,7 @@
     onOpenFolder?: () => Promise<void>;
     showShortcutHelp?: boolean;
     showPrView?: boolean;
+    showChecksView?: boolean;
     ref?: {
       scrollToLine: (line: number) => void;
       openSearch: () => void;
@@ -89,8 +91,9 @@
   let lastGitHubSessionId = $state<string | null>(null);
 
   $effect(() => {
-    if (!githubReview.activeSession && showPrView) {
-      showPrView = false;
+    if (!githubReview.activeSession) {
+      if (showPrView) showPrView = false;
+      if (showChecksView) showChecksView = false;
     }
   });
 
@@ -98,6 +101,7 @@
     const sessionId = githubReview.activeSession?.id ?? null;
     if (sessionId !== lastGitHubSessionId) {
       showPrView = false;
+      showChecksView = false;
       lastGitHubSessionId = sessionId;
     }
   });
@@ -165,6 +169,7 @@
 
   function handleSelectCodeView() {
     showPrView = false;
+    showChecksView = false;
     if (isReviewPageOpen()) {
       closeReviewPage();
     }
@@ -172,6 +177,7 @@
 
   function handleSelectReviewView() {
     showPrView = false;
+    showChecksView = false;
     if (!isReviewPageOpen()) {
       openReviewPage("changes");
     }
@@ -179,25 +185,36 @@
 
   function handleSelectPrView() {
     showPrView = true;
+    showChecksView = false;
     if (isReviewPageOpen()) {
       closeReviewPage();
     }
   }
 
-  /** Cycle through Code → Review → PR (→ Code) with direction */
+  function handleSelectChecksView() {
+    showChecksView = true;
+    showPrView = false;
+    if (isReviewPageOpen()) {
+      closeReviewPage();
+    }
+  }
+
+  /** Cycle through Code → Review → PR → Checks (→ Code) with direction */
   export function cycleView(direction: 1 | -1) {
     const hasPr = Boolean(githubReview.activeSession);
-    // Determine current tab index: 0=Code, 1=Review, 2=PR
+    // Determine current tab index: 0=Code, 1=Review, 2=PR, 3=Checks
     let current = 0;
-    if (isReviewPageOpen() && !showPrView) current = 1;
+    if (isReviewPageOpen() && !showPrView && !showChecksView) current = 1;
     else if (showPrView) current = 2;
+    else if (showChecksView) current = 3;
 
-    const tabCount = hasPr ? 3 : 2;
+    const tabCount = hasPr ? 4 : 2;
     const next = ((current + direction) % tabCount + tabCount) % tabCount;
 
     if (next === 0) handleSelectCodeView();
     else if (next === 1) handleSelectReviewView();
     else if (next === 2) handleSelectPrView();
+    else if (next === 3) handleSelectChecksView();
   }
 
   async function handleAgentReviewVerdict(verdict: ReviewVerdict) {
@@ -222,6 +239,10 @@
     handleSelectPrView();
   }
 
+  export function selectChecksView() {
+    handleSelectChecksView();
+  }
+
   export function enterDiff(mode: import("$lib/types").DiffMode) {
     handleEnterDiff(mode);
   }
@@ -241,6 +262,7 @@
     bind:showShortcutHelp
     bind:unifiedDiffEditor
     {showPrView}
+    {showChecksView}
     {onJumpToFile}
     {onOpenFolder}
     {onSelectionChange}

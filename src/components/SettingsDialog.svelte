@@ -140,8 +140,8 @@
         {#if activeCategory === "general"}
           <div class="settings-section-header">Identity</div>
           <div class="settings-field">
-            <label>Author name</label>
-            <input bind:value={author} />
+            <label for="settings-author">Author name</label>
+            <input id="settings-author" bind:value={author} />
           </div>
 
           <div class="settings-section-header">Annotation Defaults</div>
