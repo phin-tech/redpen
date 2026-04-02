@@ -1474,25 +1474,25 @@ pub fn get_pr_check_runs(repo: String, head_sha: String) -> CommandResult<CheckR
             r#"{total_count: .total_count, check_runs: [.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, started_at: .started_at, completed_at: .completed_at, details_url: .details_url, html_url: .html_url}]}"#,
         ])
         .output()
-        .map_err(|e| CommandError::External(format!("failed to run gh: {}", e)))?;
+        .map_err(|e| CommandError::Process(format!("failed to run gh: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CommandError::External(format!(
+        return Err(CommandError::Process(format!(
             "gh api check-runs failed: {}",
             stderr
         )));
     }
 
     let json: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| CommandError::External(format!("failed to parse check-runs: {}", e)))?;
+        .map_err(|e| CommandError::Process(format!("failed to parse check-runs: {}", e)))?;
 
     let total_count = json["total_count"].as_u64().unwrap_or(0) as usize;
     let check_runs: Vec<CheckRun> = json["check_runs"]
         .as_array()
-        .map(|arr| {
+        .map(|arr: &Vec<Value>| {
             arr.iter()
-                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .filter_map(|v: &Value| serde_json::from_value::<CheckRun>(v.clone()).ok())
                 .collect()
         })
         .unwrap_or_default();
