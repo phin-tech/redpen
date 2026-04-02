@@ -94,6 +94,24 @@ tasks:
       - bun run tauri build
       - task: sign
 
+  changelog:
+    desc: Generate changelog for the latest tag
+    cmds:
+      - git cliff --latest --strip header -o CHANGELOG.md
+    preconditions:
+      - sh: command -v git-cliff
+        msg: "git-cliff not installed. Run: cargo install git-cliff"
+
+  changelog:preview:
+    desc: Preview changelog for unreleased changes
+    cmds:
+      - git cliff --unreleased --strip header
+
+  changelog:full:
+    desc: Generate full changelog from all tags
+    cmds:
+      - git cliff -o CHANGELOG.md
+
   release:upload:
     desc: "Upload the signed DMG and CLI binary to the GitHub release"
     cmds:
@@ -163,8 +181,11 @@ tasks:
           sed -i '' "s/^version = \".*\"/version = \"${NEW}\"/" "$f"
         done
 
+        # Generate changelog
+        git cliff --latest --strip header -o CHANGELOG.md
+
         # Commit, tag, push
-        git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml
+        git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml CHANGELOG.md
         git commit -m "release: v${NEW}"
         git tag "v${NEW}"
         git push origin main
