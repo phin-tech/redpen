@@ -1,14 +1,9 @@
 <script lang="ts">
   import type { GitHubPrSession } from "$lib/types";
-  import { renderMarkdown } from "$lib/markdown/render";
   import "$lib/markdown/markdown.css";
+  import PrBodyAnnotatable from "./PrBodyAnnotatable.svelte";
 
   let { session }: { session: GitHubPrSession } = $props();
-
-  const bodyHtml = $derived.by(() => {
-    const body = session.body?.trim();
-    return renderMarkdown(body && body.length > 0 ? body : "_No description provided._");
-  });
 </script>
 
 <div class="pr-view">
@@ -17,8 +12,8 @@
       <div class="pr-view-card-title">Pull request</div>
       <div class="pr-view-card-meta">{session.repo} #{session.number}</div>
     </div>
-    <div class="pr-view-card-body markdown-body">
-      {@html bodyHtml}
+    <div class="pr-view-card-body">
+      <PrBodyAnnotatable body={session.body ?? ""} worktreePath={session.worktreePath} />
     </div>
   </div>
 </div>

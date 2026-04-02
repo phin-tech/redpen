@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { SubmitGitHubReviewResult } from "$lib/types";
+  import { formatPrBodyAnnotations } from "$lib/review/prBodySummary";
+  import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
 
   let {
     isSelfAuthoredPr,
@@ -20,13 +22,24 @@
   let submitModalError = $state<string | null>(null);
   let submitModalResult = $state<SubmitGitHubReviewResult | null>(null);
 
-  function openSubmitModal(action: "comment" | "approve" | "requestChanges") {
+  async function openSubmitModal(action: "comment" | "approve" | "requestChanges") {
     showSubmitMenu = false;
     submitModalAction = action;
-    submitModalMessage = "";
     submitModalStatus = "editing";
     submitModalError = null;
     submitModalResult = null;
+
+    const githubReview = getGitHubReviewState();
+    const session = githubReview.activeSession;
+    if (session) {
+      submitModalMessage = await formatPrBodyAnnotations(
+        session.worktreePath,
+        session.body ?? "",
+      );
+    } else {
+      submitModalMessage = "";
+    }
+
     requestAnimationFrame(() => submitTextareaRef?.focus());
   }
 
