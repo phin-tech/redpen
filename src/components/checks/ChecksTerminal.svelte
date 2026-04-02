@@ -18,6 +18,14 @@
   let error = $state<string | null>(null);
   let scrollContainer: HTMLDivElement | undefined = $state();
 
+  // Extract the Actions job ID from the details_url
+  // Format: https://github.com/{owner}/{repo}/actions/runs/{run_id}/job/{job_id}
+  function getActionsJobId(r: CheckRun): string | null {
+    if (!r.detailsUrl) return null;
+    const match = r.detailsUrl.match(/\/job\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
   function formatDuration(r: CheckRun): string {
     if (!r.startedAt || !r.completedAt) return "";
     const start = new Date(r.startedAt).getTime();
@@ -48,12 +56,17 @@
 
   async function fetchLogs() {
     if (logHtml !== null) return; // Already loaded
+    const jobId = getActionsJobId(run);
+    if (!jobId) {
+      error = "No job ID found in details URL";
+      return;
+    }
     loading = true;
     error = null;
     try {
       const html = await invoke<string>("get_job_logs", {
         repo,
-        jobId: run.id,
+        jobId,
       });
       onLogsLoaded(html);
     } catch (e) {
@@ -65,7 +78,7 @@
 
   $effect(() => {
     // Fetch logs when run changes
-    if (run.id) {
+    if (run.detailsUrl) {
       fetchLogs();
     }
   });

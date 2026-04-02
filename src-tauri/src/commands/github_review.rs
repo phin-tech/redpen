@@ -1674,7 +1674,7 @@ fn logs_cache_dir() -> PathBuf {
 }
 
 #[tauri::command]
-pub fn get_job_logs(repo: String, job_id: u64) -> CommandResult<String> {
+pub fn get_job_logs(repo: String, job_id: String) -> CommandResult<String> {
     // Check cache first
     let cache_dir = logs_cache_dir();
     let cache_path = cache_dir.join(format!("{}.log", job_id));

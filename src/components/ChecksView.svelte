@@ -17,21 +17,25 @@
   let error = $state<string | null>(null);
   let selectedRun = $state<CheckRun | null>(null);
 
-  // Cache log HTML by job id so switching jobs doesn't re-fetch
-  let logCache = $state<Map<number, string>>(new Map());
+  // Cache log HTML by details URL so switching jobs doesn't re-fetch
+  let logCache = $state<Map<string, string>>(new Map());
 
   // The raw log text (pre-HTML) for file:line extraction — we strip HTML tags
-  let rawLogCache = $state<Map<number, string>>(new Map());
+  let rawLogCache = $state<Map<string, string>>(new Map());
 
   // Mini-diff overlay state
   let miniDiffFile = $state<string | null>(null);
   let miniDiffLine = $state<number>(0);
 
+  function cacheKey(run: CheckRun): string {
+    return run.detailsUrl ?? String(run.id);
+  }
+
   const currentLogHtml = $derived(
-    selectedRun ? logCache.get(selectedRun.id) ?? null : null
+    selectedRun ? logCache.get(cacheKey(selectedRun)) ?? null : null
   );
   const currentRawLog = $derived(
-    selectedRun ? rawLogCache.get(selectedRun.id) ?? null : null
+    selectedRun ? rawLogCache.get(cacheKey(selectedRun)) ?? null : null
   );
 
   async function loadChecks() {
@@ -61,14 +65,15 @@
 
   function handleLogsLoaded(html: string) {
     if (!selectedRun) return;
+    const key = cacheKey(selectedRun);
     const newCache = new Map(logCache);
-    newCache.set(selectedRun.id, html);
+    newCache.set(key, html);
     logCache = newCache;
 
     // Strip HTML tags to get raw text for file:line extraction
     const raw = html.replace(/<[^>]*>/g, "");
     const newRawCache = new Map(rawLogCache);
-    newRawCache.set(selectedRun.id, raw);
+    newRawCache.set(key, raw);
     rawLogCache = newRawCache;
   }
 
