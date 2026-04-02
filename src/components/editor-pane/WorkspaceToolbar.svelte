@@ -26,17 +26,21 @@
 
   let {
     showPrView,
+    showChecksView = false,
     onAgentReviewVerdict,
     onEnterDiff,
     onSelectCodeView,
     onSelectPrView,
+    onSelectChecksView,
     onSelectReviewView,
   }: {
     showPrView: boolean;
+    showChecksView?: boolean;
     onAgentReviewVerdict: (verdict: "approved" | "changes_requested") => Promise<void>;
     onEnterDiff: (mode: import("$lib/types").DiffMode) => void;
     onSelectCodeView: () => void;
     onSelectPrView: () => void;
+    onSelectChecksView?: () => void;
     onSelectReviewView: () => void;
   } = $props();
 
@@ -76,9 +80,10 @@
   );
 
   // Current active view
-  const isCodeView = $derived(!isReviewPageOpen() && !showPrView);
-  const isReviewView = $derived(isReviewPageOpen() && !showPrView);
+  const isCodeView = $derived(!isReviewPageOpen() && !showPrView && !showChecksView);
+  const isReviewView = $derived(isReviewPageOpen() && !showPrView && !showChecksView);
   const isPrViewActive = $derived(showPrView);
+  const isChecksViewActive = $derived(showChecksView);
 
   async function handleLocalReviewVerdict(verdict: "approved" | "changes_requested") {
     const file = reviewSession.files[0];
@@ -132,6 +137,13 @@
             onclick={onSelectPrView}
           >
             PR
+          </button>
+          <button
+            class="view-tab"
+            class:active={isChecksViewActive}
+            onclick={onSelectChecksView}
+          >
+            Checks
           </button>
         {/if}
       </div>

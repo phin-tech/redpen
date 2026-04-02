@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ChecksView from "../ChecksView.svelte";
   import DiffEditor from "../DiffEditor.svelte";
   import Editor from "../Editor.svelte";
   import GitHubInbox from "../GitHubInbox.svelte";
@@ -55,6 +56,7 @@
     rightDiffEditor = $bindable(undefined),
     showShortcutHelp = $bindable(false),
     showPrView,
+    showChecksView = false,
     unifiedDiffEditor = $bindable(undefined),
   }: {
     onJumpToFile?: (filePath: string, line: number) => void;
@@ -66,6 +68,7 @@
     rightDiffEditor?: SplitActiveDiffRef | undefined;
     showShortcutHelp?: boolean;
     showPrView: boolean;
+    showChecksView?: boolean;
     unifiedDiffEditor?: ActiveDiffRef | undefined;
   } = $props();
 
@@ -117,6 +120,8 @@
 <div class="pane-content">
   {#if workspace.rootFolders.length === 0}
     <GitHubInbox onOpenFolder={onOpenFolder ?? (async () => {})} />
+  {:else if showChecksView && githubReview.activeSession}
+    <ChecksView session={githubReview.activeSession} />
   {:else if showPrView && githubReview.activeSession}
     <PullRequestView session={githubReview.activeSession} />
   {:else if isReviewPageOpen()}

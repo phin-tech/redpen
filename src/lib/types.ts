@@ -33,6 +33,8 @@ export {
   type GitHubReviewQueueItem,
   type SubmitGitHubReviewResult,
   type GitHubReviewEvent,
+  type CheckRun,
+  type CheckRunsResult,
 } from "./bindings";
 
 // TS-only types (no Rust counterpart)

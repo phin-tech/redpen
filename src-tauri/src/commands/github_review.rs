@@ -1435,3 +1435,91 @@ impl AnchorLine for Annotation {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// CI / Check Runs
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+pub struct CheckRun {
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub details_url: Option<String>,
+    pub html_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+pub struct CheckRunsResult {
+    pub check_runs: Vec<CheckRun>,
+    pub total_count: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub pending: usize,
+}
+
+#[tauri::command]
+pub fn get_pr_check_runs(repo: String, head_sha: String) -> CommandResult<CheckRunsResult> {
+    let output = Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{}/commits/{}/check-runs", repo, head_sha),
+            "--jq",
+            r#"{total_count: .total_count, check_runs: [.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, started_at: .started_at, completed_at: .completed_at, details_url: .details_url, html_url: .html_url}]}"#,
+        ])
+        .output()
+        .map_err(|e| CommandError::External(format!("failed to run gh: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CommandError::External(format!(
+            "gh api check-runs failed: {}",
+            stderr
+        )));
+    }
+
+    let json: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| CommandError::External(format!("failed to parse check-runs: {}", e)))?;
+
+    let total_count = json["total_count"].as_u64().unwrap_or(0) as usize;
+    let check_runs: Vec<CheckRun> = json["check_runs"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let passed = check_runs
+        .iter()
+        .filter(|c| c.conclusion.as_deref() == Some("success"))
+        .count();
+    let failed = check_runs
+        .iter()
+        .filter(|c| {
+            matches!(
+                c.conclusion.as_deref(),
+                Some("failure") | Some("timed_out") | Some("cancelled")
+            )
+        })
+        .count();
+    let pending = check_runs
+        .iter()
+        .filter(|c| c.status != "completed")
+        .count();
+
+    Ok(CheckRunsResult {
+        check_runs,
+        total_count,
+        passed,
+        failed,
+        pending,
+    })
+}

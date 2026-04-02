@@ -25,10 +25,12 @@
     selectCodeView: () => void;
     selectReviewView: () => void;
     selectPrView: () => void;
+    selectChecksView: () => void;
     enterDiff: (mode: import("$lib/types").DiffMode) => void;
     agentReviewVerdict: (verdict: "approved" | "changes_requested") => Promise<void>;
   } | undefined = $state(undefined);
   let showPrView = $state(false);
+  let showChecksView = $state(false);
   let savedLeftPanelWidth = $state(240);
   let leftPanelWidth = $state(240);
   let rightPanelWidth = $state(300);
@@ -101,10 +103,12 @@
 <div class="app-root">
   <WorkspaceToolbar
     {showPrView}
+    {showChecksView}
     onAgentReviewVerdict={(verdict) => editorPaneRef?.agentReviewVerdict(verdict) ?? Promise.resolve()}
     onEnterDiff={(mode) => editorPaneRef?.enterDiff(mode)}
     onSelectCodeView={() => editorPaneRef?.selectCodeView()}
     onSelectPrView={() => editorPaneRef?.selectPrView()}
+    onSelectChecksView={() => editorPaneRef?.selectChecksView()}
     onSelectReviewView={() => editorPaneRef?.selectReviewView()}
   />
 
@@ -138,6 +142,7 @@
         bind:ref={editorRef}
         bind:showShortcutHelp={appShell.state.showReviewShortcutHelp}
         bind:showPrView
+        bind:showChecksView
         onSelectionChange={appShell.handleSelectionChange}
         onOpenFolder={appShell.openFolderPicker}
         onJumpToFile={appShell.handleJumpToFile}
