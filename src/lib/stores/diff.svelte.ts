@@ -184,6 +184,18 @@ export async function loadRefs(directory: string) {
     }
 }
 
+export async function fetchFileContentAtRef(
+    directory: string,
+    filePath: string,
+    gitRef: string,
+): Promise<string> {
+    return invoke<string>("get_file_content_at_ref", {
+        directory,
+        filePath,
+        gitRef,
+    });
+}
+
 export function setAlgorithm(algo: "patience" | "myers") {
     state.algorithm = algo;
 }

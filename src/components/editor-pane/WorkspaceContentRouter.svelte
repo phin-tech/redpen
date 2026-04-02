@@ -7,7 +7,7 @@
   import ReviewPage from "../ReviewPage.svelte";
   import { buildSplitDecorations, buildUnifiedDocument } from "$lib/codemirror/diff";
   import { sortedAnnotations } from "$lib/stores/annotations.svelte";
-  import { getDiffState, exitDiff } from "$lib/stores/diff.svelte";
+  import { getDiffState, exitDiff, fetchFileContentAtRef } from "$lib/stores/diff.svelte";
   import { getEditor, getFileExtension, getShowPreview, isMarkdownFile } from "$lib/stores/editor.svelte";
   import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
   import { isReviewPageOpen } from "$lib/stores/reviewPage.svelte";
@@ -74,6 +74,29 @@
   const workspace = getWorkspace();
   const githubReview = getGitHubReviewState();
 
+  let splitOldContent = $state<string>("");
+  let splitNewContent = $state<string>("");
+  let splitContentLoading = $state(false);
+
+  $effect(() => {
+    if (diff.enabled && diff.mode === "split" && diff.diffResult && editor.currentFilePath && workspace.rootFolders.length > 0) {
+      const directory = workspace.rootFolders[0];
+      const filePath = editor.currentFilePath;
+      const baseRef = diff.baseRef;
+      const targetRef = diff.targetRef;
+
+      splitContentLoading = true;
+      Promise.all([
+        fetchFileContentAtRef(directory, filePath, baseRef).catch(() => ""),
+        fetchFileContentAtRef(directory, filePath, targetRef).catch(() => ""),
+      ]).then(([oldContent, newContent]) => {
+        splitOldContent = oldContent;
+        splitNewContent = newContent;
+        splitContentLoading = false;
+      });
+    }
+  });
+
   function createUnifiedSelectionHandler(lineMap: Map<number, number>) {
     return (fromLine: number, fromCol: number, toLine: number, toCol: number) => {
       for (let line = fromLine; line <= toLine; line += 1) {
@@ -112,22 +135,26 @@
     {#if diff.diffResult.hunks.length === 0}
       <div class="diff-status">No changes between {diff.baseLabel} and {diff.targetLabel}</div>
     {:else if diff.mode === "split"}
-      {@const splitDeco = buildSplitDecorations(diff.diffResult)}
-      <div class="split-diff">
-        <DiffEditor
-          bind:this={leftDiffEditor}
-          content={diff.diffResult.oldContent}
-          fileExtension={getFileExtension()}
-          diffExtensions={splitDeco.oldExtensions}
-        />
-        <div class="split-divider"></div>
-        <DiffEditor
-          bind:this={rightDiffEditor}
-          content={diff.diffResult.newContent}
-          fileExtension={getFileExtension()}
-          diffExtensions={splitDeco.newExtensions}
-        />
-      </div>
+      {#if splitContentLoading}
+        <div class="diff-status">Loading split view...</div>
+      {:else}
+        {@const splitDeco = buildSplitDecorations(diff.diffResult)}
+        <div class="split-diff">
+          <DiffEditor
+            bind:this={leftDiffEditor}
+            content={splitOldContent}
+            fileExtension={getFileExtension()}
+            diffExtensions={splitDeco.oldExtensions}
+          />
+          <div class="split-divider"></div>
+          <DiffEditor
+            bind:this={rightDiffEditor}
+            content={splitNewContent}
+            fileExtension={getFileExtension()}
+            diffExtensions={splitDeco.newExtensions}
+          />
+        </div>
+      {/if}
     {:else if diff.mode === "unified"}
       {@const unified = buildUnifiedDocument(diff.diffResult)}
       <DiffEditor

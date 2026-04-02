@@ -69,6 +69,7 @@ pub fn run() {
             commands::review_history::resume_review_session,
             commands::review_history::cleanup_stale_review_sessions,
             commands::diff::compute_diff,
+            commands::diff::get_file_content_at_ref,
             commands::diff::list_refs,
             commands::export::export_annotations,
             get_pending_deep_links,

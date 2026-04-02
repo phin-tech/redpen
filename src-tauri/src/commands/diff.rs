@@ -11,8 +11,6 @@ pub struct DiffResult {
     pub base_ref: String,
     pub target_ref: String,
     pub hunks: Vec<DiffHunk>,
-    pub old_content: String,
-    pub new_content: String,
     pub inserted_lines: Vec<u32>,
     pub deleted_lines: Vec<u32>,
 }
@@ -247,11 +245,32 @@ pub fn compute_diff(
         base_ref,
         target_ref,
         hunks,
-        old_content,
-        new_content,
         inserted_lines,
         deleted_lines,
     })
+}
+
+#[tauri::command]
+pub fn get_file_content_at_ref(
+    directory: String,
+    file_path: String,
+    git_ref: String,
+) -> CommandResult<String> {
+    let repo = Repository::discover(&directory)?;
+    let workdir = repo.workdir().ok_or(CommandError::NotFound(
+        "bare repository has no working directory".into(),
+    ))?;
+    let abs_file = Path::new(&directory).join(&file_path);
+    let rel_file = if abs_file.starts_with(workdir) {
+        abs_file
+            .strip_prefix(workdir)
+            .map_err(|e| CommandError::InvalidArgument(e.to_string()))?
+            .to_string_lossy()
+            .to_string()
+    } else {
+        file_path
+    };
+    get_file_at_ref(&repo, &rel_file, &git_ref)
 }
 
 #[tauri::command]
