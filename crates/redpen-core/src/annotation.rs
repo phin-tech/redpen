@@ -54,6 +54,7 @@ pub enum AnnotationKind {
     LineNote,
     Label,
     Explanation,
+    Question,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
@@ -157,6 +158,8 @@ pub struct Annotation {
     pub selection_mode: Option<SelectionMode>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resolved: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub blocking: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github: Option<GitHubAnnotationMetadata>,
 }
@@ -194,6 +197,7 @@ impl Annotation {
             choices: None,
             selection_mode: None,
             resolved: false,
+            blocking: false,
             github: None,
         }
     }
@@ -220,6 +224,7 @@ impl Annotation {
             choices: None,
             selection_mode: None,
             resolved: false,
+            blocking: false,
             github: None,
         }
     }

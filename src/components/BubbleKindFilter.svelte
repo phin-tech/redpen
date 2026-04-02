@@ -9,6 +9,7 @@
     explanation: "Explanations",
     lineNote: "Notes",
     label: "Labels",
+    question: "Questions",
   };
 
   const kindColors: Record<BubbleAnnotationKind, string> = {
@@ -16,6 +17,7 @@
     explanation: "var(--kind-explanation)",
     lineNote: "var(--kind-linenote)",
     label: "var(--kind-label)",
+    question: "var(--kind-question)",
   };
 
   const filter = $derived(getBubbleKindFilter());

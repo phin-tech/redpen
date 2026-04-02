@@ -52,6 +52,9 @@
   --kind-label: #C39AE6;
   --kind-label-subtle: rgba(195, 154, 230, 0.16);
   --kind-label-border: rgba(195, 154, 230, 0.6);
+  --kind-question: #E6A07C;
+  --kind-question-subtle: rgba(230, 160, 124, 0.16);
+  --kind-question-border: rgba(230, 160, 124, 0.6);
 
   /* Status */
   --color-success: #84C68D;

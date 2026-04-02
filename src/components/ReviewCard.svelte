@@ -11,6 +11,7 @@
     lineNote: "var(--kind-linenote-border)",
     explanation: "var(--kind-explanation-border)",
     label: "var(--kind-label-border)",
+    question: "var(--kind-question-border)",
   };
 
   const KIND_LABELS: Record<AnnotationKind, string> = {
@@ -18,6 +19,7 @@
     lineNote: "note",
     explanation: "explanation",
     label: "label",
+    question: "question",
   };
 
   let {

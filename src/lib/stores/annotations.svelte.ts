@@ -2,11 +2,11 @@ import { getAnnotations, createAnnotation, updateAnnotation, deleteAnnotation, c
 import type { Choice } from "$lib/types";
 import type { Annotation, FileAnnotations, SidecarFile } from "$lib/types";
 
-type AnnotationFilter = "all" | "comment" | "lineNote" | "label" | "explanation";
+type AnnotationFilter = "all" | "comment" | "lineNote" | "label" | "explanation" | "question";
 type SidebarView = "file" | "project";
 
-type AnnotationKind = "comment" | "lineNote" | "label" | "explanation";
-const ALL_KINDS: AnnotationKind[] = ["comment", "lineNote", "label", "explanation"];
+type AnnotationKind = "comment" | "lineNote" | "label" | "explanation" | "question";
+const ALL_KINDS: AnnotationKind[] = ["comment", "lineNote", "label", "explanation", "question"];
 
 interface AnnotationsState {
   sidecar: SidecarFile | null;
