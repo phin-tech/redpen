@@ -37,7 +37,7 @@
     "@tauri-apps/plugin-log": "^2.8.0",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-shell": "^2.3.5",
-    "bits-ui": "^2.16.3",
+    "bits-ui": "^2.16.5",
     "dompurify": "^3.3.3",
     "lucide-svelte": "^1.0.1",
     "marked": "^17.0.5",
