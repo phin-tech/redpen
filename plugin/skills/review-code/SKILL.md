@@ -26,7 +26,7 @@ Open all changed code files in the Red Pen desktop app for human review, typical
    ```
 
 3. **Parse and act on the verdict:**
-   - **approved** — create the push approval signal so the pre-push hook allows the next push:
+   - **approved** — the push approval is automatically tracked by the Red Pen server session. As a fallback for environments where the server isn't running, also create the legacy signal file:
      ```bash
      repo_root=$(git rev-parse --show-toplevel)
      mkdir -p "$repo_root/.redpen/signals" && echo "approved" > "$repo_root/.redpen/signals/push-approved"

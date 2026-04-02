@@ -99,6 +99,17 @@ pub struct ReviewPrRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PushCheckRequest {
+    #[allow(dead_code)]
+    pub repo_root: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PushCheckResponse {
+    pub approved: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct SessionAnnotationsRequest {
     pub session_id: String,
 }
@@ -192,6 +203,11 @@ impl ReviewSessions {
             .entry(session_id.to_string())
             .or_default()
             .push(file);
+    }
+
+    /// Get all tracked session IDs.
+    pub async fn session_ids(&self) -> Vec<String> {
+        self.session_files.lock().await.keys().cloned().collect()
     }
 
     /// Get all files associated with a session.
@@ -436,6 +452,24 @@ async fn rpc_review_pr(
     }
 }
 
+/// Check whether any session has an "approved" verdict (used by the git push hook).
+async fn rpc_push_check(
+    AxumState(state): AxumState<ServerState>,
+    Json(_req): Json<PushCheckRequest>,
+) -> impl IntoResponse {
+    // Check all tracked sessions for a recent approval via the persisted state.
+    let ids = state.sessions.session_ids().await;
+    for session_id in &ids {
+        if let Ok(Some(status)) = state.bridge.review_session_status(session_id) {
+            if status.verdict.as_deref() == Some("approved") {
+                return Json(PushCheckResponse { approved: true });
+            }
+        }
+    }
+
+    Json(PushCheckResponse { approved: false })
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -453,6 +487,7 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/review", post(rpc_review))
         .route("/rpc/review.pr", post(rpc_review_pr))
         .route("/rpc/session.annotations", post(rpc_session_annotations))
+        .route("/rpc/push.check", post(rpc_push_check))
         .with_state(state)
 }
 
