@@ -77,8 +77,10 @@
     appShell.destroy();
   });
 
+  // Collapse left panel for split-diff or checks view
   $effect(() => {
-    if (diff.enabled && diff.mode === "split") {
+    const shouldCollapse = (diff.enabled && diff.mode === "split") || showChecksView;
+    if (shouldCollapse) {
       const current = untrack(() => leftPanelWidth);
       if (current > 0) {
         savedLeftPanelWidth = current;
@@ -90,6 +92,24 @@
       const saved = untrack(() => savedLeftPanelWidth);
       if (untrack(() => leftPanelWidth) === 0 && saved > 0) {
         leftPanelWidth = saved;
+      }
+    }
+  });
+
+  // Collapse right panel for checks view
+  $effect(() => {
+    if (showChecksView) {
+      const current = untrack(() => rightPanelWidth);
+      if (current > 0) {
+        savedRightPanelWidth = current;
+      }
+      if (current !== 0) {
+        rightPanelWidth = 0;
+      }
+    } else {
+      const saved = untrack(() => savedRightPanelWidth);
+      if (untrack(() => rightPanelWidth) === 0 && saved > 0) {
+        rightPanelWidth = saved;
       }
     }
   });

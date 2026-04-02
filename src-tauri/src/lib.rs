@@ -66,6 +66,7 @@ pub fn run() {
             commands::github_review::submit_github_pr_review,
             commands::github_review::discard_pending_github_review_changes,
             commands::github_review::get_pr_check_runs,
+            commands::github_review::get_job_logs,
             commands::review_history::get_review_history,
             commands::review_history::resume_review_session,
             commands::review_history::cleanup_stale_review_sessions,

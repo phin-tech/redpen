@@ -1444,6 +1444,8 @@ impl AnchorLine for Annotation {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct CheckRun {
+    #[ts(type = "number")]
+    pub id: u64,
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
@@ -1471,7 +1473,7 @@ pub fn get_pr_check_runs(repo: String, head_sha: String) -> CommandResult<CheckR
             "api",
             &format!("repos/{}/commits/{}/check-runs", repo, head_sha),
             "--jq",
-            r#"{total_count: .total_count, check_runs: [.check_runs[] | {name: .name, status: .status, conclusion: .conclusion, started_at: .started_at, completed_at: .completed_at, details_url: .details_url, html_url: .html_url}]}"#,
+            r#"{total_count: .total_count, check_runs: [.check_runs[] | {id: .id, name: .name, status: .status, conclusion: .conclusion, started_at: .started_at, completed_at: .completed_at, details_url: .details_url, html_url: .html_url}]}"#,
         ])
         .output()
         .map_err(|e| CommandError::Process(format!("failed to run gh: {}", e)))?;
@@ -1522,4 +1524,192 @@ pub fn get_pr_check_runs(repo: String, head_sha: String) -> CommandResult<CheckR
         failed,
         pending,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Job Logs
+// ---------------------------------------------------------------------------
+
+/// Convert ANSI escape codes in log text to HTML spans with inline CSS colors.
+/// HTML-escapes the text content first, then wraps colored sections in spans.
+fn ansi_to_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() * 2);
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+    let mut open_spans: usize = 0;
+
+    while i < len {
+        if bytes[i] == b'\x1b' && i + 1 < len && bytes[i + 1] == b'[' {
+            // Parse CSI sequence: ESC [ <params> m
+            i += 2;
+            let start = i;
+            while i < len && bytes[i] != b'm' && bytes[i] != b'\x1b' {
+                i += 1;
+            }
+            if i < len && bytes[i] == b'm' {
+                let params = &input[start..i];
+                i += 1;
+                // Close any open spans first, then open new one if needed
+                for code in params.split(';') {
+                    match code.trim() {
+                        "0" | "" => {
+                            // Reset
+                            for _ in 0..open_spans {
+                                out.push_str("</span>");
+                            }
+                            open_spans = 0;
+                        }
+                        "1" => {
+                            out.push_str("<span style=\"font-weight:bold\">");
+                            open_spans += 1;
+                        }
+                        "2" => {
+                            out.push_str("<span style=\"opacity:0.6\">");
+                            open_spans += 1;
+                        }
+                        "3" => {
+                            out.push_str("<span style=\"font-style:italic\">");
+                            open_spans += 1;
+                        }
+                        "4" => {
+                            out.push_str("<span style=\"text-decoration:underline\">");
+                            open_spans += 1;
+                        }
+                        // Standard colors (30-37)
+                        "30" => {
+                            out.push_str("<span style=\"color:#555\">");
+                            open_spans += 1;
+                        }
+                        "31" => {
+                            out.push_str("<span style=\"color:#f87171\">");
+                            open_spans += 1;
+                        }
+                        "32" => {
+                            out.push_str("<span style=\"color:#4ade80\">");
+                            open_spans += 1;
+                        }
+                        "33" => {
+                            out.push_str("<span style=\"color:#fbbf24\">");
+                            open_spans += 1;
+                        }
+                        "34" => {
+                            out.push_str("<span style=\"color:#60a5fa\">");
+                            open_spans += 1;
+                        }
+                        "35" => {
+                            out.push_str("<span style=\"color:#c084fc\">");
+                            open_spans += 1;
+                        }
+                        "36" => {
+                            out.push_str("<span style=\"color:#22d3ee\">");
+                            open_spans += 1;
+                        }
+                        "37" => {
+                            out.push_str("<span style=\"color:#e5e5e5\">");
+                            open_spans += 1;
+                        }
+                        // Bright colors (90-97)
+                        "90" => {
+                            out.push_str("<span style=\"color:#777\">");
+                            open_spans += 1;
+                        }
+                        "91" => {
+                            out.push_str("<span style=\"color:#f87171\">");
+                            open_spans += 1;
+                        }
+                        "92" => {
+                            out.push_str("<span style=\"color:#4ade80\">");
+                            open_spans += 1;
+                        }
+                        "93" => {
+                            out.push_str("<span style=\"color:#fbbf24\">");
+                            open_spans += 1;
+                        }
+                        "94" => {
+                            out.push_str("<span style=\"color:#60a5fa\">");
+                            open_spans += 1;
+                        }
+                        "95" => {
+                            out.push_str("<span style=\"color:#c084fc\">");
+                            open_spans += 1;
+                        }
+                        "96" => {
+                            out.push_str("<span style=\"color:#22d3ee\">");
+                            open_spans += 1;
+                        }
+                        "97" => {
+                            out.push_str("<span style=\"color:#f5f5f5\">");
+                            open_spans += 1;
+                        }
+                        _ => {} // Unknown code — skip
+                    }
+                }
+            }
+            // If we hit another ESC instead of 'm', don't advance past it
+        } else {
+            // Regular character — HTML-escape it
+            match bytes[i] {
+                b'<' => out.push_str("&lt;"),
+                b'>' => out.push_str("&gt;"),
+                b'&' => out.push_str("&amp;"),
+                b'"' => out.push_str("&quot;"),
+                _ => out.push(bytes[i] as char),
+            }
+            i += 1;
+        }
+    }
+
+    // Close any remaining open spans
+    for _ in 0..open_spans {
+        out.push_str("</span>");
+    }
+
+    out
+}
+
+fn logs_cache_dir() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    home.join(".redpen").join("cache").join("logs")
+}
+
+#[tauri::command]
+pub fn get_job_logs(repo: String, job_id: u64) -> CommandResult<String> {
+    // Check cache first
+    let cache_dir = logs_cache_dir();
+    let cache_path = cache_dir.join(format!("{}.log", job_id));
+
+    if cache_path.exists() {
+        let cached = fs::read_to_string(&cache_path)
+            .map_err(|e| CommandError::Process(format!("failed to read cached log: {}", e)))?;
+        return Ok(ansi_to_html(&cached));
+    }
+
+    // Fetch from GitHub
+    let output = Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{}/actions/jobs/{}/logs", repo, job_id),
+        ])
+        .output()
+        .map_err(|e| CommandError::Process(format!("failed to run gh: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CommandError::Process(format!(
+            "gh api job logs failed: {}",
+            stderr
+        )));
+    }
+
+    let log_text = String::from_utf8_lossy(&output.stdout).into_owned();
+
+    // Cache to disk
+    if let Err(e) = fs::create_dir_all(&cache_dir) {
+        eprintln!("Warning: failed to create log cache dir: {}", e);
+    } else if let Err(e) = fs::write(&cache_path, &log_text) {
+        eprintln!("Warning: failed to cache log: {}", e);
+    }
+
+    Ok(ansi_to_html(&log_text))
 }
