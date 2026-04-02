@@ -68,12 +68,6 @@ impl ReviewSessionStatus {
         }
     }
 
-    pub fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Cancelled | Self::TimedOut | Self::Archived
-        )
-    }
 
     pub fn can_transition_to(self, target: Self) -> bool {
         match (self, target) {
