@@ -317,7 +317,11 @@ impl StateDb {
         &self,
         session_id: &str,
     ) -> Result<Option<StoredReviewSession>, StorageError> {
-        self.transition_session(session_id, ReviewSessionStatus::Cancelled, Some("cancelled"))
+        self.transition_session(
+            session_id,
+            ReviewSessionStatus::Cancelled,
+            Some("cancelled"),
+        )
     }
 
     pub fn timeout_review_session(
@@ -363,7 +367,15 @@ impl StateDb {
             ReviewSessionStatus::TimedOut => "session_timed_out",
             _ => "session_transitioned",
         };
-        record_activity_tx(&tx, Some(session_id), None, activity_kind, verdict, None, None)?;
+        record_activity_tx(
+            &tx,
+            Some(session_id),
+            None,
+            activity_kind,
+            verdict,
+            None,
+            None,
+        )?;
         tx.commit()?;
         self.get_review_session(session_id)
     }
