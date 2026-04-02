@@ -121,6 +121,10 @@ impl AppBridge for TauriBridge {
             updated_at: now,
             completed_at: None,
             file_count: 1,
+            agent_status: None,
+            agent_task: None,
+            agent_pid: None,
+            last_heartbeat: None,
         };
         state
             .storage
@@ -203,6 +207,32 @@ impl AppBridge for TauriBridge {
         Ok(())
     }
 
+    fn update_agent_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        task: Option<&str>,
+        pid: Option<i64>,
+    ) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        state
+            .storage
+            .update_agent_status(session_id, status, task, pid)
+            .map_err(|e| e.to_string())?;
+        let _ = self.handle.emit("agent-status-changed", session_id);
+        Ok(())
+    }
+
+    fn clear_agent_status(&self, session_id: &str) -> Result<(), String> {
+        let state = self.handle.state::<AppState>();
+        state
+            .storage
+            .clear_agent_status(session_id)
+            .map_err(|e| e.to_string())?;
+        let _ = self.handle.emit("agent-status-changed", session_id);
+        Ok(())
+    }
+
     fn review_session_status(
         &self,
         session_id: &str,
@@ -268,7 +298,10 @@ impl<'a> From<&'a GitHubPrSession> for SerializableGitHubPrSession<'a> {
 
 fn resolve_project_root(source_path: &Path) -> std::path::PathBuf {
     match git2::Repository::discover(source_path) {
-        Ok(repo) => repo.workdir().unwrap().to_path_buf(),
+        Ok(repo) => repo
+            .workdir()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))),
         Err(_) => dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/")),
     }
 }

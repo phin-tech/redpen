@@ -6,6 +6,7 @@ use crate::storage::{
 };
 use tauri::State;
 use ts_rs::TS;
+use git2;
 
 #[derive(Debug, Clone, serde::Serialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +21,11 @@ pub struct ReviewHistoryItem {
     pub primary_file_path: Option<String>,
     pub file_count: usize,
     pub verdict: Option<String>,
+    pub branch_name: Option<String>,
+    pub is_workspace_local: bool,
+    pub agent_status: Option<String>,
+    pub agent_task: Option<String>,
+    pub last_heartbeat: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, TS)]
@@ -30,6 +36,7 @@ pub struct ReviewHistory {
     pub recent_pull_requests: Vec<ReviewHistoryItem>,
     pub recent_files: Vec<ReviewHistoryItem>,
     pub stale_sessions: Vec<ReviewHistoryItem>,
+    pub workspace_local: Vec<ReviewHistoryItem>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, TS)]
@@ -57,6 +64,10 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
         .list_recent_sessions(None, None, 50)
         .map_err(storage_error)?;
 
+    // Cache git dirtiness per project_root so we scan each repo at most once.
+    let mut dirty_cache: std::collections::HashMap<String, (bool, Option<String>)> =
+        std::collections::HashMap::new();
+
     let active_session = sessions
         .iter()
         .find(|session| {
@@ -64,23 +75,39 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
                 && !is_stale_timestamp(&session.updated_at)
         })
         .cloned()
-        .map(history_item_from_session);
+        .map(|s| history_item_from_session(s, &mut dirty_cache));
 
     let recent_pull_requests = sessions
         .iter()
         .filter(|session| session.kind == ReviewSessionKind::GitHubPr)
         .take(6)
         .cloned()
-        .map(history_item_from_session)
+        .map(|s| history_item_from_session(s, &mut dirty_cache))
         .collect();
 
-    let recent_files = sessions
-        .iter()
-        .filter(|session| session.kind == ReviewSessionKind::LocalReview)
-        .take(6)
-        .cloned()
-        .map(history_item_from_session)
-        .collect();
+    // Classify local sessions: only Active sessions can be workspace_local.
+    // Deduplicate by project_root — keep only the most recent session per folder.
+    let mut workspace_local: Vec<ReviewHistoryItem> = Vec::new();
+    let mut recent_files: Vec<ReviewHistoryItem> = Vec::new();
+    let mut seen_roots: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for session in sessions.iter().filter(|s| s.kind == ReviewSessionKind::LocalReview) {
+        let is_active = session.status == ReviewSessionStatus::Active
+            && !is_stale_timestamp(&session.updated_at);
+
+        let item = history_item_from_session(session.clone(), &mut dirty_cache);
+
+        if is_active && item.is_workspace_local {
+            let root_key = session.project_root.clone()
+                .or_else(|| session.local_repo_path.clone())
+                .unwrap_or_else(|| session.id.clone());
+            if seen_roots.insert(root_key) {
+                workspace_local.push(item);
+            }
+        } else if recent_files.len() < 5 {
+            recent_files.push(item);
+        }
+    }
 
     let stale_sessions = sessions
         .iter()
@@ -91,7 +118,7 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
         })
         .take(6)
         .cloned()
-        .map(history_item_from_session)
+        .map(|s| history_item_from_session(s, &mut dirty_cache))
         .collect();
 
     Ok(ReviewHistory {
@@ -99,6 +126,7 @@ pub fn get_review_history(state: State<'_, AppState>) -> CommandResult<ReviewHis
         recent_pull_requests,
         recent_files,
         stale_sessions,
+        workspace_local,
     })
 }
 
@@ -150,7 +178,22 @@ pub fn cleanup_stale_review_sessions(
     })
 }
 
-fn history_item_from_session(session: StoredReviewSession) -> ReviewHistoryItem {
+/// Check a repo path for dirtiness and branch name. Returns (is_dirty, branch_name).
+fn check_repo(path: &str) -> (bool, Option<String>) {
+    match git2::Repository::open(path) {
+        Ok(repo) => {
+            let branch = repo.head().ok().and_then(|h| h.shorthand().map(|s| s.to_string()));
+            let dirty = repo.statuses(None).map(|s| !s.is_empty()).unwrap_or(false);
+            (dirty, branch)
+        }
+        Err(_) => (false, None),
+    }
+}
+
+fn history_item_from_session(
+    session: StoredReviewSession,
+    dirty_cache: &mut std::collections::HashMap<String, (bool, Option<String>)>,
+) -> ReviewHistoryItem {
     let title = match session.kind {
         ReviewSessionKind::GitHubPr => session.title.clone().unwrap_or_else(|| {
             format!(
@@ -172,10 +215,38 @@ fn history_item_from_session(session: StoredReviewSession) -> ReviewHistoryItem 
             session.repo.clone().unwrap_or_default(),
             session.pr_number.unwrap_or_default()
         ),
-        ReviewSessionKind::LocalReview => session
-            .primary_file_path
-            .clone()
-            .unwrap_or_else(|| "Local review".to_string()),
+        ReviewSessionKind::LocalReview => {
+            // Show the git root folder name (e.g. "redpen" from "/Users/sam/src/redpen")
+            session
+                .project_root
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .or_else(|| session.local_repo_path.as_deref()
+                    .and_then(|p| std::path::Path::new(p).file_name())
+                    .map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_else(|| "Local review".to_string())
+        }
+    };
+
+    let (branch_name, is_workspace_local) = if session.kind == ReviewSessionKind::LocalReview {
+        let repo_path = session.project_root.as_deref()
+            .or(session.local_repo_path.as_deref());
+
+        let agent_busy = session.agent_status.as_deref() == Some("busy");
+
+        let (dirty, branch) = if let Some(path) = repo_path {
+            let entry = dirty_cache
+                .entry(path.to_string())
+                .or_insert_with(|| check_repo(path));
+            entry.clone()
+        } else {
+            (false, None)
+        };
+
+        (branch, agent_busy || dirty)
+    } else {
+        (None, false)
     };
 
     ReviewHistoryItem {
@@ -188,6 +259,11 @@ fn history_item_from_session(session: StoredReviewSession) -> ReviewHistoryItem 
         primary_file_path: session.primary_file_path,
         file_count: session.file_count,
         verdict: session.verdict,
+        branch_name,
+        is_workspace_local,
+        agent_status: session.agent_status,
+        agent_task: session.agent_task,
+        last_heartbeat: session.last_heartbeat,
     }
 }
 

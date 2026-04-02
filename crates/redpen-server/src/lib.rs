@@ -44,6 +44,16 @@ pub trait AppBridge: Send + Sync + 'static {
     /// Read persisted status for a review session.
     fn review_session_status(&self, session_id: &str)
         -> Result<Option<ReviewSessionState>, String>;
+    /// Write agent status, task, and PID to the sessions table; implementation should also emit an event.
+    fn update_agent_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        task: Option<&str>,
+        pid: Option<i64>,
+    ) -> Result<(), String>;
+    /// Clear all agent columns for a session; implementation should also emit an event.
+    fn clear_agent_status(&self, session_id: &str) -> Result<(), String>;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +131,21 @@ pub struct PushCheckResponse {
 #[derive(Debug, Deserialize)]
 pub struct SessionAnnotationsRequest {
     pub session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AgentStatusRequest {
+    pub session_id: String,
+    pub status: String,
+    pub task: Option<String>,
+    pub pid: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AgentLogRequest {
+    pub session_id: String,
+    pub line: String,
+    pub stream: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -503,6 +528,31 @@ async fn rpc_push_check(
     Json(PushCheckResponse { approved: false })
 }
 
+async fn agent_status(
+    AxumState(state): AxumState<ServerState>,
+    Json(req): Json<AgentStatusRequest>,
+) -> impl IntoResponse {
+    match state
+        .bridge
+        .update_agent_status(&req.session_id, &req.status, req.task.as_deref(), req.pid)
+    {
+        Ok(()) => (StatusCode::OK, Json(OkResponse { ok: true })).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
+    }
+}
+
+async fn agent_log(
+    AxumState(_state): AxumState<ServerState>,
+    Json(_req): Json<AgentLogRequest>,
+) -> impl IntoResponse {
+    // Accepted for future rendering; not persisted yet.
+    (StatusCode::OK, Json(OkResponse { ok: true }))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -522,6 +572,8 @@ pub fn build_router(bridge: Arc<dyn AppBridge>, sessions: Arc<ReviewSessions>) -
         .route("/rpc/review.pr", post(rpc_review_pr))
         .route("/rpc/session.annotations", post(rpc_session_annotations))
         .route("/rpc/push.check", post(rpc_push_check))
+        .route("/agent/status", post(agent_status))
+        .route("/agent/log", post(agent_log))
         .with_state(state)
 }
 
@@ -693,6 +745,20 @@ mod tests {
             _session_id: &str,
         ) -> Result<Option<ReviewSessionState>, String> {
             Ok(None)
+        }
+
+        fn update_agent_status(
+            &self,
+            _session_id: &str,
+            _status: &str,
+            _task: Option<&str>,
+            _pid: Option<i64>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn clear_agent_status(&self, _session_id: &str) -> Result<(), String> {
+            Ok(())
         }
     }
 

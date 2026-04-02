@@ -7,6 +7,9 @@ mod state;
 mod storage;
 mod workspace_index;
 
+#[cfg(unix)]
+extern crate libc;
+
 use notification::{NotificationKind, NotificationService};
 use state::AppState;
 use tauri::menu::{
@@ -16,6 +19,35 @@ use tauri::menu::{
 use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
+
+/// Returns true if a process with the given PID is running.
+fn is_pid_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // kill(pid, 0) succeeds if the process exists and we can signal it.
+        let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+        result == 0
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+#[tauri::command]
+fn clear_agent_status(
+    session_id: String,
+    state: tauri::State<AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    state
+        .storage
+        .clear_agent_status(&session_id)
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit("agent-status-changed", &session_id);
+    Ok(())
+}
 
 #[tauri::command]
 fn get_pending_deep_links(state: tauri::State<AppState>) -> Vec<String> {
@@ -61,6 +93,7 @@ pub fn run() {
             commands::git::get_git_status,
             commands::git::get_git_remote_url,
             commands::github_review::list_github_review_queue,
+            commands::github_review::list_github_inbox,
             commands::github_review::open_github_pr_review,
             commands::github_review::resync_github_pr_review,
             commands::github_review::submit_github_pr_review,
@@ -70,6 +103,7 @@ pub fn run() {
             commands::review_history::get_review_history,
             commands::review_history::resume_review_session,
             commands::review_history::cleanup_stale_review_sessions,
+            clear_agent_status,
             commands::diff::compute_diff,
             commands::diff::get_file_content_at_ref,
             commands::diff::list_refs,
@@ -381,6 +415,27 @@ pub fn run() {
                         pending.push(url.to_string());
                     }
                 }; // semicolon ensures MutexGuard drops before state
+            }
+
+            // On startup, mark any "busy" agent sessions as "interrupted" if their PID is dead.
+            {
+                let state = app.state::<AppState>();
+                if let Ok(busy) = state.storage.list_sessions_by_agent_status("busy") {
+                    for (session_id, pid) in busy {
+                        let alive = pid
+                            .filter(|&p| p > 0 && p <= i64::from(u32::MAX))
+                            .map(|p| is_pid_alive(p as u32))
+                            .unwrap_or(false);
+                        if !alive {
+                            let _ = state.storage.update_agent_status(
+                                &session_id,
+                                "interrupted",
+                                None,
+                                None,
+                            );
+                        }
+                    }
+                }
             }
 
             // Start optional local HTTP server for CLI/agent communication

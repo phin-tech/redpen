@@ -10,6 +10,7 @@ import type {
   SidecarFile,
   WorkspaceFileQueryResponse,
   WorkspaceIndexStatus,
+  GitHubInboxItem,
   GitHubPrSession,
   GitHubReviewEvent,
   GitHubReviewQueueItem,
@@ -128,6 +129,10 @@ export async function listGithubReviewQueue(): Promise<GitHubReviewQueueItem[]> 
   return invoke("list_github_review_queue");
 }
 
+export async function listGithubInbox(): Promise<GitHubInboxItem[]> {
+  return invoke("list_github_inbox");
+}
+
 export async function openGithubPrReview(
   prRef: string,
   localPathHint?: string,
@@ -165,6 +170,10 @@ export async function resumeReviewSession(
 
 export async function cleanupStaleReviewSessions(): Promise<CleanupReviewSessionsResult> {
   return invoke("cleanup_stale_review_sessions");
+}
+
+export async function clearAgentStatus(sessionId: string): Promise<void> {
+  return invoke("clear_agent_status", { sessionId });
 }
 
 export async function sendNotification(

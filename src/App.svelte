@@ -165,6 +165,7 @@
         bind:showChecksView
         onSelectionChange={appShell.handleSelectionChange}
         onOpenFolder={appShell.openFolderPicker}
+        onOpenSettings={appShell.openSettingsPanel}
         onJumpToFile={appShell.handleJumpToFile}
       />
     </section>

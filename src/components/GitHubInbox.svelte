@@ -1,13 +1,16 @@
 <script lang="ts">
   import {
-    cleanupStaleReviewSessions,
+    clearAgentStatus,
     getReviewHistory,
     getSettings,
     resumeReviewSession,
   } from "$lib/tauri";
   import type { AppSettings, ReviewHistory } from "$lib/types";
+  import { getVersion } from "@tauri-apps/api/app";
+  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import Button from "./ui/Button.svelte";
+  import type { InboxCategory } from "$lib/types";
   import {
     activateGitHubReviewSession,
     getGitHubReviewState,
@@ -19,7 +22,15 @@
   import { openFile } from "$lib/stores/editor.svelte";
   import { getWorkspace, replaceRootFolders } from "$lib/stores/workspace.svelte";
 
-  let { onOpenFolder }: { onOpenFolder: () => Promise<void> } = $props();
+  let {
+    onOpenFolder,
+    onOpenSettings,
+  }: {
+    onOpenFolder: () => Promise<void>;
+    onOpenSettings?: () => void;
+  } = $props();
+
+  let version = $state<string | null>(null);
 
   const githubReview = getGitHubReviewState();
   const workspace = getWorkspace();
@@ -34,32 +45,92 @@
   } | null>(null);
   let suggestedLocalPath = $derived(workspace.rootFolders[0] ?? "");
   let history = $state<ReviewHistory | null>(null);
-  let historyError = $state<string | null>(null);
-  let cleaningHistory = $state(false);
 
-  let hasContent = $derived(
-    history != null && (
-      history.activeSession != null ||
-      history.recentPullRequests.length > 0 ||
-      history.recentFiles.length > 0
-    )
-  );
 
-  let allSessions = $derived(buildSessionList());
+  // Heartbeat staleness: if last_heartbeat > 60s ago, agent is stalled
+  const HEARTBEAT_STALE_MS = 60_000;
 
-  function buildSessionList() {
-    if (!history) return [];
-    const items: Array<{ item: typeof history.recentPullRequests[0]; label: string; isActive: boolean }> = [];
-    if (history.activeSession) {
-      items.push({ item: history.activeSession, label: history.activeSession.kind === "github_pr" ? "Pull request" : "Local review", isActive: true });
+  type LocalItem = { agentStatus: string | null; agentTask: string | null; lastHeartbeat: string | null };
+
+  function agentDisplayStatus(item: LocalItem): { dot: "amber" | "red" | null; label: string | null } {
+    if (!item.agentStatus || item.agentStatus === "idle") return { dot: null, label: null };
+    if (item.agentStatus === "interrupted") return { dot: "red", label: "Agent: Interrupted" };
+    if (item.agentStatus === "error") return { dot: "red", label: "Agent: Error" };
+    if (item.agentStatus === "busy") {
+      if (item.lastHeartbeat) {
+        const stale = Date.now() - new Date(item.lastHeartbeat).getTime() > HEARTBEAT_STALE_MS;
+        if (stale) return { dot: "red", label: "Agent: Stalled" };
+      }
+      return { dot: "amber", label: item.agentTask ? `Agent: ${item.agentTask}` : "Agent: Running" };
     }
-    for (const pr of history.recentPullRequests) {
-      items.push({ item: pr, label: "Pull request", isActive: false });
+    return { dot: null, label: null };
+  }
+
+  function isAgentDismissible(item: LocalItem): boolean {
+    if (!item.agentStatus) return false;
+    if (item.agentStatus === "interrupted" || item.agentStatus === "error") return true;
+    if (item.agentStatus === "busy" && item.lastHeartbeat) {
+      return Date.now() - new Date(item.lastHeartbeat).getTime() > HEARTBEAT_STALE_MS;
     }
-    for (const f of history.recentFiles) {
-      items.push({ item: f, label: "Local review", isActive: false });
+    return false;
+  }
+
+  const CATEGORY_ORDER: InboxCategory[] = ["ReviewRequested", "Assigned", "Authored", "Mentioned"];
+  const CATEGORY_LABELS: Record<InboxCategory, string> = {
+    ReviewRequested: "Review Requested",
+    Assigned: "Assigned",
+    Authored: "Authored",
+    Mentioned: "Mentioned",
+  };
+
+  type SortField = "updated" | "repo" | "title" | "org";
+  let sortField = $state<SortField>("updated");
+  let sortDir = $state<"asc" | "desc">("desc");
+
+  function setSort(field: SortField) {
+    if (sortField === field) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortField = field;
+      sortDir = field === "updated" ? "desc" : "asc";
     }
+  }
+
+  let sortedQueue = $derived((() => {
+    const items = [...githubReview.queue];
+    const dir = sortDir === "asc" ? 1 : -1;
+    items.sort((a, b) => {
+      let cmp = 0;
+      if (sortField === "updated") {
+        cmp = a.updatedAt < b.updatedAt ? -1 : a.updatedAt > b.updatedAt ? 1 : 0;
+      } else if (sortField === "repo") {
+        cmp = a.repo.toLowerCase().localeCompare(b.repo.toLowerCase());
+      } else if (sortField === "title") {
+        cmp = a.title.toLowerCase().localeCompare(b.title.toLowerCase());
+      } else if (sortField === "org") {
+        const orgA = a.repo.split("/")[0].toLowerCase();
+        const orgB = b.repo.split("/")[0].toLowerCase();
+        cmp = orgA.localeCompare(orgB);
+      }
+      return cmp * dir;
+    });
     return items;
+  })());
+
+  let queueGroups = $derived(buildQueueGroups());
+
+  function buildQueueGroups() {
+    const queue = sortedQueue;
+    const distinctCategories = CATEGORY_ORDER.filter((cat) =>
+      queue.some((item) => item.categories[0] === cat),
+    );
+    if (distinctCategories.length <= 1) {
+      return [{ label: null, items: queue }];
+    }
+    return distinctCategories.map((cat) => ({
+      label: `${CATEGORY_LABELS[cat]} · ${queue.filter((item) => item.categories[0] === cat).length}`,
+      items: queue.filter((item) => item.categories[0] === cat),
+    }));
   }
 
   function relativeTime(isoDate: string): string {
@@ -77,19 +148,23 @@
     return new Date(isoDate).toLocaleDateString();
   }
 
-  function pluralize(count: number, singular: string): string {
-    return `${count} ${singular}${count === 1 ? '' : 's'}`;
-  }
 
   onMount(() => {
+    void getVersion().then((v) => { version = v; }).catch(() => {});
     void initialize();
     const poll = window.setInterval(() => {
       void loadGitHubReviewQueue();
       void refreshHistory();
     }, 30000);
 
+    // Refresh history whenever an agent posts a status update
+    const unlistenPromise = listen("agent-status-changed", () => {
+      void refreshHistory();
+    });
+
     return () => {
       window.clearInterval(poll);
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   });
 
@@ -162,9 +237,8 @@
   async function refreshHistory() {
     try {
       history = await getReviewHistory();
-      historyError = null;
-    } catch (error) {
-      historyError = error instanceof Error ? error.message : String(error);
+    } catch {
+      // history stays as last known state
     }
   }
 
@@ -190,142 +264,143 @@
     await refreshHistory();
   }
 
-  async function handleCleanup() {
-    cleaningHistory = true;
-    try {
-      await cleanupStaleReviewSessions();
-      await refreshHistory();
-    } finally {
-      cleaningHistory = false;
-    }
+  async function handleClearAgent(sessionId: string) {
+    await clearAgentStatus(sessionId);
+    await refreshHistory();
   }
 </script>
 
 <div class="launch-screen">
-  <!-- Hero -->
-  <div class="launch-hero">
-    <div class="launch-hero-label">Start a review</div>
-    <div class="launch-hero-input-wrapper">
-      <span class="launch-hero-search-icon">&#x2315;</span>
+  <!-- Brand bar -->
+  <div class="launch-topbar">
+    <div class="launch-brand">
+      <span class="launch-brand-glyph">/</span>
+      <span class="launch-brand-red">RED</span><span class="launch-brand-pen">PEN</span>
+      {#if version}<span class="launch-brand-version">v{version}</span>{/if}
+    </div>
+    {#if onOpenSettings}
+      <button class="launch-topbar-btn" onclick={onOpenSettings} title="Settings">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    {/if}
+  </div>
+
+  <!-- Search -->
+  <div class="launch-search-row">
+    <div class="launch-search-wrapper">
+      <span class="launch-search-icon">&#x2315;</span>
+      <!-- svelte-ignore a11y_autofocus -->
       <input
         bind:value={manualPrRef}
-        placeholder="Paste a GitHub PR URL or owner/repo#123"
-        class="launch-hero-input"
+        placeholder="Paste GitHub URL or type to search local sessions…"
+        class="launch-search-input"
+        autofocus
         onkeydown={(e) => { if (e.key === 'Enter') void openManualPr(); }}
       />
     </div>
-    <div class="launch-hero-hint">or drag a folder anywhere to start a local review</div>
   </div>
 
   {#if githubReview.actionError}
     <div class="launch-error">{githubReview.actionError}</div>
   {/if}
 
-  {#if hasContent}
-    <div class="launch-columns">
-      <div class="launch-col">
-        <div class="launch-col-label">Local Review</div>
-        <button class="launch-open-folder" onclick={() => void onOpenFolder()}>
-          <span class="launch-open-folder-icon">&#x1F4C1;</span> Open Folder&hellip;
-        </button>
-      </div>
-      <div class="launch-divider"></div>
-      <div class="launch-col">
-        <div class="launch-col-label-row">
-          <div class="launch-col-label">Recent Sessions</div>
-          <div class="launch-col-actions">
-            <button class="launch-ghost-btn launch-ghost-btn-small" onclick={() => void refreshHistory()}>Refresh</button>
-            {#if history?.staleSessions && history.staleSessions.length > 0}
-              <button class="launch-ghost-btn launch-ghost-btn-small" onclick={() => void handleCleanup()} disabled={cleaningHistory}>
-                {cleaningHistory ? "Cleaning..." : "Clean stale"}
-              </button>
-            {/if}
-          </div>
+  <!-- INBOX section — at the top, always visible when items exist -->
+  {#if githubReview.queue.length > 0}
+    <div class="launch-queue">
+      <div class="launch-queue-header">
+        <span class="launch-section-label">INBOX <span class="launch-section-count">{githubReview.queue.length}</span></span>
+        <div class="launch-sort-pills">
+          {#each ([["updated", "Updated"], ["org", "Org"], ["repo", "Repo"], ["title", "Title"]] as const) as [field, label]}
+            <button
+              class="launch-sort-pill"
+              class:launch-sort-pill-active={sortField === field}
+              onclick={() => setSort(field)}
+            >{label}{sortField === field ? (sortDir === "desc" ? " ↓" : " ↑") : ""}</button>
+          {/each}
         </div>
-        {#if historyError}
-          <div class="launch-session-empty">{historyError}</div>
-        {:else if !history}
-          <div class="launch-session-empty">Loading...</div>
-        {:else}
-          <div class="launch-session-list">
-            {#each allSessions as { item, label, isActive } (item.id)}
-              <div class="launch-session-card" class:launch-session-card-active={isActive}>
-                <div class="launch-session-card-top">
-                  <span class="launch-session-card-kind">{label}</span>
-                  {#if item.verdict}
-                    <span class="launch-session-card-verdict">{item.verdict}</span>
-                  {/if}
-                  <span class="launch-session-card-time">{relativeTime(item.updatedAt)}</span>
-                </div>
-                <div class="launch-session-card-title">{item.title}</div>
-                <div class="launch-session-card-meta">
-                  <span>{item.subtitle}</span>
-                  <span>{pluralize(item.fileCount, 'file')}</span>
-                </div>
-                <button class="launch-ghost-btn" onclick={() => void handleResume(item.id)}>
-                  {isActive ? "Resume" : "Open"}
-                </button>
-              </div>
-            {/each}
-
-            {#if history.staleSessions.length > 0}
-              {#each history.staleSessions as item (item.id)}
-                <div class="launch-session-card launch-session-card-stale">
-                  <div class="launch-session-card-top">
-                    <span class="launch-session-card-kind">{item.kind === "github_pr" ? "Pull request" : "Local review"}</span>
-                    <span class="launch-session-card-time">stale</span>
-                  </div>
-                  <div class="launch-session-card-title">{item.title}</div>
-                  <div class="launch-session-card-meta">
-                    <span>{item.subtitle}</span>
-                  </div>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        {/if}
       </div>
-    </div>
-  {:else}
-    <!-- Empty state: tight cluster -->
-    <div class="launch-empty">
-      <button class="launch-open-folder" onclick={() => void onOpenFolder()}>
-        <span class="launch-open-folder-icon">&#x1F4C1;</span> Open Folder&hellip;
-      </button>
+      {#each queueGroups as group}
+        {#if group.label}
+          <div class="launch-queue-group-label">{group.label}</div>
+        {/if}
+        <div class="launch-queue-list">
+          {#each group.items as item (`${item.repo}#${item.number}`)}
+            <button
+              class="launch-queue-item"
+              onclick={() => void openGitHubPullRequest(`${item.repo}#${item.number}`)}
+            >
+              <svg class="launch-queue-item-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+              <div class="launch-queue-item-main">
+                <div class="launch-queue-item-topline">
+                  <span class="launch-queue-item-repo">{item.repo}</span>
+                  <span class="launch-queue-item-number">#{item.number}</span>
+                </div>
+                <div class="launch-queue-item-title">{item.title}</div>
+                <div class="launch-queue-item-meta">
+                  <span>{item.author}</span>
+                  <span>{relativeTime(item.updatedAt)}</span>
+                </div>
+              </div>
+              <span class="launch-ghost-btn">Open</span>
+            </button>
+          {/each}
+        </div>
+      {/each}
     </div>
   {/if}
 
-  <!-- Review queue (only if items exist) -->
-  {#if githubReview.queue.length > 0}
-    <div class="launch-queue">
-      <div class="launch-col-label">Review Queue <span class="launch-queue-count">{githubReview.queue.length}</span></div>
+  <!-- LOCAL section — dirty/active repos -->
+  <div class="launch-section">
+    <div class="launch-section-header">
+      <span class="launch-section-label">
+        LOCAL
+        {#if history?.workspaceLocal?.length}
+          <span class="launch-section-count">{history.workspaceLocal.length}</span>
+        {/if}
+      </span>
+      <button class="launch-ghost-btn launch-ghost-btn-small" onclick={() => void onOpenFolder()}>+ Open Folder</button>
+    </div>
+    {#if history?.workspaceLocal?.length}
       <div class="launch-queue-list">
-        {#each githubReview.queue as item (`${item.repo}#${item.number}`)}
-          <button
-            class="launch-queue-item"
-            onclick={() => void openGitHubPullRequest(`${item.repo}#${item.number}`, item.localPath)}
-          >
+        {#each history.workspaceLocal as item (item.id)}
+          {@const agentInfo = agentDisplayStatus(item)}
+          {@const dismissible = isAgentDismissible(item)}
+          <button class="launch-queue-item" onclick={() => void handleResume(item.id)}>
+            <svg class="launch-queue-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             <div class="launch-queue-item-main">
               <div class="launch-queue-item-topline">
-                <span class="launch-queue-item-repo">{item.repo}</span>
-                <span class="launch-queue-item-number">#{item.number}</span>
+                {#if agentInfo.dot}
+                  <span class="launch-agent-dot launch-agent-dot-{agentInfo.dot}" class:launch-agent-dot-pulse={agentInfo.dot === 'amber'}></span>
+                {/if}
+                <span class="launch-queue-item-repo">{item.subtitle}</span>
+                <span class="launch-queue-item-number">{item.branchName ?? ""}</span>
+                {#if agentInfo.label}
+                  <span class="launch-agent-label">{agentInfo.label}</span>
+                {/if}
+                {#if dismissible}
+                  <!-- svelte-ignore a11y_interactive_supports_focus -->
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <span role="button" class="launch-agent-dismiss" onclick={(e) => { e.stopPropagation(); void handleClearAgent(item.id); }} title="Clear agent status">×</span>
+                {/if}
               </div>
               <div class="launch-queue-item-title">{item.title}</div>
               <div class="launch-queue-item-meta">
-                <span>{item.author}</span>
-                <span>{item.baseRef} &larr; {item.headRef}</span>
+                <span>{relativeTime(item.updatedAt)}</span>
               </div>
             </div>
-            <span class="launch-ghost-btn">Open</span>
+            <span class="launch-ghost-btn">Resume</span>
           </button>
         {/each}
       </div>
-    </div>
-  {/if}
-
-  <div class="launch-tip">
-    Tip: Review PRs by pasting a GitHub URL above, or open a local folder to review agent changes
+    {:else}
+      <div class="launch-section-empty">No active local sessions — <button class="launch-link-btn" onclick={() => void onOpenFolder()}>open a folder</button></div>
+    {/if}
   </div>
+
+
 </div>
 
 {#if pendingAutoCheckout}
@@ -359,58 +434,180 @@
     align-items: center;
   }
 
-  /* ── Hero ── */
-  .launch-hero {
-    padding: 60px 40px 32px;
-    text-align: center;
+  /* ── Top bar ── */
+  .launch-topbar {
     width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px 0;
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
-  .launch-hero-label {
-    color: var(--text-muted);
-    font-size: 13px;
-    font-weight: 500;
-    margin-bottom: 12px;
-    letter-spacing: 0.02em;
+  .launch-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    letter-spacing: 0.04em;
   }
-  .launch-hero-input-wrapper {
-    max-width: 480px;
-    margin: 0 auto;
+  .launch-brand-glyph {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .launch-brand-red {
+    color: #8B949E;
+    font-weight: 400;
+  }
+  .launch-brand-pen {
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .launch-brand-version {
+    color: #484f58;
+    font-weight: 400;
+    font-size: 10px;
+    font-variant: small-caps;
+    letter-spacing: 0.06em;
+    margin-left: 2px;
+  }
+  .launch-topbar-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: color 100ms;
+  }
+  .launch-topbar-btn:hover {
+    color: var(--text-secondary);
+  }
+
+  /* ── Search ── */
+  .launch-search-row {
+    width: 100%;
+    max-width: 720px;
+    padding: 16px 20px 12px;
+    box-sizing: border-box;
+  }
+  .launch-search-wrapper {
+    max-width: 560px;
     position: relative;
   }
-  .launch-hero-search-icon {
+  .launch-search-icon {
     position: absolute;
-    left: 14px;
+    left: 12px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-ghost);
-    font-size: 16px;
+    font-size: 15px;
     pointer-events: none;
   }
-  .launch-hero-input {
+  .launch-search-input {
     width: 100%;
     box-sizing: border-box;
     background: var(--surface-panel);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    padding: 12px 16px 12px 40px;
-    font-size: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border-default));
+    border-radius: 8px;
+    height: 40px;
+    padding: 0 16px 0 36px;
+    font-size: 13px;
     color: var(--text-primary);
     outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
-  .launch-hero-input::placeholder {
+  .launch-search-input::placeholder {
     color: var(--text-ghost);
   }
-  .launch-hero-input:focus {
+  .launch-search-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(217, 177, 95, 0.2);
-  }
-  .launch-hero-hint {
-    color: var(--text-muted);
-    font-size: 13px;
-    margin-top: 10px;
+    box-shadow: 0 0 0 3px rgba(217, 177, 95, 0.2);
   }
 
+  /* ── Sections ── */
+  .launch-section {
+    max-width: 720px;
+    width: 100%;
+    padding: 0 20px 16px;
+    box-sizing: border-box;
+    margin: 0 auto;
+  }
+  .launch-section-empty {
+    color: var(--text-ghost);
+    font-size: 12px;
+    padding: 6px 0;
+  }
+  .launch-link-btn {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .launch-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .launch-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .launch-section-count {
+    font-weight: 400;
+    color: var(--text-ghost);
+  }
+  .launch-agent-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .launch-agent-dot-amber {
+    background: #d9b15f;
+  }
+  .launch-agent-dot-red {
+    background: var(--danger, #e05c5c);
+  }
+  .launch-agent-dot-pulse {
+    animation: agent-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes agent-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .launch-agent-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .launch-agent-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--text-ghost);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .launch-agent-dismiss:hover {
+    color: var(--text-secondary);
+  }
   /* ── Error banner ── */
   .launch-error {
     max-width: 480px;
@@ -423,51 +620,13 @@
     margin-bottom: 8px;
   }
 
-  /* ── Two-column layout ── */
-  .launch-columns {
-    display: flex;
-    gap: 0;
-    padding: 0 40px 24px;
-    max-width: 720px;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .launch-col {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .launch-col:first-child {
-    padding-right: 24px;
-  }
-  .launch-col:last-child {
-    padding-left: 24px;
-  }
-  .launch-divider {
-    width: 1px;
-    background: rgba(255, 255, 255, 0.06);
-    flex-shrink: 0;
-  }
-  .launch-col-label {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
-  }
-  .launch-col-label-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
+  /* ── Column actions (used in Recent Sessions header) ── */
   .launch-col-actions {
     display: flex;
     gap: 6px;
   }
 
-  /* ── Open Folder button ── */
+  /* ── Open Folder button (LOCAL header ghost) ── */
   .launch-open-folder {
     display: inline-flex;
     align-items: center;
@@ -491,70 +650,6 @@
     font-size: 15px;
   }
 
-  /* ── Empty state ── */
-  .launch-empty {
-    padding: 0 40px 32px;
-    display: flex;
-    justify-content: center;
-  }
-
-  /* ── Session cards ── */
-  .launch-session-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .launch-session-empty {
-    color: var(--text-muted);
-    font-size: 13px;
-  }
-  .launch-session-card {
-    background: var(--surface-panel);
-    border-radius: 8px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .launch-session-card-active {
-    box-shadow: inset 0 0 0 1px rgba(217, 177, 95, 0.18);
-  }
-  .launch-session-card-stale {
-    opacity: 0.55;
-  }
-  .launch-session-card-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-  }
-  .launch-session-card-kind {
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .launch-session-card-verdict {
-    color: var(--text-muted);
-    font-style: italic;
-  }
-  .launch-session-card-time {
-    color: var(--text-muted);
-    margin-left: auto;
-  }
-  .launch-session-card-title {
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.35;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .launch-session-card-meta {
-    display: flex;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
 
   /* ── Ghost button ── */
   .launch-ghost-btn {
@@ -587,19 +682,56 @@
     color: var(--text-ghost);
   }
 
-  /* ── Review Queue ── */
+  /* ── INBOX Queue ── */
   .launch-queue {
     max-width: 720px;
     width: 100%;
-    padding: 0 40px 24px;
+    padding: 0 20px 24px;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    margin: 0 auto;
   }
-  .launch-queue-count {
-    font-weight: 400;
+  .launch-queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .launch-sort-pills {
+    display: flex;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 20px;
+    padding: 3px;
+  }
+  .launch-sort-pill {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    padding: 2px 8px;
+    font-size: 11px;
     color: var(--text-ghost);
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 100ms, color 100ms, border-color 100ms;
+    white-space: nowrap;
+  }
+  .launch-sort-pill:hover {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .launch-sort-pill-active {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .launch-queue-group-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding: 6px 0 4px;
   }
   .launch-queue-list {
     display: flex;
@@ -622,6 +754,11 @@
   }
   .launch-queue-item:hover {
     background: var(--surface-highlight);
+  }
+  .launch-queue-item-icon {
+    flex-shrink: 0;
+    color: var(--text-ghost);
+    align-self: center;
   }
   .launch-queue-item-main {
     min-width: 0;
@@ -656,15 +793,6 @@
     gap: 10px;
     font-size: 11px;
     color: var(--text-ghost);
-  }
-
-  /* ── Tip ── */
-  .launch-tip {
-    color: var(--text-muted);
-    font-size: 13px;
-    padding: 16px 40px 32px;
-    text-align: center;
-    max-width: 480px;
   }
 
   /* ── Modal (kept from original) ── */
@@ -718,29 +846,10 @@
     padding-top: 4px;
   }
 
-  /* ── Responsive ── */
-  @media (max-width: 640px) {
-    .launch-hero {
-      padding: 40px 20px 24px;
-    }
-    .launch-columns {
-      flex-direction: column;
-      gap: 24px;
-      padding: 0 20px 24px;
-    }
-    .launch-col:first-child {
-      padding-right: 0;
-    }
-    .launch-col:last-child {
-      padding-left: 0;
-    }
-    .launch-divider {
-      display: none;
-    }
-    .launch-queue,
-    .launch-tip {
-      padding-left: 20px;
-      padding-right: 20px;
-    }
+  /* ── Empty state ── */
+  .launch-empty {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: flex-start;
   }
 </style>

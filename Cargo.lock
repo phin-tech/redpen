@@ -3807,6 +3807,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "git2",
+ "libc",
  "log",
  "notify",
  "redpen-core",

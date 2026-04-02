@@ -49,6 +49,7 @@
   let {
     onJumpToFile,
     onOpenFolder,
+    onOpenSettings,
     onSelectionChange,
     previewRef = $bindable(undefined),
     editorRef = $bindable(undefined),
@@ -61,6 +62,7 @@
   }: {
     onJumpToFile?: (filePath: string, line: number) => void;
     onOpenFolder?: () => Promise<void>;
+    onOpenSettings?: () => void;
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
     previewRef?: PreviewRef | undefined;
     editorRef?: EditorRef | undefined;
@@ -119,7 +121,7 @@
 
 <div class="pane-content">
   {#if workspace.rootFolders.length === 0}
-    <GitHubInbox onOpenFolder={onOpenFolder ?? (async () => {})} />
+    <GitHubInbox onOpenFolder={onOpenFolder ?? (async () => {})} {onOpenSettings} />
   {:else if showChecksView && githubReview.activeSession}
     <ChecksView session={githubReview.activeSession} />
   {:else if showPrView && githubReview.activeSession}

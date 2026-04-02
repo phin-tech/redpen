@@ -26,6 +26,7 @@
     onSelectionChange,
     onJumpToFile,
     onOpenFolder,
+    onOpenSettings,
     showShortcutHelp = $bindable(false),
     showPrView = $bindable(false),
     showChecksView = $bindable(false),
@@ -34,6 +35,7 @@
     onSelectionChange?: (fromLine: number, fromCol: number, toLine: number, toCol: number) => void;
     onJumpToFile?: (filePath: string, line: number) => void;
     onOpenFolder?: () => Promise<void>;
+    onOpenSettings?: () => void;
     showShortcutHelp?: boolean;
     showPrView?: boolean;
     showChecksView?: boolean;
@@ -265,6 +267,7 @@
     {showChecksView}
     {onJumpToFile}
     {onOpenFolder}
+    {onOpenSettings}
     {onSelectionChange}
   />
 

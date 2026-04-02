@@ -1,5 +1,5 @@
 use crate::commands::error::{CommandError, CommandResult};
-use crate::settings::{normalize_optional_path, normalize_tracked_repos, TrackedRepo};
+use crate::settings::{normalize_optional_path, normalize_tracked_repos, InboxCategory, TrackedRepo};
 use crate::state::AppState;
 use crate::storage::{
     checkouts_root, sessions_root, IndexedSessionFile, ReviewSessionKind, ReviewSessionStatus,
@@ -62,6 +62,41 @@ pub struct GitHubReviewQueueItem {
     pub base_ref: String,
     pub head_ref: String,
     pub local_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+pub struct GitHubInboxItem {
+    pub repo: String,
+    pub number: u32,
+    pub title: String,
+    pub url: String,
+    pub author: String,
+    pub updated_at: String,
+    pub categories: Vec<InboxCategory>,
+}
+
+#[derive(Deserialize)]
+struct RawSearchResult {
+    number: u32,
+    title: String,
+    url: String,
+    author: RawSearchAuthor,
+    #[serde(rename = "updatedAt")]
+    updated_at: String,
+    repository: RawSearchRepository,
+}
+
+#[derive(Deserialize)]
+struct RawSearchAuthor {
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct RawSearchRepository {
+    #[serde(rename = "nameWithOwner")]
+    name_with_owner: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
@@ -210,6 +245,84 @@ pub fn list_github_review_queue(
 
     queue.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(queue)
+}
+
+#[tauri::command]
+pub fn list_github_inbox(state: State<'_, AppState>) -> CommandResult<Vec<GitHubInboxItem>> {
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|e| CommandError::InvalidArgument(format!("settings lock poisoned: {e}")))?
+        .clone();
+
+    let categories = if settings.inbox_categories.is_empty() {
+        vec![InboxCategory::ReviewRequested]
+    } else {
+        settings.inbox_categories.clone()
+    };
+
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut merged: Vec<GitHubInboxItem> = Vec::new();
+
+    for category in &categories {
+        let qualifier = match category {
+            InboxCategory::ReviewRequested => "--review-requested",
+            InboxCategory::Assigned => "--assignee",
+            InboxCategory::Authored => "--author",
+            InboxCategory::Mentioned => "--involves",
+        };
+        let output = run_gh_json(
+            [
+                "search",
+                "prs",
+                "--state",
+                "open",
+                qualifier,
+                "@me",
+                "--json",
+                "number,title,url,author,updatedAt,repository",
+            ],
+            None,
+        )?;
+        let items: Vec<RawSearchResult> =
+            serde_json::from_value(output).map_err(CommandError::Json)?;
+
+        for raw in items {
+            let repo = raw.repository.name_with_owner.clone();
+            let org = repo.split('/').next().unwrap_or("").to_string();
+            if settings
+                .inbox_excluded_orgs
+                .iter()
+                .any(|o| o.eq_ignore_ascii_case(&org))
+            {
+                continue;
+            }
+            if settings
+                .inbox_excluded_repos
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(&repo))
+            {
+                continue;
+            }
+            if let Some(&idx) = seen.get(&raw.url) {
+                merged[idx].categories.push(category.clone());
+            } else {
+                seen.insert(raw.url.clone(), merged.len());
+                merged.push(GitHubInboxItem {
+                    repo,
+                    number: raw.number,
+                    title: raw.title,
+                    url: raw.url,
+                    author: raw.author.login,
+                    updated_at: raw.updated_at,
+                    categories: vec![category.clone()],
+                });
+            }
+        }
+    }
+
+    merged.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(merged)
 }
 
 #[tauri::command]
@@ -1358,6 +1471,10 @@ fn stored_session_from_github(
         updated_at: session.updated_at.clone(),
         completed_at: None,
         file_count: session.changed_files.len(),
+        agent_status: None,
+        agent_task: None,
+        agent_pid: None,
+        last_heartbeat: None,
     }
 }
 

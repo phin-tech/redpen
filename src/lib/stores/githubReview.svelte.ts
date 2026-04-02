@@ -1,11 +1,13 @@
 import {
   discardPendingGithubReviewChanges,
+  listGithubInbox,
   listGithubReviewQueue,
   openGithubPrReview,
   resyncGithubPrReview,
   submitGithubPrReview,
 } from "$lib/tauri";
 import type {
+  GitHubInboxItem,
   GitHubPrSession,
   GitHubReviewEvent,
   GitHubReviewQueueItem,
@@ -15,7 +17,7 @@ import { replaceRootFolders } from "./workspace.svelte";
 import { clearDiffCache } from "./diff.svelte";
 
 interface GitHubReviewState {
-  queue: GitHubReviewQueueItem[];
+  queue: GitHubInboxItem[];
   loadingQueue: boolean;
   queueError: string | null;
   activeSession: GitHubPrSession | null;
@@ -58,7 +60,7 @@ export async function loadGitHubReviewQueue() {
   state.loadingQueue = true;
   state.queueError = null;
   try {
-    state.queue = await listGithubReviewQueue();
+    state.queue = await listGithubInbox();
   } catch (error) {
     state.queueError = error instanceof Error ? error.message : String(error);
     state.queue = [];

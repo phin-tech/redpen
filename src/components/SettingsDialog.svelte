@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getSettings, updateSettings, getGitRemoteUrl } from "$lib/tauri";
+  import type { InboxCategory } from "$lib/types";
   import { parseGitHubRepo } from "$lib/utils/parseGitRemote";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
@@ -8,7 +9,7 @@
 
   let { onClose }: { onClose: () => void } = $props();
 
-  let activeCategory = $state<"general" | "git" | "notifications">("general");
+  let activeCategory = $state<"general" | "git" | "notifications" | "inbox">("general");
 
   let author = $state("");
   let labelsList = $state<string[]>([]);
@@ -21,6 +22,9 @@
   let notifyReviewComplete = $state(true);
   let notifyNewAnnotation = $state(false);
   let notifyDeepLink = $state(true);
+  let inboxCategories = $state<InboxCategory[]>(["ReviewRequested"]);
+  let inboxExcludedOrgs = $state<string[]>([]);
+  let inboxExcludedRepos = $state<string[]>([]);
 
   onMount(async () => {
     const settings = await getSettings();
@@ -35,6 +39,9 @@
       notifyNewAnnotation = settings.notifications.newAnnotation;
       notifyDeepLink = settings.notifications.deepLink;
     }
+    inboxCategories = settings.inboxCategories ?? ["ReviewRequested"];
+    inboxExcludedOrgs = settings.inboxExcludedOrgs ?? [];
+    inboxExcludedRepos = settings.inboxExcludedRepos ?? [];
   });
 
   async function save() {
@@ -50,6 +57,9 @@
         newAnnotation: notifyNewAnnotation,
         deepLink: notifyDeepLink,
       },
+      inboxCategories,
+      inboxExcludedOrgs,
+      inboxExcludedRepos,
     });
     onClose();
   }
@@ -132,6 +142,11 @@
         class:settings-sidebar-btn-active={activeCategory === "notifications"}
         onclick={() => activeCategory = "notifications"}
       >Notifications</button>
+      <button
+        class="settings-sidebar-btn"
+        class:settings-sidebar-btn-active={activeCategory === "inbox"}
+        onclick={() => activeCategory = "inbox"}
+      >Inbox</button>
     </div>
 
     <!-- Content -->
@@ -202,6 +217,56 @@
             &#x1F4C1; Add from disk...
           </button>
           <p class="settings-hint" style="text-align:center">Opens a folder picker. Detects the GitHub remote automatically.</p>
+
+        {:else if activeCategory === "inbox"}
+          <div class="settings-section-header">Categories</div>
+          <p class="settings-hint" style="margin-bottom: 12px">Choose which PR categories appear in your inbox.</p>
+          {#each [
+            { value: "ReviewRequested" as InboxCategory, label: "Review Requested", desc: "PRs where you've been asked to review" },
+            { value: "Assigned" as InboxCategory, label: "Assigned", desc: "PRs where you're the assignee" },
+            { value: "Authored" as InboxCategory, label: "Authored", desc: "PRs you opened" },
+            { value: "Mentioned" as InboxCategory, label: "Mentioned", desc: "PRs where you're @mentioned or otherwise involved" },
+          ] as cat}
+            <div class="settings-checkbox-row">
+              <label class="settings-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={inboxCategories.includes(cat.value)}
+                  onchange={(e) => {
+                    if ((e.target as HTMLInputElement).checked) {
+                      inboxCategories = [...inboxCategories, cat.value];
+                    } else {
+                      inboxCategories = inboxCategories.filter((c) => c !== cat.value);
+                    }
+                  }}
+                />
+                <div>
+                  <div class="settings-checkbox-title">{cat.label}</div>
+                  <div class="settings-toggle-desc">{cat.desc}</div>
+                </div>
+              </label>
+            </div>
+          {/each}
+
+          <div class="settings-section-header" style="margin-top: 20px">Excluded Orgs</div>
+          <p class="settings-hint" style="margin-bottom: 8px">PRs from these organizations will be hidden.</p>
+          <TagInput
+            tags={inboxExcludedOrgs}
+            onAdd={(tag) => { inboxExcludedOrgs = [...inboxExcludedOrgs, tag.toLowerCase()]; }}
+            onRemove={(i) => { inboxExcludedOrgs = inboxExcludedOrgs.filter((_, idx) => idx !== i); }}
+            placeholder="Add org..."
+            mono
+          />
+
+          <div class="settings-section-header" style="margin-top: 20px">Excluded Repos</div>
+          <p class="settings-hint" style="margin-bottom: 8px">PRs from these repositories will be hidden (owner/repo format).</p>
+          <TagInput
+            tags={inboxExcludedRepos}
+            onAdd={(tag) => { inboxExcludedRepos = [...inboxExcludedRepos, tag.toLowerCase()]; }}
+            onRemove={(i) => { inboxExcludedRepos = inboxExcludedRepos.filter((_, idx) => idx !== i); }}
+            placeholder="Add repo..."
+            mono
+          />
 
         {:else if activeCategory === "notifications"}
           <div class="settings-section-header">Desktop Notifications</div>
@@ -570,6 +635,35 @@
 
 .settings-add-from-disk:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+
+/* Checkbox rows (inbox categories) */
+.settings-checkbox-row {
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-default) 40%, transparent);
+}
+
+.settings-checkbox-row:last-of-type {
+  border-bottom: none;
+}
+
+.settings-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.settings-checkbox-label input[type="checkbox"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  width: auto;
+}
+
+.settings-checkbox-title {
+  font-size: 13px;
+  color: var(--text-primary);
 }
 
 /* Toggle rows */

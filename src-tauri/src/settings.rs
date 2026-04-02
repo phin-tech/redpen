@@ -18,6 +18,19 @@ fn default_checkout_root() -> Option<String> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[ts(export, export_to = "../../src/lib/bindings/")]
+pub enum InboxCategory {
+    ReviewRequested,
+    Assigned,
+    Authored,
+    Mentioned,
+}
+
+fn default_inbox_categories() -> Vec<InboxCategory> {
+    vec![InboxCategory::ReviewRequested]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/lib/bindings/")]
 pub struct NotificationSettings {
@@ -63,6 +76,12 @@ pub struct AppSettings {
     pub tracked_github_repos: Vec<TrackedRepo>,
     #[serde(default)]
     pub notifications: NotificationSettings,
+    #[serde(default = "default_inbox_categories")]
+    pub inbox_categories: Vec<InboxCategory>,
+    #[serde(default)]
+    pub inbox_excluded_orgs: Vec<String>,
+    #[serde(default)]
+    pub inbox_excluded_repos: Vec<String>,
 }
 
 fn default_diff_algorithm() -> String {
@@ -79,6 +98,9 @@ impl Default for AppSettings {
             default_checkout_root: default_checkout_root(),
             tracked_github_repos: Vec::new(),
             notifications: NotificationSettings::default(),
+            inbox_categories: default_inbox_categories(),
+            inbox_excluded_orgs: Vec::new(),
+            inbox_excluded_repos: Vec::new(),
         }
     }
 }
@@ -94,6 +116,9 @@ pub struct UpdateSettingsRequest {
     pub default_checkout_root: Option<String>,
     pub tracked_github_repos: Option<Vec<TrackedRepo>>,
     pub notifications: Option<NotificationSettings>,
+    pub inbox_categories: Option<Vec<InboxCategory>>,
+    pub inbox_excluded_orgs: Option<Vec<String>>,
+    pub inbox_excluded_repos: Option<Vec<String>>,
 }
 
 impl UpdateSettingsRequest {
@@ -118,6 +143,15 @@ impl UpdateSettingsRequest {
         }
         if let Some(notifications) = self.notifications {
             settings.notifications = notifications;
+        }
+        if let Some(inbox_categories) = self.inbox_categories {
+            settings.inbox_categories = inbox_categories;
+        }
+        if let Some(inbox_excluded_orgs) = self.inbox_excluded_orgs {
+            settings.inbox_excluded_orgs = inbox_excluded_orgs;
+        }
+        if let Some(inbox_excluded_repos) = self.inbox_excluded_repos {
+            settings.inbox_excluded_repos = inbox_excluded_repos;
         }
     }
 }

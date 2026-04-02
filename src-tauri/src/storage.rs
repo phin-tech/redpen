@@ -109,6 +109,10 @@ pub struct StoredReviewSession {
     pub updated_at: String,
     pub completed_at: Option<String>,
     pub file_count: usize,
+    pub agent_status: Option<String>,
+    pub agent_task: Option<String>,
+    pub agent_pid: Option<i64>,
+    pub last_heartbeat: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,7 +213,11 @@ impl StateDb {
                 verdict = excluded.verdict,
                 updated_at = excluded.updated_at,
                 completed_at = excluded.completed_at,
-                last_accessed_at = excluded.last_accessed_at
+                last_accessed_at = excluded.last_accessed_at,
+                agent_status = COALESCE(excluded.agent_status, agent_status),
+                agent_task = COALESCE(excluded.agent_task, agent_task),
+                agent_pid = COALESCE(excluded.agent_pid, agent_pid),
+                last_heartbeat = COALESCE(excluded.last_heartbeat, last_heartbeat)
             "#,
             params![
                 session.id,
@@ -478,7 +486,8 @@ impl StateDb {
                 s.local_repo_path, s.worktree_path, s.primary_file_path, s.project_root,
                 s.author_login, s.viewer_login, s.base_ref, s.base_sha, s.head_ref, s.head_sha,
                 s.changed_files_json, s.verdict, s.created_at, s.updated_at, s.completed_at,
-                COALESCE(COUNT(f.id), 0) AS file_count
+                COALESCE(COUNT(f.id), 0) AS file_count,
+                s.agent_status, s.agent_task, s.agent_pid, s.last_heartbeat
             FROM review_sessions s
             LEFT JOIN session_files f ON f.session_id = s.id
             WHERE s.kind = ?1 AND s.worktree_path IS NOT NULL AND s.status != ?2
@@ -556,7 +565,8 @@ impl StateDb {
                 s.local_repo_path, s.worktree_path, s.primary_file_path, s.project_root,
                 s.author_login, s.viewer_login, s.base_ref, s.base_sha, s.head_ref, s.head_sha,
                 s.changed_files_json, s.verdict, s.created_at, s.updated_at, s.completed_at,
-                COALESCE(COUNT(f.id), 0) AS file_count
+                COALESCE(COUNT(f.id), 0) AS file_count,
+                s.agent_status, s.agent_task, s.agent_pid, s.last_heartbeat
             FROM review_sessions s
             LEFT JOIN session_files f ON f.session_id = s.id
             GROUP BY s.id
@@ -638,6 +648,54 @@ impl StateDb {
         })
     }
 
+    pub fn update_agent_status(
+        &self,
+        session_id: &str,
+        status: &str,
+        task: Option<&str>,
+        pid: Option<i64>,
+    ) -> Result<(), StorageError> {
+        let now = Utc::now().to_rfc3339();
+        let conn = self.connect()?;
+        conn.execute(
+            r#"
+            UPDATE review_sessions
+            SET agent_status = ?2, agent_task = ?3, agent_pid = ?4, last_heartbeat = ?5
+            WHERE id = ?1
+            "#,
+            params![session_id, status, task, pid, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_agent_status(&self, session_id: &str) -> Result<(), StorageError> {
+        let conn = self.connect()?;
+        conn.execute(
+            r#"
+            UPDATE review_sessions
+            SET agent_status = NULL, agent_task = NULL, agent_pid = NULL, last_heartbeat = NULL
+            WHERE id = ?1
+            "#,
+            params![session_id],
+        )?;
+        Ok(())
+    }
+
+    /// Returns (session_id, agent_pid) for all sessions with the given agent_status.
+    pub fn list_sessions_by_agent_status(
+        &self,
+        agent_status: &str,
+    ) -> Result<Vec<(String, Option<i64>)>, StorageError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, agent_pid FROM review_sessions WHERE agent_status = ?1",
+        )?;
+        let rows = stmt.query_map(params![agent_status], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(StorageError::from)
+    }
+
     pub fn mark_stale_sessions(&self) -> Result<(), StorageError> {
         let cutoff = (Utc::now() - Duration::hours(STALE_SESSION_AFTER_HOURS)).to_rfc3339();
         let conn = self.connect()?;
@@ -674,6 +732,7 @@ impl StateDb {
 
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![M::up_with_hook(
+        // Migration 1: initial schema — DO NOT MODIFY
         r#"
         CREATE TABLE IF NOT EXISTS repos (
             id INTEGER PRIMARY KEY,
@@ -766,6 +825,15 @@ fn migrations() -> Migrations<'static> {
                 "#,
             )?)
         },
+    ),
+    // Migration 2: agent status columns
+    M::up(
+        r#"
+        ALTER TABLE review_sessions ADD COLUMN agent_status TEXT;
+        ALTER TABLE review_sessions ADD COLUMN agent_task TEXT;
+        ALTER TABLE review_sessions ADD COLUMN agent_pid INTEGER;
+        ALTER TABLE review_sessions ADD COLUMN last_heartbeat TEXT;
+        "#,
     )])
 }
 
@@ -775,7 +843,8 @@ SELECT
     s.local_repo_path, s.worktree_path, s.primary_file_path, s.project_root,
     s.author_login, s.viewer_login, s.base_ref, s.base_sha, s.head_ref, s.head_sha,
     s.changed_files_json, s.verdict, s.created_at, s.updated_at, s.completed_at,
-    COALESCE(COUNT(f.id), 0) AS file_count
+    COALESCE(COUNT(f.id), 0) AS file_count,
+    s.agent_status, s.agent_task, s.agent_pid, s.last_heartbeat
 FROM review_sessions s
 LEFT JOIN session_files f ON f.session_id = s.id
 WHERE s.id = ?1
@@ -815,6 +884,10 @@ fn map_session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredReviewSess
         updated_at: row.get(21)?,
         completed_at: row.get(22)?,
         file_count: row.get::<_, i64>(23)? as usize,
+        agent_status: row.get(24)?,
+        agent_task: row.get(25)?,
+        agent_pid: row.get(26)?,
+        last_heartbeat: row.get(27)?,
     })
 }
 
