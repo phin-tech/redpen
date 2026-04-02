@@ -69,3 +69,18 @@ pub fn get_git_status(directory: String) -> CommandResult<Vec<GitFileStatus>> {
     }
     Ok(statuses_result)
 }
+
+#[tauri::command]
+pub fn get_git_remote_url(path: String) -> CommandResult<Option<String>> {
+    let repo = match git2::Repository::discover(&path) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+
+    let remote = match repo.find_remote("origin") {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+
+    Ok(remote.url().map(|s| s.to_string()))
+}

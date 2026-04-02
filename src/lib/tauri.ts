@@ -105,6 +105,10 @@ export async function getGitStatus(directory: string): Promise<GitFileStatus[]> 
   return invoke("get_git_status", { directory });
 }
 
+export async function getGitRemoteUrl(path: string): Promise<string | null> {
+  return invoke<string | null>("get_git_remote_url", { path });
+}
+
 export async function exportAnnotations(filePath: string): Promise<string> {
   return invoke("export_annotations", { filePath });
 }
