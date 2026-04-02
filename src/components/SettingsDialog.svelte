@@ -335,11 +335,11 @@
 
 /* Section headers */
 .settings-section-header {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-ghost);
+  color: var(--text-muted);
   border-bottom: 1px solid var(--border-default);
   padding-bottom: 6px;
   margin-bottom: 14px;
@@ -357,9 +357,9 @@
 
 .settings-field label {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-bottom: 6px;
 }
 
@@ -368,9 +368,9 @@
   background: var(--surface-base);
   border: 1px solid var(--border-default);
   border-radius: 6px;
-  padding: 7px 10px;
+  padding: 8px 10px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
   font-family: inherit;
   outline: none;
   transition: border-color 150ms;
@@ -421,8 +421,8 @@
 
 /* Hints */
 .settings-hint {
-  font-size: 10px;
-  color: var(--text-ghost);
+  font-size: 11px;
+  color: var(--text-muted);
   margin-top: 6px;
   margin-bottom: 0;
 }
@@ -590,13 +590,13 @@
 }
 
 .settings-toggle-label > div:first-child {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-primary);
 }
 
 .settings-toggle-desc {
-  font-size: 10px;
-  color: var(--text-ghost);
+  font-size: 11px;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 

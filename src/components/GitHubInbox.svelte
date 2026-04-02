@@ -406,8 +406,8 @@
     box-shadow: 0 0 0 2px rgba(217, 177, 95, 0.2);
   }
   .launch-hero-hint {
-    color: var(--text-ghost);
-    font-size: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
     margin-top: 10px;
   }
 
@@ -451,11 +451,11 @@
     flex-shrink: 0;
   }
   .launch-col-label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--text-muted);
+    color: var(--text-secondary);
   }
   .launch-col-label-row {
     display: flex;
@@ -537,7 +537,7 @@
     font-style: italic;
   }
   .launch-session-card-time {
-    color: var(--text-ghost);
+    color: var(--text-muted);
     margin-left: auto;
   }
   .launch-session-card-title {
@@ -552,8 +552,8 @@
   .launch-session-card-meta {
     display: flex;
     gap: 10px;
-    font-size: 11px;
-    color: var(--text-ghost);
+    font-size: 12px;
+    color: var(--text-muted);
   }
 
   /* ── Ghost button ── */
@@ -660,8 +660,8 @@
 
   /* ── Tip ── */
   .launch-tip {
-    color: var(--text-ghost);
-    font-size: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
     padding: 16px 40px 32px;
     text-align: center;
     max-width: 480px;
