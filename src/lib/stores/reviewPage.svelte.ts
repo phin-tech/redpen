@@ -1,4 +1,4 @@
-import { getAllAnnotations, getAnnotations, getGitStatus, readFileLines } from "$lib/tauri";
+import { getAllAnnotations, getAnnotations, getGitStatus, readFile } from "$lib/tauri";
 
 import { getDiffState, cachedInvokeDiff } from "$lib/stores/diff.svelte";
 import { getWorkspace } from "$lib/stores/workspace.svelte";
@@ -48,7 +48,6 @@ export function isReviewPageOpen(): boolean {
 }
 
 export async function openReviewPage(mode: ReviewMode) {
-  console.log("[ReviewPage store] openReviewPage:", mode);
   state.mode = mode;
   state.loading = true;
   state.error = null;
@@ -57,20 +56,14 @@ export async function openReviewPage(mode: ReviewMode) {
 
   try {
     if (mode === "changes") {
-      console.log("[ReviewPage store] loading changes...");
       await loadReviewChanges();
-      console.log("[ReviewPage store] loadReviewChanges done, files:", state.files.length);
     } else {
-      console.log("[ReviewPage store] loading feedback...");
       await loadAgentFeedback();
-      console.log("[ReviewPage store] loadAgentFeedback done, files:", state.files.length);
     }
   } catch (e) {
-    console.error("[ReviewPage store] error:", e);
     state.error = e instanceof Error ? e.message : String(e);
   } finally {
     state.loading = false;
-    console.log("[ReviewPage store] done. loading=false, error=", state.error);
   }
 }
 
@@ -101,7 +94,6 @@ export function closeReviewPage() {
 async function loadReviewChanges() {
   const workspace = getWorkspace();
   const directory = workspace.rootFolders[0];
-  console.log("[ReviewPage] directory:", directory);
   if (!directory) {
     state.error = "No workspace open";
     return;
@@ -110,8 +102,6 @@ async function loadReviewChanges() {
   const session = getReviewSession();
   const githubReview = getGitHubReviewState();
   const editor = getEditor();
-  console.log("[ReviewPage] session.active:", session.active, "session.files:", session.files);
-  console.log("[ReviewPage] editor.currentFilePath:", editor.currentFilePath);
 
   // Determine file list based on scope
   let filePaths: string[] = [];
@@ -127,7 +117,6 @@ async function loadReviewChanges() {
       const statuses = await getGitStatus(directory);
       filePaths = statuses.map((s) => s.path.startsWith("/") ? s.path : `${directory}/${s.path}`);
     } catch (e) {
-      console.warn("[ReviewPage] getGitStatus failed", e);
       state.error = "Failed to get git status";
       return;
     }
@@ -151,52 +140,11 @@ async function loadReviewChanges() {
     githubReview.activeSession && githubReview.activeSession.worktreePath === directory
       ? githubReview.activeSession.headSha
       : diffState.targetRef || "working-tree";
-  console.log("[ReviewPage] filePaths:", filePaths, "baseRef:", baseRef, "targetRef:", targetRef);
-
-  const results: ReviewFileData[] = [];
-
-  for (const filePath of filePaths) {
-    const fileName = filePath.split("/").pop() ?? filePath;
-    console.log("[ReviewPage] processing file:", filePath);
-
-    // Load diff
-    let diff: DiffResult | null = null;
-    try {
-      console.log("[ReviewPage] calling compute_diff...");
-      diff = await cachedInvokeDiff(directory, filePath, baseRef, targetRef, "patience");
-      console.log("[ReviewPage] compute_diff done, hunks:", diff?.hunks?.length ?? 0);
-    } catch (e) {
-      console.warn("[ReviewPage] compute_diff failed for", filePath, e);
-    }
-
-    // Load annotations
-    let annotations: Annotation[] = [];
-    try {
-      console.log("[ReviewPage] calling getAnnotations...");
-      const sidecar = await getAnnotations(filePath);
-      annotations = sidecar.annotations;
-      console.log("[ReviewPage] getAnnotations done, count:", annotations.length);
-    } catch (e) {
-      console.warn("[ReviewPage] getAnnotations failed for", filePath, e);
-    }
-
-    // Load snippets for annotations
-    const snippets = new Map<string, FileSnippet>();
-    for (const ann of annotations) {
-      try {
-        const snippet = await readFileLines(filePath, ann.anchor.range.startLine, 3);
-        snippets.set(ann.id, snippet);
-      } catch (e) {
-        console.warn("[ReviewPage] readFileLines failed for", ann.id, e);
-      }
-    }
-    console.log("[ReviewPage] snippets loaded for", filePath);
-
-    results.push({ filePath, fileName, annotations, diff, snippets });
-  }
-
-  console.log("[ReviewPage] all files processed, count:", results.length);
-  state.files = results;
+  state.files = await Promise.all(
+    filePaths.map((filePath) =>
+      loadReviewFileData(directory, filePath, baseRef, targetRef)
+    )
+  );
 }
 
 async function loadAgentFeedback() {
@@ -217,37 +165,102 @@ async function loadAgentFeedback() {
   }
 
   // Filter to files with agent annotations
-  const results: ReviewFileData[] = [];
+  const results = await Promise.all(
+    allFiles.map(async (fileGroup) => {
+      const agentAnnotations = fileGroup.annotations.filter((a) =>
+        AGENT_AUTHORS.has(a.author.toLowerCase())
+      );
+      if (agentAnnotations.length === 0) return null;
 
-  for (const fileGroup of allFiles) {
-    const agentAnnotations = fileGroup.annotations.filter((a) =>
-      AGENT_AUTHORS.has(a.author.toLowerCase())
-    );
-    if (agentAnnotations.length === 0) continue;
+      return {
+        filePath: fileGroup.filePath,
+        fileName: fileGroup.filePath.split("/").pop() ?? fileGroup.filePath,
+        annotations: agentAnnotations,
+        diff: null,
+        snippets: await buildSnippetsForAnnotations(fileGroup.filePath, agentAnnotations),
+      } satisfies ReviewFileData;
+    })
+  );
 
-    const fileName = fileGroup.filePath.split("/").pop() ?? fileGroup.filePath;
+  state.files = results.filter((result): result is ReviewFileData => result !== null);
+}
 
-    // Load snippets for each annotation
-    const snippets = new Map<string, FileSnippet>();
-    for (const ann of agentAnnotations) {
-      try {
-        const snippet = await readFileLines(fileGroup.filePath, ann.anchor.range.startLine, 3);
-        snippets.set(ann.id, snippet);
-      } catch {
-        // Skip
-      }
-    }
+async function loadReviewFileData(
+  directory: string,
+  filePath: string,
+  baseRef: string,
+  targetRef: string,
+): Promise<ReviewFileData> {
+  const fileName = filePath.split("/").pop() ?? filePath;
 
-    results.push({
-      filePath: fileGroup.filePath,
-      fileName,
-      annotations: agentAnnotations,
-      diff: null,
-      snippets,
+  const [diff, annotations] = await Promise.all([
+    loadDiff(directory, filePath, baseRef, targetRef),
+    loadAnnotationsForFile(filePath),
+  ]);
+
+  return {
+    filePath,
+    fileName,
+    annotations,
+    diff,
+    snippets: await buildSnippetsForAnnotations(filePath, annotations),
+  };
+}
+
+async function loadDiff(
+  directory: string,
+  filePath: string,
+  baseRef: string,
+  targetRef: string,
+): Promise<DiffResult | null> {
+  try {
+    return await cachedInvokeDiff(directory, filePath, baseRef, targetRef, "patience");
+  } catch {
+    return null;
+  }
+}
+
+async function loadAnnotationsForFile(filePath: string): Promise<Annotation[]> {
+  try {
+    const sidecar = await getAnnotations(filePath);
+    return sidecar.annotations;
+  } catch {
+    return [];
+  }
+}
+
+async function buildSnippetsForAnnotations(
+  filePath: string,
+  annotations: Annotation[],
+): Promise<Map<string, FileSnippet>> {
+  const snippets = new Map<string, FileSnippet>();
+  if (annotations.length === 0) return snippets;
+
+  let content: string;
+  try {
+    content = await readFile(filePath);
+  } catch {
+    return snippets;
+  }
+
+  const allLines = content.length === 0
+    ? []
+    : content.replace(/\r?\n$/, "").split(/\r?\n/);
+  const totalLines = allLines.length;
+
+  for (const annotation of annotations) {
+    const centerLine = annotation.anchor.range.startLine;
+    const startIndex = centerLine <= 4 ? 0 : centerLine - 4;
+    const endIndex = Math.min(centerLine + 3, totalLines);
+
+    snippets.set(annotation.id, {
+      startLine: startIndex + 1,
+      lines: allLines.slice(startIndex, endIndex),
+      totalLines,
     });
   }
 
-  state.files = results;
+  return snippets;
 }
 
 // Navigation — flat list includes annotation cards + diff-only file entries
