@@ -68,7 +68,6 @@ impl ReviewSessionStatus {
         }
     }
 
-
     pub fn can_transition_to(self, target: Self) -> bool {
         match (self, target) {
             // Active sessions can move to any terminal state or stale
