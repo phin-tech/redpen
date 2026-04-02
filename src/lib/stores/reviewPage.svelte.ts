@@ -165,7 +165,7 @@ async function loadAgentFeedback() {
   }
 
   // Filter to files with agent annotations
-  const results = await Promise.all(
+  const results: Array<ReviewFileData | null> = await Promise.all(
     allFiles.map(async (fileGroup) => {
       const agentAnnotations = fileGroup.annotations.filter((a) =>
         AGENT_AUTHORS.has(a.author.toLowerCase())

@@ -558,15 +558,17 @@ fn build_index_snapshot(
     let mut files = Vec::new();
     let mut truncated = false;
 
-    let walker = WalkDir::new(&context.root_path).into_iter().filter_entry(|entry| {
-        should_visit_entry(
-            entry,
-            &context.root_path,
-            context.project_root.as_deref(),
-            &context.git_ignore_matcher,
-            &ignored_names,
-        )
-    });
+    let walker = WalkDir::new(&context.root_path)
+        .into_iter()
+        .filter_entry(|entry| {
+            should_visit_entry(
+                entry,
+                &context.root_path,
+                context.project_root.as_deref(),
+                &context.git_ignore_matcher,
+                &ignored_names,
+            )
+        });
 
     for entry in walker {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -973,8 +975,16 @@ mod tests {
 
         service.register_root(&root_b).unwrap();
         service.register_root(&root_a).unwrap();
-        wait_for_state(&service, &normalize_root(&root_a), WorkspaceIndexState::Ready);
-        wait_for_state(&service, &normalize_root(&root_b), WorkspaceIndexState::Ready);
+        wait_for_state(
+            &service,
+            &normalize_root(&root_a),
+            WorkspaceIndexState::Ready,
+        );
+        wait_for_state(
+            &service,
+            &normalize_root(&root_b),
+            WorkspaceIndexState::Ready,
+        );
 
         let response = service.query(super::QueryWorkspaceFilesRequest {
             query: String::new(),
@@ -1020,8 +1030,16 @@ mod tests {
 
         service.register_root(&root_b).unwrap();
         service.register_root(&root_a).unwrap();
-        wait_for_state(&service, &normalize_root(&root_a), WorkspaceIndexState::Ready);
-        wait_for_state(&service, &normalize_root(&root_b), WorkspaceIndexState::Ready);
+        wait_for_state(
+            &service,
+            &normalize_root(&root_a),
+            WorkspaceIndexState::Ready,
+        );
+        wait_for_state(
+            &service,
+            &normalize_root(&root_b),
+            WorkspaceIndexState::Ready,
+        );
 
         let response = service.query(super::QueryWorkspaceFilesRequest {
             query: "app.ts".to_string(),
