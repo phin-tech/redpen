@@ -680,6 +680,14 @@ mod tests {
             Ok(())
         }
 
+        fn cancel_review_session(&self, _session_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn timeout_review_session(&self, _session_id: &str) -> Result<(), String> {
+            Ok(())
+        }
+
         fn review_session_status(
             &self,
             _session_id: &str,
