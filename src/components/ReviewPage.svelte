@@ -11,7 +11,7 @@
     getResolvedCount,
     getCardAtIndex,
   } from "$lib/stores/reviewPage.svelte";
-  import { resolveAnnotation, updateChoices, addAnnotation, removeAnnotation } from "$lib/stores/annotations.svelte";
+  import { resolveAnnotation, updateChoices, addAnnotation, removeAnnotation, editAnnotation } from "$lib/stores/annotations.svelte";
   import ReviewCard from "./ReviewCard.svelte";
   import ReviewCodeSnippet from "./ReviewCodeSnippet.svelte";
   import type { Annotation, AnnotationKind, DiffHunk } from "$lib/types";
@@ -253,6 +253,8 @@
   // Reply state
   let replyingTo: string | null = $state(null);
   let replyText = $state("");
+  let editingReplyId: string | null = $state(null);
+  let editReplyText = $state("");
   let replyInputRef: HTMLInputElement | undefined = $state(undefined);
 
   let pendingG = $state(false);
@@ -404,9 +406,34 @@
   function scrollToActive() {
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-review-card="${activeIndex}"]`);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!el) return;
+      const block = el.closest('.review-context-block') ?? el;
+      const container = el.closest('.review-page');
+      if (!container) {
+        block.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const blockRect = block.getBoundingClientRect();
+      const cardRect = el.getBoundingClientRect();
+      // Fully visible if both the block top and card bottom are within the container
+      const isVisible = blockRect.top >= containerRect.top && cardRect.bottom <= containerRect.bottom;
+      if (!isVisible) {
+        // Scroll so the block is vertically centered in the container
+        const scrollParent = container.querySelector('.review-feed') ?? container;
+        const blockCenter = blockRect.top + blockRect.height / 2;
+        const containerCenter = containerRect.top + containerRect.height / 2;
+        const offset = blockCenter - containerCenter;
+        scrollParent.scrollBy({ top: offset, behavior: "smooth" });
+      }
     });
   }
+
+  // Scroll to active card when triggered externally (e.g. sidebar click)
+  $effect(() => {
+    const _rev = reviewState.scrollRevision;
+    if (_rev > 0) scrollToActive();
+  });
 
   function handleJumpToFile(filePath: string, line: number) {
     closeReviewPage();
@@ -428,7 +455,7 @@
     for (const file of reviewState.files) {
       const ann = file.annotations.find((a) => a.id === annotationId);
       if (ann) {
-        await addAnnotation(
+        const reply = await addAnnotation(
           file.filePath,
           body,
           [],
@@ -439,9 +466,34 @@
           undefined,
           annotationId,
         );
+        file.annotations = [...file.annotations, reply];
         break;
       }
     }
+  }
+
+  async function deleteReply(reply: Annotation) {
+    for (const file of reviewState.files) {
+      const idx = file.annotations.findIndex((a) => a.id === reply.id);
+      if (idx !== -1) {
+        await removeAnnotation(file.filePath, reply.id);
+        file.annotations = file.annotations.filter((a) => a.id !== reply.id);
+        break;
+      }
+    }
+  }
+
+  async function saveReplyEdit(reply: Annotation) {
+    if (!editReplyText.trim() || !editingReplyId) return;
+    for (const file of reviewState.files) {
+      const ann = file.annotations.find((a) => a.id === reply.id);
+      if (ann) {
+        await editAnnotation(file.filePath, reply.id, editReplyText.trim());
+        ann.body = editReplyText.trim();
+        break;
+      }
+    }
+    editingReplyId = null;
   }
 
   async function handleResolve(annotationId: string, resolved: boolean) {
@@ -571,12 +623,15 @@
 
         {#if fileGroup.groups.length > 0}
           {#each fileGroup.groups as group, groupIdx (groupIdx)}
+            {@const activeCard = group.cards.find(c => c.flatIndex === activeIndex)}
             <div class="review-context-block">
               <ReviewCodeSnippet
                 filePath={fileGroup.filePath}
                 snippet={group.mergedSnippet}
                 highlightLine={group.rangeStart}
                 highlightEndLine={group.rangeEnd}
+                activeLine={activeCard ? activeCard.annotation.anchor.range.startLine : undefined}
+                activeLineEnd={activeCard ? (activeCard.annotation.anchor.range.endLine ?? activeCard.annotation.anchor.range.startLine) : undefined}
                 diffHunk={group.diffHunk}
                 annotatedLines={group.annotatedLines}
               />
@@ -610,6 +665,10 @@
                       {#if isAgent}<Bot size={13} class="review-thread-agent-icon" />{/if}
                       {ann.author}
                     </span>
+                    {#if syncBadge(ann.github?.syncState)}
+                      {@const badge = syncBadge(ann.github?.syncState)}
+                      <span class={`review-thread-sync-badge ${badge?.className}`}>{badge?.label}</span>
+                    {/if}
                     <span class="review-thread-time">· {relativeTime(ann.createdAt)}</span>
                   </div>
 
@@ -647,16 +706,65 @@
                   {#if entry.replies.length > 0}
                     <div class="review-thread-replies">
                       {#each entry.replies as reply}
-                        <div class="review-thread-reply">
+                        <div
+                          class="review-thread-reply"
+                          class:review-thread-reply-editable={reply.github?.syncState === "pendingPublish"}
+                          ondblclick={() => {
+                            if (reply.github?.syncState === "pendingPublish") {
+                              editingReplyId = reply.id;
+                              editReplyText = reply.body;
+                            }
+                          }}
+                        >
                           <span class="review-thread-reply-indicator">↳</span>
                           <span class="review-thread-reply-author">
                             {#if AGENT_AUTHORS.has(reply.author.toLowerCase())}<Bot size={11} class="review-thread-agent-icon" />{/if}
                             {reply.author}
                           </span>
+                          {#if syncBadge(reply.github?.syncState)}
+                            {@const badge = syncBadge(reply.github?.syncState)}
+                            <span class={`review-thread-sync-badge ${badge?.className}`}>{badge?.label}</span>
+                          {/if}
                           {#if reply.createdAt}
                             <span class="review-thread-reply-time">· {relativeTime(reply.createdAt)}</span>
                           {/if}
-                          <span class="review-thread-reply-text">{reply.body}</span>
+                          {#if reply.github?.syncState === "pendingPublish"}
+                            <button
+                              class="review-thread-reply-delete"
+                              title="Delete pending reply"
+                              onclick={(e) => { e.stopPropagation(); deleteReply(reply); }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              </svg>
+                            </button>
+                          {/if}
+                          {#if editingReplyId === reply.id}
+                            <div class="review-thread-edit-wrapper" onclick={(e) => e.stopPropagation()}>
+                              <!-- svelte-ignore a11y_autofocus -->
+                              <input
+                                class="review-thread-reply-input"
+                                bind:value={editReplyText}
+                                onkeydown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    saveReplyEdit(reply);
+                                  } else if (e.key === "Escape") {
+                                    e.stopPropagation();
+                                    editingReplyId = null;
+                                  }
+                                }}
+                                autofocus
+                              />
+                              <div class="review-thread-edit-actions">
+                                <button class="review-thread-edit-save" onclick={() => saveReplyEdit(reply)} disabled={!editReplyText.trim()}>Save</button>
+                                <button class="review-thread-edit-cancel" onclick={() => { editingReplyId = null; }}>Cancel</button>
+                              </div>
+                            </div>
+                          {:else}
+                            <span class="review-thread-reply-text">{reply.body}</span>
+                          {/if}
                         </div>
                       {/each}
                     </div>
@@ -1045,6 +1153,66 @@
   }
   .review-thread-reply-text {
     flex: 1;
+  }
+  .review-thread-reply-delete {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .review-thread-reply:hover .review-thread-reply-delete {
+    display: flex;
+  }
+  .review-thread-reply-delete:hover {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+  .review-thread-reply-editable {
+    cursor: default;
+  }
+  .review-thread-reply-editable:hover {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+  .review-thread-edit-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .review-thread-edit-actions {
+    display: flex;
+    gap: 4px;
+  }
+  .review-thread-edit-save,
+  .review-thread-edit-cancel {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-default);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .review-thread-edit-save:hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .review-thread-edit-cancel:hover {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .review-thread-edit-save:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   /* Thread actions */

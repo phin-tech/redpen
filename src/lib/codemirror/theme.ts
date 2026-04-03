@@ -361,4 +361,23 @@ export const redPenTheme = EditorView.theme({
   ".rp-diff-ghost": {
     backgroundColor: "var(--diff-ghost-bg)",
   },
+  ".rp-diff-fold": {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "28px",
+    background: "var(--surface-raised)",
+    borderTop: "1px solid var(--border-default)",
+    borderBottom: "1px solid var(--border-default)",
+    color: "var(--text-muted)",
+    fontSize: "12px",
+    fontFamily: "var(--font-mono)",
+    cursor: "pointer",
+    userSelect: "none" as const,
+    transition: "background 150ms, color 150ms",
+  },
+  ".rp-diff-fold:hover": {
+    background: "var(--surface-highlight)",
+    color: "var(--text-secondary)",
+  },
 });

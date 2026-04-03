@@ -14,6 +14,8 @@
     diffHunk,
     kindColor = "var(--accent)",
     annotatedLines,
+    activeLine,
+    activeLineEnd,
   }: {
     filePath: string;
     snippet: FileSnippet | null;
@@ -22,6 +24,8 @@
     diffHunk?: DiffHunk | null;
     kindColor?: string;
     annotatedLines?: { line: number; resolved: boolean }[];
+    activeLine?: number;
+    activeLineEnd?: number;
   } = $props();
 
   const annotatedLineMap = $derived(
@@ -94,9 +98,12 @@
     changeKind?: "insert" | "delete" | "equal";
   }
 
+  /** How many context lines to show around the highlighted range within a diff hunk */
+  const HUNK_CONTEXT = 4;
+
   const displayLines = $derived.by((): DisplayLine[] => {
     if (diffHunk) {
-      return diffHunk.changes.map((change) => ({
+      const allChanges = diffHunk.changes.map((change) => ({
         lineNum: change.newLine ?? change.oldLine ?? null,
         content: change.content.replace(/\n$/, ""),
         highlighted:
@@ -105,6 +112,47 @@
           change.newLine <= endLine,
         changeKind: change.kind as "insert" | "delete" | "equal",
       }));
+
+      // If the hunk is small enough, show it all
+      let hunkLines: DisplayLine[];
+      if (allChanges.length <= (endLine - highlightLine + 1) + HUNK_CONTEXT * 2 + 4) {
+        hunkLines = allChanges;
+      } else {
+        // Trim to context window around the highlighted lines
+        let startIdx = 0;
+        let endIdx = allChanges.length - 1;
+
+        for (let i = 0; i < allChanges.length; i++) {
+          if (allChanges[i].lineNum !== null && allChanges[i].lineNum! >= highlightLine - HUNK_CONTEXT) {
+            startIdx = i;
+            break;
+          }
+        }
+        for (let i = allChanges.length - 1; i >= 0; i--) {
+          if (allChanges[i].lineNum !== null && allChanges[i].lineNum! <= endLine + HUNK_CONTEXT) {
+            endIdx = i;
+            break;
+          }
+        }
+
+        hunkLines = allChanges.slice(startIdx, endIdx + 1);
+      }
+
+      // Merge expanded lines from h/l keybinds
+      const firstLine = hunkLines[0]?.lineNum ?? 0;
+      const lastLine = hunkLines[hunkLines.length - 1]?.lineNum ?? 0;
+
+      const above: DisplayLine[] = extraLinesAbove.map((content, i) => {
+        const lineNum = snippet ? (snippet.startLine - expandedAbove + i) : (firstLine - extraLinesAbove.length + i);
+        return { lineNum, content, highlighted: false };
+      }).filter(l => l.lineNum < firstLine);
+
+      const below: DisplayLine[] = extraLinesBelow.map((content, i) => {
+        const lineNum = snippet ? (snippet.startLine + snippet.lines.length + i) : (lastLine + 1 + i);
+        return { lineNum, content, highlighted: false };
+      });
+
+      return [...above, ...hunkLines, ...below];
     }
 
     if (!snippet) return [];
@@ -191,7 +239,7 @@
 </script>
 
 <div class="review-snippet">
-  {#if canExpandAbove && !diffHunk}
+  {#if canExpandAbove}
     <button class="snippet-expand snippet-expand-above" onclick={expandAbove}>
       ··· expand above ···
     </button>
@@ -201,6 +249,7 @@
     <div
       class="snippet-line"
       class:snippet-highlighted={line.highlighted}
+      class:snippet-active-line={activeLine != null && line.lineNum !== null && line.lineNum >= activeLine && line.lineNum <= (activeLineEnd ?? activeLine)}
       class:snippet-insert={line.changeKind === "insert"}
       class:snippet-delete={line.changeKind === "delete"}
       style:--kind-highlight={kindColor}
@@ -219,7 +268,7 @@
     </div>
   {/each}
 
-  {#if canExpandBelow && !diffHunk}
+  {#if canExpandBelow}
     <button class="snippet-expand snippet-expand-below" onclick={expandBelow}>
       ··· expand below ···
     </button>
@@ -244,6 +293,10 @@
   }
   .snippet-highlighted {
     background: color-mix(in srgb, var(--kind-highlight) 12%, transparent);
+  }
+  .snippet-active-line {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   .snippet-insert {
     background: color-mix(in srgb, var(--color-success) 10%, transparent);

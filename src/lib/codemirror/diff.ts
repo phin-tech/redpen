@@ -8,7 +8,7 @@ import {
     GutterMarker,
     gutter,
 } from "@codemirror/view";
-import { RangeSetBuilder, type Extension } from "@codemirror/state";
+import { RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
 import type { DiffResult } from "$lib/types";
 
 const addedLine = Decoration.line({ class: "rp-diff-added" });
@@ -36,11 +36,90 @@ class DiffLineNumber extends GutterMarker {
     }
 }
 
+// --- Diff folding: collapse unchanged regions ---
+
+const unfoldEffect = StateEffect.define<{ from: number; to: number }>();
+
+const unfoldedRangesField = StateField.define<Array<{ from: number; to: number }>>({
+    create() { return []; },
+    update(value, tr) {
+        for (const effect of tr.effects) {
+            if (effect.is(unfoldEffect)) {
+                return [...value, effect.value];
+            }
+        }
+        return value;
+    },
+});
+
+class DiffFoldWidget extends WidgetType {
+    constructor(readonly lineCount: number, readonly foldFrom: number, readonly foldTo: number) {
+        super();
+    }
+    toDOM(view: EditorView) {
+        const div = document.createElement("div");
+        div.className = "rp-diff-fold";
+        div.textContent = `⋯ ${this.lineCount} unchanged lines ⋯`;
+        div.addEventListener("click", () => {
+            view.dispatch({ effects: unfoldEffect.of({ from: this.foldFrom, to: this.foldTo }) });
+        });
+        return div;
+    }
+    eq(other: DiffFoldWidget) {
+        return this.foldFrom === other.foldFrom && this.foldTo === other.foldTo;
+    }
+    ignoreEvent() { return false; }
+}
+
+/** Minimum gap size (in lines) worth collapsing */
+const MIN_FOLD_LINES = 4;
+
+function computeFoldRanges(diffResult: DiffResult, totalLines: number): Array<{ fromLine: number; toLine: number }> {
+    const ranges: Array<{ fromLine: number; toLine: number }> = [];
+    // Collect the visible line ranges from hunks (using newLine numbers)
+    const visibleRanges: Array<{ start: number; end: number }> = [];
+    for (const hunk of diffResult.hunks) {
+        if (hunk.newStart > 0 && hunk.newCount > 0) {
+            visibleRanges.push({ start: hunk.newStart, end: hunk.newStart + hunk.newCount - 1 });
+        }
+    }
+
+    if (visibleRanges.length === 0) return [];
+
+    // Gap before first hunk
+    if (visibleRanges[0].start > 1) {
+        const gapEnd = visibleRanges[0].start - 1;
+        if (gapEnd >= MIN_FOLD_LINES) {
+            ranges.push({ fromLine: 1, toLine: gapEnd });
+        }
+    }
+
+    // Gaps between hunks
+    for (let i = 0; i < visibleRanges.length - 1; i++) {
+        const gapStart = visibleRanges[i].end + 1;
+        const gapEnd = visibleRanges[i + 1].start - 1;
+        if (gapEnd - gapStart + 1 >= MIN_FOLD_LINES) {
+            ranges.push({ fromLine: gapStart, toLine: gapEnd });
+        }
+    }
+
+    // Gap after last hunk
+    const lastEnd = visibleRanges[visibleRanges.length - 1].end;
+    if (lastEnd < totalLines) {
+        const gapSize = totalLines - lastEnd;
+        if (gapSize >= MIN_FOLD_LINES) {
+            ranges.push({ fromLine: lastEnd + 1, toLine: totalLines });
+        }
+    }
+
+    return ranges;
+}
+
 export function highlightsModeExtensions(diffResult: DiffResult): Extension {
     // Use pre-sorted arrays from Rust — no JS sorting needed
     const sorted = diffResult.insertedLines;
 
-    return ViewPlugin.fromClass(
+    const highlightPlugin = ViewPlugin.fromClass(
         class {
             decorations: DecorationSet;
             constructor(view: EditorView) {
@@ -64,6 +143,47 @@ export function highlightsModeExtensions(diffResult: DiffResult): Extension {
         },
         { decorations: (v) => v.decorations }
     );
+
+    const foldPlugin = ViewPlugin.fromClass(
+        class {
+            decorations: DecorationSet;
+            constructor(view: EditorView) {
+                this.decorations = this.buildFolds(view);
+            }
+            update(update: ViewUpdate) {
+                if (update.docChanged || update.startState.field(unfoldedRangesField) !== update.state.field(unfoldedRangesField)) {
+                    this.decorations = this.buildFolds(update.view);
+                }
+            }
+            buildFolds(view: EditorView): DecorationSet {
+                const totalLines = view.state.doc.lines;
+                const foldRanges = computeFoldRanges(diffResult, totalLines);
+                const unfolded = view.state.field(unfoldedRangesField);
+                const builder = new RangeSetBuilder<Decoration>();
+
+                for (const range of foldRanges) {
+                    // Skip if user has unfolded this range
+                    if (unfolded.some(u => u.from === range.fromLine && u.to === range.toLine)) continue;
+
+                    if (range.fromLine > totalLines) continue;
+                    const clampedTo = Math.min(range.toLine, totalLines);
+                    const fromPos = view.state.doc.line(range.fromLine).from;
+                    const toPos = view.state.doc.line(clampedTo).to;
+                    const lineCount = clampedTo - range.fromLine + 1;
+
+                    builder.add(fromPos, toPos, Decoration.replace({
+                        widget: new DiffFoldWidget(lineCount, range.fromLine, range.toLine),
+                        block: true,
+                    }));
+                }
+
+                return builder.finish();
+            }
+        },
+        { decorations: (v) => v.decorations, provide: () => [] }
+    );
+
+    return [unfoldedRangesField, highlightPlugin, foldPlugin];
 }
 
 export interface UnifiedDocResult {

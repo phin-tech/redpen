@@ -11,6 +11,8 @@
   } from "$lib/stores/annotations.svelte";
   import { getEditor } from "$lib/stores/editor.svelte";
   import { getWorkspace } from "$lib/stores/workspace.svelte";
+  import { getGitHubReviewState } from "$lib/stores/githubReview.svelte";
+  import { getReviewPageState, jumpToAnnotation } from "$lib/stores/reviewPage.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Button from "./ui/Button.svelte";
   import { formatShortcut } from "$lib/shortcuts";
@@ -29,6 +31,33 @@
   const annotationsState = getAnnotationsState();
   const editor = getEditor();
   const workspace = getWorkspace();
+  const githubReview = getGitHubReviewState();
+  const reviewPageState = getReviewPageState();
+
+  const isGitHubReview = $derived(!!githubReview.activeSession);
+
+  interface PendingGroup {
+    fileName: string;
+    filePath: string;
+    annotations: import("$lib/types").Annotation[];
+  }
+
+  const pendingComments = $derived.by((): PendingGroup[] => {
+    const groups: PendingGroup[] = [];
+    for (const file of reviewPageState.files) {
+      const pending = file.annotations.filter(
+        (a) => a.github?.syncState === "pendingPublish"
+      );
+      if (pending.length > 0) {
+        groups.push({ fileName: file.fileName, filePath: file.filePath, annotations: pending });
+      }
+    }
+    return groups;
+  });
+
+  const totalPending = $derived(
+    pendingComments.reduce((sum, g) => sum + g.annotations.length, 0)
+  );
 
   let editingId: string | null = $state(null);
   let editBody = $state("");
@@ -80,7 +109,71 @@
 </script>
 
 <div class="h-full flex flex-col">
-  <!-- View toggle -->
+  {#if isGitHubReview}
+    <!-- Pending comments view for GitHub review -->
+    <div class="sidebar-header">
+      {#if onCollapse}
+        <button class="sidebar-collapse-btn" onclick={onCollapse} title="Collapse annotations">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
+      {/if}
+      <span class="sidebar-tab active" style="cursor: default;">
+        Pending
+        {#if totalPending > 0}
+          <span class="sidebar-tab-badge">{totalPending}</span>
+        {/if}
+        <span class="sidebar-tab-indicator"></span>
+      </span>
+    </div>
+
+    <div class="flex-1 overflow-y-auto">
+      {#if pendingComments.length === 0}
+        <div class="flex flex-col items-center justify-center px-5 py-10 gap-2 h-full min-h-[200px]">
+          <svg class="text-text-secondary opacity-40 mb-1" width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <p class="text-sm font-medium text-text-primary">No pending comments</p>
+          <p class="text-xs text-text-secondary text-center">Comments you add will appear here until submitted</p>
+        </div>
+      {:else}
+        {#each pendingComments as group (group.filePath)}
+          <div class="pending-file-group">
+            <div class="pending-file-header">
+              <span class="pending-file-name">{group.fileName}</span>
+              <span class="pending-file-count">{group.annotations.length}</span>
+            </div>
+            {#each group.annotations as annotation (annotation.id)}
+              <div
+                class="pending-comment"
+                onclick={() => {
+                  jumpToAnnotation(annotation.id);
+                  if (onFileSelect && group.filePath !== editor.currentFilePath) {
+                    onFileSelect(group.filePath);
+                    setTimeout(() => onAnnotationClick(annotation.anchor.range.startLine), 200);
+                  } else {
+                    onAnnotationClick(annotation.anchor.range.startLine);
+                  }
+                }}
+                role="button"
+                tabindex="0"
+                onkeydown={(e) => e.key === "Enter" && onAnnotationClick(annotation.anchor.range.startLine)}
+              >
+                <span class="pending-comment-line">L{annotation.anchor.range.startLine}</span>
+                <span class="pending-comment-body">{annotation.body}</span>
+                {#if annotation.replyTo}
+                  <span class="pending-comment-reply-tag">reply</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/each}
+      {/if}
+    </div>
+
+  {:else}
+  <!-- Normal sidebar view -->
   <div class="sidebar-header">
     {#if onCollapse}
       <button class="sidebar-collapse-btn" onclick={onCollapse} title="Collapse annotations">
@@ -227,6 +320,7 @@
       {/if}
     </div>
   {/if}
+  {/if}
 
 </div>
 
@@ -296,5 +390,67 @@
     height: 2px;
     background: var(--accent);
     border-radius: 9999px;
+  }
+  .pending-file-group {
+    border-bottom: 1px solid var(--border-default);
+  }
+  .pending-file-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px 4px;
+  }
+  .pending-file-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pending-file-count {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .pending-comment {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: background 0.1s;
+  }
+  .pending-comment:hover {
+    background: var(--surface-highlight);
+  }
+  .pending-comment-line {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .pending-comment-body {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pending-comment-reply-tag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    padding: 0 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
   }
 </style>

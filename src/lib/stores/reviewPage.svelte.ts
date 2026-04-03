@@ -25,6 +25,7 @@ interface ReviewPageState {
   mode: ReviewMode | null; // null = closed
   scope: ReviewScope;
   activeCardIndex: number;
+  scrollRevision: number;
   files: ReviewFileData[];
   loading: boolean;
   error: string | null;
@@ -34,6 +35,7 @@ let state = $state<ReviewPageState>({
   mode: null,
   scope: "session",
   activeCardIndex: 0,
+  scrollRevision: 0,
   files: [],
   loading: false,
   error: null,
@@ -319,6 +321,76 @@ export function getCardAtIndex(index: number): { filePath: string; annotation: A
     }
   }
   return null;
+}
+
+/** Jump to the card for a given annotation ID or file+line. Returns true if found. */
+export function jumpToAnnotation(annotationId: string): boolean {
+  // First, find the annotation in any file to get its details
+  let targetFile: ReviewFileData | null = null;
+  let targetAnnotation: Annotation | null = null;
+  for (const file of state.files) {
+    const ann = file.annotations.find(a => a.id === annotationId);
+    if (ann) {
+      targetFile = file;
+      targetAnnotation = ann;
+      break;
+    }
+  }
+
+  // Resolve to the root annotation if this is a reply
+  let rootId = annotationId;
+  if (targetAnnotation?.replyTo) {
+    rootId = targetAnnotation.replyTo;
+  }
+
+  // Try to find the root card by ID
+  let cursor = 0;
+  for (const file of state.files) {
+    const roots = file.annotations.filter(a => !a.replyTo);
+    if (roots.length > 0) {
+      for (const ann of roots) {
+        if (ann.id === rootId) {
+          setActiveCard(cursor);
+          state.scrollRevision++;
+          return true;
+        }
+        cursor++;
+      }
+    } else if (file.diff) {
+      cursor++;
+    }
+  }
+
+  // Fallback: find the closest root card in the same file by line number
+  if (targetFile && targetAnnotation) {
+    const targetLine = targetAnnotation.anchor.range.startLine;
+    cursor = 0;
+    for (const file of state.files) {
+      const roots = file.annotations.filter(a => !a.replyTo);
+      if (roots.length > 0) {
+        if (file.filePath === targetFile.filePath) {
+          // Find the root closest to the target line
+          let bestIdx = cursor;
+          let bestDist = Infinity;
+          for (let i = 0; i < roots.length; i++) {
+            const dist = Math.abs(roots[i].anchor.range.startLine - targetLine);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = cursor + i;
+            }
+          }
+          setActiveCard(bestIdx);
+          state.scrollRevision++;
+          return true;
+        }
+        cursor += roots.length;
+      } else if (file.diff) {
+        cursor++;
+      }
+    }
+  }
+
+  return false;
 }
 
 export function setReviewPageStateForTests(
