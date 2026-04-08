@@ -53,6 +53,7 @@ tasks:
   dev:install:
     desc: "Build and install the desktop app and CLI locally"
     cmds:
+      - task: macos:prepare-cli
       - bun run tauri build
       - |
         # Install desktop app
@@ -63,36 +64,193 @@ tasks:
         fi
         cp -R target/release/bundle/macos/Red\ Pen.app /Applications/
         echo "Installed Red Pen.app to /Applications"
+
+  macos:prepare-cli:
+    desc: "Build redpen CLI and stage it for macOS bundling"
+    cmds:
       - |
-        # Install CLI
-        cargo install --path crates/redpen-cli
-        echo "Installed redpen-cli to $(which redpen)"
+        set -euo pipefail
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          cargo build --release -p redpen-cli --target "${TAURI_TARGET}"
+          SOURCE="target/${TAURI_TARGET}/release/redpen"
+        else
+          cargo build --release -p redpen-cli
+          SOURCE="target/release/redpen"
+        fi
+        mkdir -p src-tauri/binaries
+        cp "${SOURCE}" src-tauri/binaries/redpen
+        chmod +x src-tauri/binaries/redpen
+        echo "Prepared bundled redpen from ${SOURCE}"
+
+  macos:staple-dmg:
+    desc: "Staple the latest signed macOS DMG"
+    cmds:
+      - |
+        set -euo pipefail
+        TARGET_ROOT="target"
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          TARGET_ROOT="${TARGET_ROOT}/${TAURI_TARGET}"
+        fi
+
+        DMG_DIR="${TARGET_ROOT}/release/bundle/dmg"
+        DMG="$(find "${DMG_DIR}" -maxdepth 1 -name 'Red Pen_*.dmg' | sort | tail -n 1)"
+
+        if [ -n "${DMG}" ]; then
+          xcrun stapler staple "${DMG}"
+        fi
+
+  macos:zip-app:
+    desc: "Zip the latest signed macOS app bundle"
+    cmds:
+      - |
+        set -euo pipefail
+        TARGET_ROOT="target"
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          TARGET_ROOT="${TARGET_ROOT}/${TAURI_TARGET}"
+        fi
+
+        VERSION=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
+        APP="${TARGET_ROOT}/release/bundle/macos/Red Pen.app"
+        APP_ZIP="${TARGET_ROOT}/release/bundle/macos/Red Pen_${VERSION}.app.zip"
+
+        rm -f "${APP_ZIP}"
+        ditto -c -k --sequesterRsrc --keepParent "${APP}" "${APP_ZIP}"
+        echo "Prepared ${APP_ZIP}"
+
+  macos:notarize-dmg:
+    desc: "Notarize the latest signed macOS DMG"
+    cmds:
+      - |
+        set -euo pipefail
+        TARGET_ROOT="target"
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          TARGET_ROOT="${TARGET_ROOT}/${TAURI_TARGET}"
+        fi
+
+        DMG_DIR="${TARGET_ROOT}/release/bundle/dmg"
+        DMG="$(find "${DMG_DIR}" -maxdepth 1 -name 'Red Pen_*.dmg' | sort | tail -n 1)"
+
+        if [ -z "${DMG}" ]; then
+          echo "No DMG found to notarize"
+          exit 0
+        fi
+
+        export DMG
+        ./scripts/run-macos-signing.sh sh -c '
+          if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            xcrun notarytool submit "$DMG" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+          elif [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ] && [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            xcrun notarytool submit "$DMG" \
+              --key "$APPLE_API_KEY" \
+              --issuer "$APPLE_API_ISSUER" \
+              --key-path "$APPLE_API_KEY_PATH" \
+              --wait
+          else
+            echo "Missing notarization credentials for DMG submission" >&2
+            exit 1
+          fi
+        '
+
+  macos:verify:
+    desc: "Verify the latest signed macOS artifacts"
+    cmds:
+      - |
+        set -euo pipefail
+        TARGET_ROOT="target"
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          TARGET_ROOT="${TARGET_ROOT}/${TAURI_TARGET}"
+        fi
+
+        APP="${TARGET_ROOT}/release/bundle/macos/Red Pen.app"
+        DMG_DIR="${TARGET_ROOT}/release/bundle/dmg"
+        DMG="$(find "${DMG_DIR}" -maxdepth 1 -name 'Red Pen_*.dmg' | sort | tail -n 1)"
+
+        codesign --verify --deep --strict --verbose=2 "${APP}"
+        spctl --assess --type execute --verbose=4 "${APP}"
+
+        if [ -n "${DMG}" ]; then
+          xcrun stapler validate "${DMG}"
+        fi
 
   sign:
-    desc: "Sign and notarize the already-built app bundle"
-    dotenv: [".env.signing"]
+    desc: "Build, sign, notarize, and staple the macOS app"
+    cmds:
+      - task: macos:prepare-cli
+      - |
+        set -euo pipefail
+        ./scripts/run-macos-signing.sh bun run tauri build -- ${TAURI_BUILD_ARGS:-}
+      - task: macos:notarize-dmg
+      - task: macos:staple-dmg
+      - task: macos:verify
+
+  sign:op:
+    desc: "Run the signing workflow with secrets loaded from 1Password"
+    preconditions:
+      - sh: "command -v op >/dev/null 2>&1"
+        msg: "1Password CLI 'op' is required"
+      - sh: '[ -f ".env.signing" ]'
+        msg: ".env.signing is required"
     cmds:
       - |
-        codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
-          "target/release/bundle/macos/Red Pen.app"
-        echo "Signed Red Pen.app"
-      - |
-        xcrun notarytool submit "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg" \
-          --apple-id "$APPLE_ID" \
-          --password "$APPLE_PASSWORD" \
-          --team-id "$APPLE_TEAM_ID" \
-          --wait
-        echo "Notarized"
-      - |
-        xcrun stapler staple "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg"
-        echo "Stapled"
+        op run --env-file=.env.signing -- task sign
 
   build:signed:
-    desc: "Build and sign the app (sources .env.signing)"
-    dotenv: [".env.signing"]
+    desc: "Alias for the macOS signing flow"
     cmds:
-      - bun run tauri build
       - task: sign
+
+  build:signed:op:
+    desc: "Alias for the 1Password-backed macOS signing flow"
+    cmds:
+      - task: sign:op
+
+  publish:
+    desc: "Create or update the GitHub release for the current version and upload the signed app zip, DMG, and CLI tarball"
+    preconditions:
+      - sh: "command -v gh >/dev/null 2>&1"
+        msg: "GitHub CLI 'gh' is required"
+    cmds:
+      - task: macos:zip-app
+      - |
+        set -euo pipefail
+        TARGET_ROOT="target"
+        if [ -n "${TAURI_TARGET:-}" ]; then
+          TARGET_ROOT="${TARGET_ROOT}/${TAURI_TARGET}"
+        fi
+
+        VERSION=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
+        TAG="v${VERSION}"
+        APP_ZIP="${TARGET_ROOT}/release/bundle/macos/Red Pen_${VERSION}.app.zip"
+
+        if ! gh release view "$TAG" &>/dev/null; then
+          gh release create "$TAG" --title "$TAG" --notes ""
+          echo "Created release $TAG"
+        fi
+
+        gh release upload "$TAG" "$APP_ZIP" --clobber
+        echo "Uploaded $APP_ZIP to $TAG"
+
+        find "${TARGET_ROOT}" -path "*/release/bundle/dmg/Red Pen_${VERSION}_*.dmg" -print | while read -r DMG; do
+          gh release upload "$TAG" "$DMG" --clobber
+          echo "Uploaded $DMG to $TAG"
+        done
+
+        cargo build --release -p redpen-cli
+        TARBALL="redpen-${VERSION}-aarch64-apple-darwin.tar.gz"
+        tar -czf "$TARBALL" -C target/release redpen
+        gh release upload "$TAG" "$TARBALL" --clobber
+        rm -f "$TARBALL"
+        echo "Uploaded $TARBALL to $TAG"
+
+  publish:op:
+    desc: "Sign with 1Password-backed secrets, then publish the current version"
+    cmds:
+      - task: sign:op
+      - task: publish
 
   changelog:
     desc: Generate changelog for the latest tag
@@ -112,37 +270,14 @@ tasks:
     cmds:
       - git cliff -o CHANGELOG.md
 
-  release:upload:
-    desc: "Upload the signed DMG and CLI binary to the GitHub release"
-    cmds:
-      - |
-        VERSION=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
-        TAG="v${VERSION}"
-        if ! gh release view "$TAG" &>/dev/null; then
-          gh release create "$TAG" --title "$TAG" --notes ""
-          echo "Created release $TAG"
-        fi
-
-        # Upload DMG
-        DMG="target/release/bundle/dmg/Red Pen_${VERSION}_aarch64.dmg"
-        gh release upload "$TAG" "$DMG" --clobber
-        echo "Uploaded $DMG to $TAG"
-
-        # Build and upload CLI binary tarball
-        cargo build --release -p redpen-cli
-        TARBALL="redpen-${VERSION}-aarch64-apple-darwin.tar.gz"
-        tar -czf "$TARBALL" -C target/release redpen
-        gh release upload "$TAG" "$TARBALL" --clobber
-        rm -f "$TARBALL"
-        echo "Uploaded $TARBALL to $TAG"
 
   release:brew:
     desc: "Update homebrew-tap with latest release"
     cmds:
       - ./scripts/update-homebrew-tap.sh
 
-  release:
-    desc: "Bump version, update all manifests, commit, tag, and push. Usage: task release BUMP=patch|minor|major"
+  version:
+    desc: "Bump version, update all manifests, commit, tag, and push. Usage: task version BUMP=patch|minor|major"
     requires:
       vars: [BUMP]
     preconditions:

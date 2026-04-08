@@ -1,4 +1,5 @@
 mod bridge;
+mod cli_install;
 mod commands;
 mod event_bus;
 mod notification;
@@ -111,6 +112,12 @@ pub fn run() {
             get_pending_deep_links,
         ])
         .setup(|app| {
+            if let Err(error) = cli_install::install_cli_binary() {
+                log::warn!("failed to install bundled redpen CLI: {error}");
+            } else if cli_install::cli_is_installed() {
+                log::info!("redpen CLI is available in ~/.local/bin");
+            }
+
             let event_bus = crate::event_bus::TauriEventBus::new(app.handle().clone());
             let annotation_service = redpen_runtime::annotations::AnnotationService::new(event_bus);
             app.manage(annotation_service);

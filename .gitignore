@@ -1,12 +1,14 @@
 node_modules/
 target/
 dist/
+src-tauri/binaries/
 .DS_Store
 *.redpen.json
 .redpen/
 .claude/settings.local.json
 .superpowers/
 .env*
+!.env.signing.example
 
 # Signing certificates and keys
 *.crt

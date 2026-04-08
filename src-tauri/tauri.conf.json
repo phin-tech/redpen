@@ -45,7 +45,10 @@
       "icons/icon.png"
     ],
     "macOS": {
-      "signingIdentity": "DDEF18CE5356666C23A4B1F64D36326C0D4E0D86"
+      "files": {
+        "MacOS/redpen": "binaries/redpen"
+      },
+      "hardenedRuntime": true
     }
   }
 }
