@@ -1,3 +1,4 @@
+mod review;
 mod server_client;
 
 use clap::{Parser, Subcommand};
@@ -15,6 +16,73 @@ use std::process;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+/// Subcommands for `redpen review`. Wired below in `Commands::Review`.
+#[derive(Subcommand)]
+enum ReviewAction {
+    /// List review comments on the active session's PR (or specified PR).
+    Fetch {
+        /// Talk to api.github.com instead of the local Redpen server.
+        #[arg(long)]
+        remote: bool,
+        /// PR number. Defaults to the active session (local) or the open
+        /// PR for the current branch (remote).
+        #[arg(long)]
+        pr: Option<u64>,
+        /// `owner/name` of the repo. Defaults to git remote origin or
+        /// the active session's repo.
+        #[arg(long, value_name = "OWNER/NAME")]
+        repo: Option<String>,
+        /// Branch name (only used in --remote mode when --pr is omitted).
+        #[arg(long)]
+        branch: Option<String>,
+        /// Hide comments that have any human reply or are already resolved.
+        #[arg(long)]
+        unresolved: bool,
+        /// Hide comments that have any reply at all (any author).
+        #[arg(long)]
+        unanswered: bool,
+        /// Show only bot-authored comments.
+        #[arg(long)]
+        bots_only: bool,
+        /// Show only human-authored comments.
+        #[arg(long, conflicts_with = "bots_only")]
+        humans_only: bool,
+        /// Print full body, diff hunk, and replies for each comment.
+        #[arg(long)]
+        expanded: bool,
+        /// Output JSON instead of the human-readable table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Reply to a specific review comment.
+    Reply {
+        /// Comment id to reply to.
+        id: i64,
+        /// Reply body.
+        message: String,
+        /// Mark the review thread resolved (GraphQL `resolveReviewThread`).
+        #[arg(long)]
+        resolve: bool,
+        /// Talk to api.github.com instead of the local Redpen server.
+        #[arg(long)]
+        remote: bool,
+        #[arg(long)]
+        pr: Option<u64>,
+        #[arg(long, value_name = "OWNER/NAME")]
+        repo: Option<String>,
+    },
+    /// Show full detail for a single comment id.
+    Detail {
+        id: i64,
+        #[arg(long)]
+        remote: bool,
+        #[arg(long)]
+        pr: Option<u64>,
+        #[arg(long, value_name = "OWNER/NAME")]
+        repo: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -138,20 +206,11 @@ enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
         args: Vec<String>,
     },
-    /// Convenience alias for `redpen run -- agent-reviews [args...]`.
-    ///
-    /// Override the binary with REDPEN_REVIEW_BIN. Defaults to `agent-reviews`
-    /// (assumed to be on PATH; install with `npm i -g agent-reviews` or
-    /// `npm i -g github:sam-phinizy/agent-reviews#add-github-api-url-env`
-    /// until upstream merges the GITHUB_API_URL env support).
+    /// PR review-comment workflow (native; works against the local Redpen
+    /// server by default, or real api.github.com with `--remote`).
     Review {
-        /// Skip GITHUB_API_URL injection so agent-reviews talks to real
-        /// api.github.com. Default is local (Redpen sandboxed).
-        #[arg(long)]
-        remote: bool,
-        /// Arguments forwarded to agent-reviews.
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-        args: Vec<String>,
+        #[command(subcommand)]
+        action: ReviewAction,
     },
     /// Watch the active session for new review comments, exiting when any
     /// appear (or after a configurable idle timeout). Native implementation
@@ -270,7 +329,45 @@ fn main() {
         Commands::Url => cmd_url(),
         Commands::Sessions { format } => cmd_sessions(&format),
         Commands::Run { remote, args } => cmd_run(remote, args),
-        Commands::Review { remote, args } => cmd_review(remote, args),
+        Commands::Review { action } => match action {
+            ReviewAction::Fetch {
+                remote,
+                pr,
+                repo,
+                branch,
+                unresolved,
+                unanswered,
+                bots_only,
+                humans_only,
+                expanded,
+                json,
+            } => review::cmd_fetch(review::FetchOpts {
+                remote,
+                pr,
+                repo,
+                branch,
+                unresolved,
+                unanswered,
+                bots_only,
+                humans_only,
+                expanded,
+                json,
+            }),
+            ReviewAction::Reply {
+                id,
+                message,
+                resolve,
+                remote,
+                pr,
+                repo,
+            } => review::cmd_reply(id, message, resolve, remote, pr, repo),
+            ReviewAction::Detail {
+                id,
+                remote,
+                pr,
+                repo,
+            } => review::cmd_detail(id, remote, pr, repo),
+        },
         Commands::InstallSkills { project, force } => cmd_install_skills(project, force),
         Commands::Watch {
             pr,
@@ -1199,19 +1296,6 @@ fn cmd_run(remote: bool, args: Vec<String>) -> Result<(), Box<dyn std::error::Er
     run_with_env(cmd, rest, remote, &hint)
 }
 
-fn cmd_review(remote: bool, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-    let bin = std::env::var("REDPEN_REVIEW_BIN").unwrap_or_else(|_| "agent-reviews".into());
-    let hint = format!(
-        "`{}` not found on PATH. Install with one of:\n\
-         \n  npm i -g agent-reviews\n\
-         \n  npm i -g github:sam-phinizy/agent-reviews#add-github-api-url-env  \
-         (until upstream merges)\n\
-         \nOr override the binary: REDPEN_REVIEW_BIN=/path/to/agent-reviews redpen review ...",
-        bin
-    );
-    run_with_env(&bin, &args, remote, &hint)
-}
-
 // ---------------------------------------------------------------------------
 // Watch (native polling)
 // ---------------------------------------------------------------------------
@@ -1318,8 +1402,8 @@ fn fetch_comment_ids(url: &str) -> Result<Vec<i64>, Box<dyn std::error::Error>> 
 /// Bundled skills, each as `(skill_name, SKILL.md content)`. Add new entries
 /// here to ship more skills with the binary.
 const BUNDLED_SKILLS: &[(&str, &str)] = &[(
-    "resolve-redpen-reviews",
-    include_str!("../skills/resolve-redpen-reviews/SKILL.md"),
+    "resolve-reviews",
+    include_str!("../skills/resolve-reviews/SKILL.md"),
 )];
 
 fn cmd_install_skills(project: bool, force: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -1359,7 +1443,7 @@ fn cmd_install_skills(project: bool, force: bool) -> Result<(), Box<dyn std::err
             target_root.display()
         );
         if !project {
-            eprintln!("Use them in Claude Code via `/resolve-redpen-reviews`.");
+            eprintln!("Use them in Claude Code via `/resolve-reviews`.");
         }
     }
     Ok(())
