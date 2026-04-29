@@ -537,11 +537,27 @@ pub fn discovery_path() -> std::path::PathBuf {
         .join("server.json")
 }
 
+/// Compose `/rpc/*` and (optionally) GitHub-API-compatible routes into a
+/// single Router. Exposed for tests so the merge can be verified without
+/// binding a TCP listener.
+pub fn build_router_with_gh_fake(
+    bridge: Arc<dyn AppBridge>,
+    sessions: Arc<ReviewSessions>,
+    gh_backend: Option<Arc<dyn redpen_gh_fake::GhBackend>>,
+) -> Router {
+    let mut router = build_router(bridge, sessions);
+    if let Some(backend) = gh_backend {
+        router = router.merge(redpen_gh_fake::router(backend));
+    }
+    router
+}
+
 pub async fn start_server(
     bridge: Arc<dyn AppBridge>,
     sessions: Arc<ReviewSessions>,
+    gh_backend: Option<Arc<dyn redpen_gh_fake::GhBackend>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let router = build_router(bridge, sessions);
+    let router = build_router_with_gh_fake(bridge, sessions, gh_backend);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr()?;
@@ -1217,5 +1233,63 @@ mod tests {
         let path = discovery_path();
         assert!(path.to_string_lossy().contains(".config/redpen"));
         assert!(path.to_string_lossy().ends_with("server.json"));
+    }
+
+    // =======================================================================
+    // gh-fake merge
+    // =======================================================================
+
+    #[tokio::test]
+    async fn merged_router_serves_both_rpc_and_gh_routes() {
+        use redpen_gh_fake::test_backend::TestBackend;
+        use redpen_gh_fake::SessionRef;
+
+        let bridge = Arc::new(MockBridge::new());
+        let sessions = Arc::new(ReviewSessions::new());
+        let gh_backend = TestBackend::new();
+        gh_backend.add_session(SessionRef {
+            id: "s".into(),
+            owner: "octocat".into(),
+            repo: "hello".into(),
+            number: 7,
+            title: "t".into(),
+            body: "".into(),
+            head_ref: "feat".into(),
+            head_sha: "h".into(),
+            base_ref: "main".into(),
+            base_sha: "b".into(),
+            author_login: "a".into(),
+            viewer_login: "v".into(),
+            html_url: "redpen://x".into(),
+        });
+
+        let router = build_router_with_gh_fake(bridge, sessions, Some(Arc::new(gh_backend)));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let base = format!("http://{}", addr);
+        let client = reqwest::Client::new();
+
+        // /rpc/* still works.
+        let rpc = client
+            .post(format!("{}/rpc/get_annotations", base))
+            .json(&serde_json::json!({ "file": "/x.rs" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(rpc.status(), 200);
+
+        // gh-fake routes are reachable on the same listener.
+        let gh = client
+            .get(format!(
+                "{}/repos/octocat/hello/pulls?head=octocat:feat&state=open",
+                base
+            ))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(gh.status(), 200);
+        let body: serde_json::Value = gh.json().await.unwrap();
+        assert_eq!(body[0]["number"], 7);
     }
 }

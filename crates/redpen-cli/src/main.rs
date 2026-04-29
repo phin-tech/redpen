@@ -113,6 +113,85 @@ enum Commands {
     },
     /// Print agent usage prompt (system prompt for AI agents using redpen)
     Agents,
+    /// Print the base URL of the running redpen-gh-fake HTTP server.
+    Url,
+    /// List active GitHub review sessions (sourced from /redpen/meta).
+    Sessions {
+        /// Output format: "table" (default) or "json"
+        #[arg(long, default_value = "table")]
+        format: String,
+    },
+    /// Run a child process with GITHUB_API_URL set to the local fake-gh server.
+    ///
+    /// Useful for pointing GitHub-aware tools (e.g. agent-reviews via npx)
+    /// at Redpen instead of api.github.com. Use `--` to separate redpen
+    /// flags from the child command:
+    ///
+    ///     redpen run -- agent-reviews --pr 7 --unanswered
+    Run {
+        /// Skip GITHUB_API_URL injection so the child talks to real api.github.com.
+        /// Default is local (Redpen sandboxed). Use this when you want the
+        /// same wrapper but actually hit upstream GitHub.
+        #[arg(long)]
+        remote: bool,
+        /// Command and its arguments.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        args: Vec<String>,
+    },
+    /// Convenience alias for `redpen run -- agent-reviews [args...]`.
+    ///
+    /// Override the binary with REDPEN_REVIEW_BIN. Defaults to `agent-reviews`
+    /// (assumed to be on PATH; install with `npm i -g agent-reviews` or
+    /// `npm i -g github:sam-phinizy/agent-reviews#add-github-api-url-env`
+    /// until upstream merges the GITHUB_API_URL env support).
+    Review {
+        /// Skip GITHUB_API_URL injection so agent-reviews talks to real
+        /// api.github.com. Default is local (Redpen sandboxed).
+        #[arg(long)]
+        remote: bool,
+        /// Arguments forwarded to agent-reviews.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Watch the active session for new review comments, exiting when any
+    /// appear (or after a configurable idle timeout). Native implementation
+    /// that hits the local Redpen server directly — no agent-reviews / Node
+    /// dependency.
+    ///
+    /// Output format mirrors `agent-reviews --watch` so the same skill
+    /// prompt drives both. Look for `EXITING WITH NEW COMMENTS` / `WATCH COMPLETE`.
+    Watch {
+        /// PR number to watch. Defaults to the active session's PR if exactly
+        /// one session is loaded.
+        #[arg(long)]
+        pr: Option<u64>,
+        /// `owner/name` of the repo. Defaults to the active session's repo.
+        #[arg(long, value_name = "OWNER/NAME")]
+        repo: Option<String>,
+        /// Seconds of inactivity before exiting cleanly. Default 600 (10m).
+        #[arg(long, default_value_t = 600)]
+        idle_timeout: u64,
+        /// Seconds between polls. Default 30.
+        #[arg(long, default_value_t = 30)]
+        poll_interval: u64,
+        /// Seconds to wait after detecting a new comment, in case more land
+        /// in the same batch. Default 5.
+        #[arg(long, default_value_t = 5)]
+        grace_period: u64,
+    },
+    /// Install Redpen-flavored Claude Code skills into ~/.claude/skills/.
+    ///
+    /// Skill files are embedded in this binary, so no network or repo
+    /// checkout is required. By default writes to the user-global location;
+    /// pass --project to write to ./.claude/skills/ instead.
+    InstallSkills {
+        /// Install into the current directory's .claude/skills/ instead of ~.
+        #[arg(long)]
+        project: bool,
+        /// Overwrite existing files without prompting.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Exit codes for the pre-push review gate.
@@ -188,6 +267,18 @@ fn main() {
             print!("{}", AGENT_PROMPT);
             Ok(())
         }
+        Commands::Url => cmd_url(),
+        Commands::Sessions { format } => cmd_sessions(&format),
+        Commands::Run { remote, args } => cmd_run(remote, args),
+        Commands::Review { remote, args } => cmd_review(remote, args),
+        Commands::InstallSkills { project, force } => cmd_install_skills(project, force),
+        Commands::Watch {
+            pr,
+            repo,
+            idle_timeout,
+            poll_interval,
+            grace_period,
+        } => cmd_watch(pr, repo, idle_timeout, poll_interval, grace_period),
     };
     if let Err(e) = result {
         eprintln!("Error: {}", e);
@@ -978,6 +1069,300 @@ fn cmd_review_pr(
 
     #[allow(unreachable_code)]
     Err("Red Pen app server is not available. Start the app first.".into())
+}
+
+// ---------------------------------------------------------------------------
+// gh-fake bridge commands
+// ---------------------------------------------------------------------------
+
+fn require_server_url() -> Result<String, Box<dyn std::error::Error>> {
+    server_client::server_url().ok_or_else(|| {
+        "redpen server is not running. Start the desktop app or `cargo tauri dev`.".into()
+    })
+}
+
+fn cmd_url() -> Result<(), Box<dyn std::error::Error>> {
+    println!("{}", require_server_url()?);
+    Ok(())
+}
+
+fn cmd_sessions(format: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let url = require_server_url()?;
+    let body: serde_json::Value = ureq::get(&format!("{}/redpen/meta", url))
+        .call()?
+        .body_mut()
+        .read_json()?;
+    let sessions = body["active_sessions"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    match format {
+        "json" => println!("{}", serde_json::to_string_pretty(&sessions)?),
+        _ => {
+            if sessions.is_empty() {
+                println!("No active GitHub review sessions.");
+                return Ok(());
+            }
+            println!(
+                "{:<12} {:<32} {:<8} {}",
+                "ID", "REPO", "PR", "BRANCH"
+            );
+            for s in &sessions {
+                let id = s["id"].as_str().unwrap_or("");
+                let owner = s["owner"].as_str().unwrap_or("");
+                let repo = s["repo"].as_str().unwrap_or("");
+                let number = s["number"].as_u64().unwrap_or(0);
+                let branch = s["branch"].as_str().unwrap_or("");
+                println!(
+                    "{:<12} {:<32} #{:<7} {}",
+                    truncate(id, 12),
+                    format!("{}/{}", owner, repo),
+                    number,
+                    branch
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max.saturating_sub(1)])
+    }
+}
+
+fn run_with_env(
+    cmd: &str,
+    args: &[String],
+    remote: bool,
+    on_not_found: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut command = std::process::Command::new(cmd);
+    command.args(args);
+    if !remote {
+        // Default: route through the local Redpen server (sandboxed).
+        let url = require_server_url()?;
+        command.env("GITHUB_API_URL", &url);
+        command.env("REDPEN_BASE_URL", &url);
+
+        // If there is exactly one active GH review session, surface its
+        // identity through env so consumers (e.g. agent-reviews) don't have
+        // to be told the repo + PR explicitly. Multi-session is intentionally
+        // not auto-resolved — too much footgun risk.
+        if let Some((repo, pr, branch)) = solo_session_identity() {
+            command.env("GH_REPO", &repo);
+            command.env("REDPEN_PR", pr.to_string());
+            command.env("REDPEN_BRANCH", &branch);
+        }
+    }
+    // In --remote mode, leave the child's env untouched so it talks to real
+    // api.github.com using whatever auth/proxy setup the user already has.
+    let result = command.status();
+    match result {
+        Ok(status) => process::exit(status.code().unwrap_or(1)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(on_not_found.into()),
+        Err(e) => Err(e.to_string().into()),
+    }
+}
+
+/// Returns (owner/repo, pr_number, branch) iff exactly one GH session is
+/// active. Returns None on zero or multiple sessions, or any fetch error —
+/// caller falls back to no-injection.
+fn solo_session_identity() -> Option<(String, u64, String)> {
+    let url = server_client::server_url()?;
+    let body: serde_json::Value = ureq::get(&format!("{}/redpen/meta", url))
+        .call()
+        .ok()?
+        .body_mut()
+        .read_json()
+        .ok()?;
+    let sessions = body["active_sessions"].as_array()?;
+    if sessions.len() != 1 {
+        return None;
+    }
+    let s = &sessions[0];
+    let owner = s["owner"].as_str()?;
+    let repo = s["repo"].as_str()?;
+    let number = s["number"].as_u64()?;
+    let branch = s["branch"].as_str().unwrap_or("");
+    Some((format!("{}/{}", owner, repo), number, branch.to_string()))
+}
+
+fn cmd_run(remote: bool, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let (cmd, rest) = args
+        .split_first()
+        .ok_or("expected a command after `--`")?;
+    let hint = format!("command not found: {} (is it on PATH?)", cmd);
+    run_with_env(cmd, rest, remote, &hint)
+}
+
+fn cmd_review(remote: bool, args: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let bin = std::env::var("REDPEN_REVIEW_BIN").unwrap_or_else(|_| "agent-reviews".into());
+    let hint = format!(
+        "`{}` not found on PATH. Install with one of:\n\
+         \n  npm i -g agent-reviews\n\
+         \n  npm i -g github:sam-phinizy/agent-reviews#add-github-api-url-env  \
+         (until upstream merges)\n\
+         \nOr override the binary: REDPEN_REVIEW_BIN=/path/to/agent-reviews redpen review ...",
+        bin
+    );
+    run_with_env(&bin, &args, remote, &hint)
+}
+
+// ---------------------------------------------------------------------------
+// Watch (native polling)
+// ---------------------------------------------------------------------------
+
+fn cmd_watch(
+    pr_arg: Option<u64>,
+    repo_arg: Option<String>,
+    idle_timeout: u64,
+    poll_interval: u64,
+    grace_period: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let url = require_server_url()?;
+
+    // Resolve target session.
+    let (repo, pr) = match (repo_arg, pr_arg) {
+        (Some(r), Some(n)) => (r, n),
+        _ => {
+            let solo = solo_session_identity()
+                .ok_or("no PR specified and there isn't exactly one active session — pass --pr <n> [--repo owner/name]")?;
+            (solo.0, solo.1)
+        }
+    };
+
+    let comments_url = format!("{}/repos/{}/pulls/{}/comments", url, repo, pr);
+    let started = std::time::Instant::now();
+    println!("=== Redpen Watch Mode ===");
+    println!("PR: {}#{}", repo, pr);
+    println!(
+        "Polling every {}s, exit after {}s of inactivity.",
+        poll_interval, idle_timeout
+    );
+
+    let initial_ids = fetch_comment_ids(&comments_url)?;
+    println!("Initial state: {} comments tracked", initial_ids.len());
+
+    let last_change = std::time::Instant::now();
+    let mut seen: std::collections::HashSet<i64> = initial_ids.into_iter().collect();
+    let mut poll = 0usize;
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(poll_interval));
+        poll += 1;
+        let elapsed = started.elapsed().as_secs();
+        let idle = last_change.elapsed().as_secs();
+
+        let current = match fetch_comment_ids(&comments_url) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[poll #{poll} t={elapsed}s] fetch error: {e} — retrying next poll");
+                continue;
+            }
+        };
+        let new_ids: Vec<i64> = current.iter().copied().filter(|id| !seen.contains(id)).collect();
+
+        if !new_ids.is_empty() {
+            // Grace period in case a batch is mid-publish.
+            std::thread::sleep(std::time::Duration::from_secs(grace_period));
+            let after = fetch_comment_ids(&comments_url).unwrap_or(current);
+            let final_new: Vec<i64> = after
+                .iter()
+                .copied()
+                .filter(|id| !seen.contains(id))
+                .collect();
+            for id in &final_new {
+                seen.insert(*id);
+            }
+            println!(
+                "[poll #{poll} t={elapsed}s] new comments: {}",
+                final_new
+                    .iter()
+                    .map(i64::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            println!("EXITING WITH NEW COMMENTS");
+            return Ok(());
+        }
+
+        if idle >= idle_timeout {
+            println!("[poll #{poll} t={elapsed}s idle={idle}s] no new comments");
+            println!("WATCH COMPLETE");
+            return Ok(());
+        }
+
+        println!(
+            "[poll #{poll} t={elapsed}s idle={idle}s] no new comments ({}/{}s)",
+            idle, idle_timeout
+        );
+    }
+}
+
+fn fetch_comment_ids(url: &str) -> Result<Vec<i64>, Box<dyn std::error::Error>> {
+    let body: serde_json::Value = ureq::get(url).call()?.body_mut().read_json()?;
+    let arr = body.as_array().ok_or("expected JSON array")?;
+    Ok(arr
+        .iter()
+        .filter_map(|c| c["id"].as_i64())
+        .collect())
+}
+
+// ---------------------------------------------------------------------------
+// Skill installer
+// ---------------------------------------------------------------------------
+
+/// Bundled skills, each as `(skill_name, SKILL.md content)`. Add new entries
+/// here to ship more skills with the binary.
+const BUNDLED_SKILLS: &[(&str, &str)] = &[(
+    "resolve-redpen-reviews",
+    include_str!("../skills/resolve-redpen-reviews/SKILL.md"),
+)];
+
+fn cmd_install_skills(project: bool, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let target_root = if project {
+        std::env::current_dir()?.join(".claude").join("skills")
+    } else {
+        dirs::home_dir()
+            .ok_or("could not resolve home directory")?
+            .join(".claude")
+            .join("skills")
+    };
+
+    let mut written = 0usize;
+    let mut skipped = 0usize;
+    for (name, content) in BUNDLED_SKILLS {
+        let dir = target_root.join(name);
+        let path = dir.join("SKILL.md");
+        std::fs::create_dir_all(&dir)?;
+        if path.exists() && !force {
+            eprintln!("skip (exists): {}", path.display());
+            skipped += 1;
+            continue;
+        }
+        std::fs::write(&path, content)?;
+        eprintln!("wrote: {}", path.display());
+        written += 1;
+    }
+
+    if skipped > 0 && written == 0 {
+        eprintln!(
+            "\nAll skills already installed. Re-run with --force to overwrite."
+        );
+    } else {
+        eprintln!(
+            "\nInstalled {} skill(s) into {}.",
+            written,
+            target_root.display()
+        );
+        if !project {
+            eprintln!("Use them in Claude Code via `/resolve-redpen-reviews`.");
+        }
+    }
+    Ok(())
 }
 
 fn review_output(
