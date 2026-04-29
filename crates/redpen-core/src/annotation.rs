@@ -95,18 +95,31 @@ pub enum GitHubSyncState {
     LocalOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../../src/lib/bindings/")]
 pub struct GitHubAnnotationMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync_state: Option<GitHubSyncState>,
+    /// GraphQL node id (e.g. `PRRC_kwDOXxxx`). Used for GraphQL operations
+    /// like `resolveReviewThread` and as the cross-reference between
+    /// `reply_to` chains in imported data.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_comment_id: Option<String>,
+    /// REST `databaseId` (e.g. `1729384756`). Required for REST endpoints
+    /// like `POST /pulls/comments/{id}/replies`. Populated by the import
+    /// path; older sidecars may have only `external_comment_id` set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_comment_database_id: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_thread_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publishable_reason: Option<String>,
+    /// Set to `Some(true)` when the user (or an agent) flips `resolved`
+    /// on an annotation that was already imported (`sync_state = Imported`).
+    /// Triggers a `resolveReviewThread` GraphQL mutation on submit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_resolution_change: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
