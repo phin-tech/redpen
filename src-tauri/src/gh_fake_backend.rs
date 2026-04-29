@@ -140,11 +140,18 @@ fn annotation_thread_id(a: &Annotation) -> Option<&str> {
     a.github.as_ref()?.external_thread_id.as_deref()
 }
 
-/// Stable REST `databaseId` for an annotation. Imported comments hash their
-/// upstream node id; locally-authored drafts (agent replies, future user
-/// drafts) hash their local UUID. Either way the value is stable across calls
-/// so clients can reply to it.
+/// Stable REST `databaseId` for an annotation. Prefers the real GitHub
+/// `databaseId` populated at import time; falls back to a hash for legacy
+/// sidecars (imported before the schema split) and for locally-authored
+/// drafts that don't have an upstream id yet.
 fn database_id_for(a: &Annotation) -> i64 {
+    if let Some(id) = a
+        .github
+        .as_ref()
+        .and_then(|m| m.external_comment_database_id)
+    {
+        return id;
+    }
     match annotation_node_id(a) {
         Some(node_id) => hash_node_id(node_id),
         None => hash_node_id(&a.id),
@@ -361,6 +368,7 @@ impl GhBackend for TauriGhBackend {
             external_comment_id: None,
             external_thread_id: Some(synthetic_thread_id(&annotation.id)),
             publishable_reason: None,
+            ..Default::default()
         });
 
         let mut sidecar = if sidecar_path.exists() {
@@ -431,6 +439,7 @@ impl GhBackend for TauriGhBackend {
                 .as_ref()
                 .and_then(|m| m.external_thread_id.clone()),
             publishable_reason: None,
+            ..Default::default()
         });
 
         // Append + save the sidecar that holds the parent.
@@ -489,8 +498,18 @@ impl GhBackend for TauriGhBackend {
                     let matches_synthetic =
                         synthetic_thread_id(&annotation.id) == thread_node_id;
                     if matches_external || matches_synthetic {
+                        let prior = annotation.resolved;
                         annotation.resolved = resolved;
                         annotation.updated_at = Some(Utc::now());
+                        // Flag the resolution change for upstream publish on
+                        // imported annotations whose state actually flipped.
+                        if let Some(meta) = annotation.github.as_mut() {
+                            if matches!(meta.sync_state, Some(GitHubSyncState::Imported))
+                                && resolved != prior
+                            {
+                                meta.pending_resolution_change = Some(true);
+                            }
+                        }
                         hit = Some(ThreadRef {
                             node_id: thread_node_id.to_string(),
                             is_resolved: resolved,

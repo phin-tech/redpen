@@ -144,6 +144,7 @@ pub fn create_annotation(
             external_comment_id: None,
             external_thread_id: None,
             publishable_reason: None,
+            ..Default::default()
         });
         sidecar.add_annotation(annotation.clone());
         save_session_sidecar_for_file(&state.storage, &session, source_path, &sidecar)?;
@@ -234,12 +235,21 @@ pub fn update_annotation(
         if let Some(choices) = choices {
             annotation.choices = Some(choices);
         }
+        let prior_resolved = annotation.resolved;
         if let Some(resolved) = resolved {
             annotation.resolved = resolved;
         }
         if let Some(metadata) = &mut annotation.github {
+            // Brand-new local annotations: mark them PendingPublish on first edit.
             if metadata.sync_state.is_none() {
                 metadata.sync_state = Some(GitHubSyncState::PendingPublish);
+            }
+            // Imported annotations: flag a pending resolution-state change so
+            // submit_github_pr_review knows to call resolveReviewThread.
+            if matches!(metadata.sync_state, Some(GitHubSyncState::Imported))
+                && annotation.resolved != prior_resolved
+            {
+                metadata.pending_resolution_change = Some(true);
             }
         }
         annotation.updated_at = Some(chrono::Utc::now());

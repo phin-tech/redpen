@@ -32,6 +32,7 @@ query($owner: String!, $name: String!, $number: Int!) {
           comments(first: 100) {
             nodes {
               id
+              databaseId
               body
               path
               line
@@ -338,6 +339,7 @@ pub fn submit_github_pr_review(
                         publishable_reason: Some(
                             "Line is not part of the PR head-side diff".into(),
                         ),
+                        ..Default::default()
                     });
                     metadata.sync_state = Some(GitHubSyncState::LocalOnly);
                     metadata.publishable_reason =
@@ -399,18 +401,20 @@ pub fn submit_github_pr_review(
     for (_path, annotation, sidecar_path) in pending_roots {
         let mut sidecar = SidecarFile::load(&sidecar_path)?;
         if let Some(current) = sidecar.get_annotation_mut(&annotation.id) {
-            let response_comment_id = published_comment_ids
-                .next()
-                .and_then(|value| value.get("id").and_then(Value::as_i64))
-                .map(|id| id.to_string());
-            let metadata = current.github.get_or_insert(GitHubAnnotationMetadata {
-                sync_state: Some(GitHubSyncState::Published),
-                external_comment_id: None,
-                external_thread_id: None,
-                publishable_reason: None,
-            });
+            let published = published_comment_ids.next();
+            let database_id = published
+                .as_ref()
+                .and_then(|v| v.get("id").and_then(Value::as_i64));
+            let node_id = published
+                .as_ref()
+                .and_then(|v| v.get("node_id").and_then(Value::as_str))
+                .map(str::to_string);
+            let metadata = current
+                .github
+                .get_or_insert_with(GitHubAnnotationMetadata::default);
             metadata.sync_state = Some(GitHubSyncState::Published);
-            metadata.external_comment_id = response_comment_id;
+            metadata.external_comment_id = node_id;
+            metadata.external_comment_database_id = database_id;
             metadata.publishable_reason = None;
         }
         sidecar.save(&sidecar_path)?;
@@ -419,7 +423,7 @@ pub fn submit_github_pr_review(
     let pending_replies = collect_pending_replies(&sidecars)?;
     let mut reply_count = 0usize;
     for (reply, sidecar_path) in pending_replies {
-        let parent_id = find_parent_external_comment_id(&sidecars, &reply)?;
+        let parent_database_id = find_parent_database_id(&sidecars, &reply)?;
         let response = run_gh_json(
             [
                 "api",
@@ -427,7 +431,7 @@ pub fn submit_github_pr_review(
                 "POST",
                 &format!(
                     "repos/{}/pulls/comments/{}/replies",
-                    session.repo, parent_id
+                    session.repo, parent_database_id
                 ),
                 "-f",
                 &format!("body={}", reply.body),
@@ -436,19 +440,26 @@ pub fn submit_github_pr_review(
         )?;
         let mut sidecar = SidecarFile::load(&sidecar_path)?;
         if let Some(current) = sidecar.get_annotation_mut(&reply.id) {
-            let metadata = current.github.get_or_insert(GitHubAnnotationMetadata {
-                sync_state: Some(GitHubSyncState::Published),
-                external_comment_id: None,
-                external_thread_id: None,
-                publishable_reason: None,
-            });
+            let database_id = response.get("id").and_then(Value::as_i64);
+            let node_id = response
+                .get("node_id")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let metadata = current
+                .github
+                .get_or_insert_with(GitHubAnnotationMetadata::default);
             metadata.sync_state = Some(GitHubSyncState::Published);
-            metadata.external_comment_id = extract_comment_id(&response);
+            metadata.external_comment_id = node_id;
+            metadata.external_comment_database_id = database_id;
             metadata.publishable_reason = None;
         }
         sidecar.save(&sidecar_path)?;
         reply_count += 1;
     }
+
+    // Publish thread-resolution changes via GraphQL.
+    let resolution_count = publish_pending_resolutions(&session, &sidecars)?;
+    let _ = resolution_count; // surfaced via session re-load below
 
     db.complete_review_session(
         &session_id,
@@ -920,6 +931,9 @@ fn import_review_threads(session: &GitHubPrSession) -> CommandResult<Vec<Annotat
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
+            let github_comment_database_id = comment
+                .get("databaseId")
+                .and_then(Value::as_i64);
             let reply_to_github = comment
                 .get("replyTo")
                 .and_then(|value| value.get("id"))
@@ -960,8 +974,10 @@ fn import_review_threads(session: &GitHubPrSession) -> CommandResult<Vec<Annotat
             annotation.github = Some(GitHubAnnotationMetadata {
                 sync_state: Some(GitHubSyncState::Imported),
                 external_comment_id: Some(github_comment_id.clone()),
+                external_comment_database_id: github_comment_database_id,
                 external_thread_id: Some(thread_id.to_string()),
                 publishable_reason: Some(path.to_string()),
+                ..Default::default()
             });
             github_to_local_id.insert(github_comment_id, annotation.id.clone());
             annotations.push(annotation);
@@ -1060,6 +1076,7 @@ fn collect_pending_replies(
                     external_comment_id: None,
                     external_thread_id: None,
                     publishable_reason: Some("Parent thread is not publishable to GitHub".into()),
+                    ..Default::default()
                 });
                 metadata.sync_state = Some(GitHubSyncState::LocalOnly);
                 metadata.publishable_reason =
@@ -1076,10 +1093,13 @@ fn collect_pending_replies(
     Ok(pending_replies)
 }
 
-fn find_parent_external_comment_id(
+/// Locate the REST `databaseId` of a reply's parent annotation, walking the
+/// session's sidecars. The REST `/replies` endpoint requires the numeric
+/// databaseId (not the GraphQL node id), so this is what we send upstream.
+fn find_parent_database_id(
     sidecars: &[(PathBuf, PathBuf)],
     reply: &Annotation,
-) -> CommandResult<String> {
+) -> CommandResult<i64> {
     let Some(parent_id) = &reply.reply_to else {
         return Err(CommandError::InvalidArgument(
             "Reply is missing reply_to".into(),
@@ -1088,27 +1108,82 @@ fn find_parent_external_comment_id(
     for (_, sidecar_path) in sidecars {
         let sidecar = SidecarFile::load(sidecar_path)?;
         if let Some(parent) = sidecar.get_annotation(parent_id) {
-            if let Some(external_comment_id) = parent
+            if let Some(db_id) = parent
                 .github
                 .as_ref()
-                .and_then(|metadata| metadata.external_comment_id.clone())
+                .and_then(|metadata| metadata.external_comment_database_id)
             {
-                return Ok(external_comment_id);
+                return Ok(db_id);
             }
+            // Fall through to the next sidecar in case the parent is stored
+            // elsewhere; otherwise we'll exit the loop and 404 below.
         }
     }
     Err(CommandError::NotFound(
-        "Could not resolve parent GitHub comment ID".into(),
+        "Could not resolve parent comment's REST databaseId. \
+         Re-import the session to populate the new schema."
+            .into(),
     ))
 }
 
-fn extract_comment_id(value: &Value) -> Option<String> {
-    value.get("id").and_then(|id| {
-        id.as_str()
-            .map(ToString::to_string)
-            .or_else(|| id.as_i64().map(|id| id.to_string()))
-            .or_else(|| id.as_u64().map(|id| id.to_string()))
-    })
+/// Walk the session's sidecars and, for every annotation whose
+/// `pending_resolution_change` flag is set, post a GraphQL
+/// `resolveReviewThread` mutation upstream and clear the flag.
+///
+/// Returns the number of threads resolved.
+fn publish_pending_resolutions(
+    session: &GitHubPrSession,
+    sidecars: &[(PathBuf, PathBuf)],
+) -> CommandResult<usize> {
+    let mut resolved_count = 0usize;
+    for (_, sidecar_path) in sidecars {
+        let mut sidecar = SidecarFile::load(sidecar_path)?;
+        let mut changed = false;
+        for annotation in sidecar.annotations.iter_mut() {
+            let Some(meta) = annotation.github.as_mut() else {
+                continue;
+            };
+            let pending = meta.pending_resolution_change == Some(true);
+            if !pending {
+                continue;
+            }
+            let Some(thread_id) = meta.external_thread_id.clone() else {
+                // No upstream thread → nothing to resolve. Drop the flag so
+                // we don't keep retrying.
+                meta.pending_resolution_change = None;
+                changed = true;
+                continue;
+            };
+
+            let mutation = if annotation.resolved {
+                "resolveReviewThread"
+            } else {
+                "unresolveReviewThread"
+            };
+            let query = format!(
+                r#"mutation($threadId:ID!){{ {op}(input:{{threadId:$threadId}}){{ thread {{ id isResolved }} }} }}"#,
+                op = mutation,
+            );
+            let _ = run_gh_json(
+                [
+                    "api",
+                    "graphql",
+                    "-f",
+                    &format!("query={}", query),
+                    "-F",
+                    &format!("threadId={}", thread_id),
+                ],
+                Some(&session.local_repo_path),
+            )?;
+            meta.pending_resolution_change = None;
+            changed = true;
+            resolved_count += 1;
+        }
+        if changed {
+            sidecar.save(sidecar_path)?;
+        }
+    }
+    Ok(resolved_count)
 }
 
 fn is_publishable(
