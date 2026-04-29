@@ -1262,7 +1262,7 @@ fn save_session(
     Ok(())
 }
 
-fn load_session_by_id(db: &StateDb, session_id: &str) -> CommandResult<GitHubPrSession> {
+pub fn load_session_by_id(db: &StateDb, session_id: &str) -> CommandResult<GitHubPrSession> {
     let stored = db
         .get_review_session(session_id)
         .map_err(storage_error)?
@@ -1272,7 +1272,7 @@ fn load_session_by_id(db: &StateDb, session_id: &str) -> CommandResult<GitHubPrS
     github_session_from_stored(stored)
 }
 
-fn list_session_sidecars(session: &GitHubPrSession) -> CommandResult<Vec<(PathBuf, PathBuf)>> {
+pub fn list_session_sidecars(session: &GitHubPrSession) -> CommandResult<Vec<(PathBuf, PathBuf)>> {
     let comments_dir = session_directory(session)?.join("comments");
     if !comments_dir.exists() {
         return Ok(Vec::new());

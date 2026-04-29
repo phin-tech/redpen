@@ -29,6 +29,8 @@ walkdir = "2"
 similar = "2"
 ts-rs = { version = "12", features = ["chrono-impl", "serde-json-impl"] }
 redpen-server = { path = "../crates/redpen-server" }
+redpen-gh-fake = { path = "../crates/redpen-gh-fake" }
+async-trait = "0.1"
 urlencoding = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 rusqlite_migration = "1"

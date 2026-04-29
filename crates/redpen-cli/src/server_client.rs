@@ -9,7 +9,7 @@ use serde_json::json;
 
 /// Read the server port from ~/.config/redpen/server.json.
 /// Returns None if the file doesn't exist or the server process is dead.
-fn server_url() -> Option<String> {
+pub fn server_url() -> Option<String> {
     let path = redpen_server::discovery_path();
     let content = std::fs::read_to_string(&path).ok()?;
     let info: serde_json::Value = serde_json::from_str(&content).ok()?;

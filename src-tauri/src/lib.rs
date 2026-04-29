@@ -1,6 +1,7 @@
 mod bridge;
 mod commands;
 mod event_bus;
+mod gh_fake_backend;
 mod notification;
 mod settings;
 mod state;
@@ -383,11 +384,16 @@ pub fn run() {
                 }; // semicolon ensures MutexGuard drops before state
             }
 
-            // Start optional local HTTP server for CLI/agent communication
+            // Start optional local HTTP server for CLI/agent communication.
+            // Mounts both /rpc/* (Redpen RPC) and the GitHub-API-compatible
+            // routes that back the agent-reviews compatibility shim.
             let bridge = bridge::TauriBridge::new(app.handle().clone());
+            let gh_backend = gh_fake_backend::TauriGhBackend::new(app.handle().clone());
             let review_sessions = app.state::<AppState>().review_sessions.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = redpen_server::start_server(bridge, review_sessions).await {
+                if let Err(e) =
+                    redpen_server::start_server(bridge, review_sessions, Some(gh_backend)).await
+                {
                     eprintln!("Red Pen server failed to start: {}", e);
                 }
             });

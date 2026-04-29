@@ -1,0 +1,9 @@
+{
+  "name": "redpen-gh-fake-test-clients",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Test fixtures for redpen-gh-fake — installs @octokit/rest for the Node integration test.",
+  "dependencies": {
+    "@octokit/rest": "^21"
+  }
+}
