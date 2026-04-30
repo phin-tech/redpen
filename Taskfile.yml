@@ -174,8 +174,10 @@ tasks:
         msg: "Working tree must be clean before releasing"
     cmds:
       - |
-        # Get current version from latest tag (strip leading v), default to 0.1.0
-        TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+        # Pick the highest v* tag in the repo, not just one reachable from
+        # HEAD — release PRs are squash-merged, so the tagged commit usually
+        # isn't an ancestor of main.
+        TAG=$(git tag --list 'v*' --sort=-version:refname | head -n1)
         if [ -z "$TAG" ]; then
           CURRENT="0.1.0"
         else
@@ -203,8 +205,8 @@ tasks:
           sed -i '' "s/^version = \".*\"/version = \"${NEW}\"/" "$f"
         done
 
-        # Generate changelog
-        git cliff --latest --strip header -o CHANGELOG.md
+        # Regenerate the full changelog so older sections aren't dropped.
+        git cliff --tag "v${NEW}" -o CHANGELOG.md
 
         # Commit, tag, push
         git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml CHANGELOG.md
