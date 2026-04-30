@@ -69,10 +69,13 @@ tasks:
         echo "Installed redpen-cli to $(which redpen)"
 
   sign:
-    desc: "Sign and notarize the already-built app bundle"
-    dotenv: [".env.signing"]
+    desc: "Sign and notarize the already-built app bundle (expects APPLE_* env vars set)"
     cmds:
       - |
+        : "${APPLE_SIGNING_IDENTITY:?must be set}"
+        : "${APPLE_ID:?must be set}"
+        : "${APPLE_PASSWORD:?must be set}"
+        : "${APPLE_TEAM_ID:?must be set}"
         codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
           "target/release/bundle/macos/Red Pen.app"
         echo "Signed Red Pen.app"
@@ -87,12 +90,31 @@ tasks:
         xcrun stapler staple "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg"
         echo "Stapled"
 
+  sign:op:
+    desc: "Run the signing workflow with secrets loaded from 1Password"
+    preconditions:
+      - sh: "command -v op >/dev/null 2>&1"
+        msg: "1Password CLI 'op' is required"
+      - sh: '[ -f ".env.signing" ]'
+        msg: ".env.signing is required (copy from .env.signing.example)"
+    cmds:
+      - op run --env-file=.env.signing -- task sign
+
   build:signed:
-    desc: "Build and sign the app (sources .env.signing)"
-    dotenv: [".env.signing"]
+    desc: "Build and sign the app (expects APPLE_* env vars set)"
     cmds:
       - bun run tauri build
       - task: sign
+
+  build:signed:op:
+    desc: "Build and sign the app with secrets loaded from 1Password"
+    preconditions:
+      - sh: "command -v op >/dev/null 2>&1"
+        msg: "1Password CLI 'op' is required"
+      - sh: '[ -f ".env.signing" ]'
+        msg: ".env.signing is required (copy from .env.signing.example)"
+    cmds:
+      - op run --env-file=.env.signing -- task build:signed
 
   changelog:
     desc: Generate changelog for the latest tag
