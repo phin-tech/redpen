@@ -7,6 +7,7 @@ dist/
 .claude/settings.local.json
 .superpowers/
 .env*
+!.env.signing.example
 
 # Signing certificates and keys
 *.crt

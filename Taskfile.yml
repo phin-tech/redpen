@@ -69,10 +69,13 @@ tasks:
         echo "Installed redpen-cli to $(which redpen)"
 
   sign:
-    desc: "Sign and notarize the already-built app bundle"
-    dotenv: [".env.signing"]
+    desc: "Sign and notarize the already-built app bundle (expects APPLE_* env vars set)"
     cmds:
       - |
+        : "${APPLE_SIGNING_IDENTITY:?must be set}"
+        : "${APPLE_ID:?must be set}"
+        : "${APPLE_PASSWORD:?must be set}"
+        : "${APPLE_TEAM_ID:?must be set}"
         codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" \
           "target/release/bundle/macos/Red Pen.app"
         echo "Signed Red Pen.app"
@@ -87,12 +90,31 @@ tasks:
         xcrun stapler staple "target/release/bundle/dmg/Red Pen_$(cat src-tauri/tauri.conf.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["version"])')_aarch64.dmg"
         echo "Stapled"
 
+  sign:op:
+    desc: "Run the signing workflow with secrets loaded from 1Password"
+    preconditions:
+      - sh: "command -v op >/dev/null 2>&1"
+        msg: "1Password CLI 'op' is required"
+      - sh: '[ -f ".env.signing" ]'
+        msg: ".env.signing is required (copy from .env.signing.example)"
+    cmds:
+      - op run --env-file=.env.signing -- task sign
+
   build:signed:
-    desc: "Build and sign the app (sources .env.signing)"
-    dotenv: [".env.signing"]
+    desc: "Build and sign the app (expects APPLE_* env vars set)"
     cmds:
       - bun run tauri build
       - task: sign
+
+  build:signed:op:
+    desc: "Build and sign the app with secrets loaded from 1Password"
+    preconditions:
+      - sh: "command -v op >/dev/null 2>&1"
+        msg: "1Password CLI 'op' is required"
+      - sh: '[ -f ".env.signing" ]'
+        msg: ".env.signing is required (copy from .env.signing.example)"
+    cmds:
+      - op run --env-file=.env.signing -- task build:signed
 
   changelog:
     desc: Generate changelog for the latest tag
@@ -152,8 +174,10 @@ tasks:
         msg: "Working tree must be clean before releasing"
     cmds:
       - |
-        # Get current version from latest tag (strip leading v), default to 0.1.0
-        TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+        # Pick the highest v* tag in the repo, not just one reachable from
+        # HEAD — release PRs are squash-merged, so the tagged commit usually
+        # isn't an ancestor of main.
+        TAG=$(git tag --list 'v*' --sort=-version:refname | head -n1)
         if [ -z "$TAG" ]; then
           CURRENT="0.1.0"
         else
@@ -181,8 +205,8 @@ tasks:
           sed -i '' "s/^version = \".*\"/version = \"${NEW}\"/" "$f"
         done
 
-        # Generate changelog
-        git cliff --latest --strip header -o CHANGELOG.md
+        # Regenerate the full changelog so older sections aren't dropped.
+        git cliff --tag "v${NEW}" -o CHANGELOG.md
 
         # Commit, tag, push
         git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/redpen-cli/Cargo.toml crates/redpen-core/Cargo.toml CHANGELOG.md
