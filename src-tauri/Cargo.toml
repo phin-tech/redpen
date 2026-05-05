@@ -21,7 +21,7 @@ serde_json = "1"
 redpen-core = { path = "../crates/redpen-core" }
 redpen-runtime = { path = "../crates/redpen-runtime" }
 git2 = { version = "0.20", features = ["vendored-libgit2", "vendored-openssl"] }
-whoami = "1"
+whoami = "2"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 notify = "8"
