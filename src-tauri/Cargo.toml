@@ -23,7 +23,7 @@ redpen-runtime = { path = "../crates/redpen-runtime" }
 git2 = { version = "0.20", features = ["vendored-libgit2", "vendored-openssl"] }
 whoami = "1"
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "5"
+dirs = "6"
 notify = "8"
 walkdir = "2"
 similar = "2"
